@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "CyberShield AI"
+description = "A premium Arabic-first website for CyberShield AI, an autonomous multi-agent cyber defense platform. Presents its architecture, seven specialized agents, investigation workflow, simulated SOC collaboration feed, capabilities, technology layers, and editable impact placeholders without implying live analysis or unconfigured integrations."
+version = "1.0.0"
+id = "artifacts/cybershield-ai"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 20903
+
+[services.development]
+run = "pnpm --filter @workspace/cybershield-ai run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/cybershield-ai", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/cybershield-ai/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "20903"
+BASE_PATH = "/"
