@@ -1,0 +1,208 @@
+PART 22 — MOTION DESIGN & INTERACTIONS
+
+أريد أن تكون الحركة في موقع NEXUS SHIELD AI احترافية وهادئة، وتعطي إحساسًا بمنصة Cybersecurity وAI متقدمة.
+
+Motion Principles
+
+استخدم:
+
+- Smooth transitions
+- Fade-in
+- Slide-up
+- Scale
+- Subtle glow
+- Node pulse
+- Data-flow animations
+- Scroll reveal
+- Hover interactions
+- Number counters
+- Interactive connections
+
+لا تستخدم حركات مبالغًا فيها.
+
+الهدف هو:
+
+Premium + Futuristic + Technical + Trustworthy
+
+---
+
+AI Network Animation
+
+في قسم Architecture:
+
+اجعل الـAgents متصلين بـNEXUS AI CORE.
+
+تتحرك نقاط صغيرة على خطوط الاتصال لتمثيل انتقال البيانات.
+
+عند إرسال البيانات:
+
+Agent → Core → Agent
+
+يظهر تأثير ضوئي بسيط على الخط.
+
+اجعل الحركة Loop بطيئة.
+
+---
+
+Agent Hover
+
+عند وضع المؤشر على Agent:
+
+1. تكبر البطاقة قليلًا.
+2. يظهر Glow خفيف.
+3. تتحرك الأيقونة بشكل بسيط.
+4. تزداد إضاءة الاتصال مع الـCore.
+5. تظهر معلومات Agent.
+6. تختفي المعلومات القديمة بسلاسة.
+
+على الهاتف:
+
+استبدل Hover بـ Tap.
+
+---
+
+Scroll Animations
+
+كل Section يظهر تدريجيًا عند الوصول إليه.
+
+مثال:
+
+Opacity:
+0 → 1
+
+Y:
+30px → 0
+
+Scale:
+0.98 → 1
+
+استخدم easing ناعم.
+
+لا تجعل كل العناصر تتحرك في نفس اللحظة؛ استخدم stagger بسيط.
+
+---
+
+Live Console
+
+في قسم:
+
+NEXUS LIVE
+
+اجعل الأحداث تظهر بالتتابع كما لو أن النظام يعمل.
+
+مثال:
+
+Detection
+↓
+Intelligence
+↓
+Analysis
+↓
+Response
+↓
+Compliance
+↓
+Reporting
+
+كل Event يظهر بعد الآخر.
+
+لكن إذا لم يكن هناك Backend حقيقي:
+
+اعرض بوضوح:
+
+SIMULATION MODE
+
+ولا توهم المستخدم أن الأحداث حقيقية.
+
+---
+
+Metrics Animation
+
+عند ظهور قسم Metrics:
+
+اجعل الأرقام تتحرك من:
+
+0 → القيمة النهائية
+
+مثال:
+
+0
+10
+20
+30
+...
+70
+
+ويتم التوقف عند القيمة النهائية.
+
+استخدم هذا فقط للأرقام التجريبية أو البيانات الحقيقية الموثقة.
+
+---
+
+Button Interactions
+
+الأزرار يجب أن تحتوي على:
+
+- Hover
+- Press
+- Focus
+- Smooth transition
+
+مثال:
+
+ENTER THE NEXUS →
+
+عند Hover:
+
+- يتحرك Arrow قليلًا.
+- يظهر Glow خفيف.
+- يتغير Border.
+- يتحرك Background بشكل بسيط.
+
+---
+
+Accessibility
+
+احترم:
+
+"prefers-reduced-motion"
+
+إذا كان المستخدم يفضل تقليل الحركة:
+
+- أوقف Particle animations.
+- أوقف Data-flow animations.
+- قلل Scroll animations.
+- حافظ على الوظائف الأساسية.
+
+---
+
+Performance
+
+يجب ألا تؤثر Animation على سرعة الموقع.
+
+تجنب:
+
+- Animations الثقيلة.
+- فيديوهات خلفية كبيرة.
+- WebGL غير الضروري.
+- عدد كبير جدًا من Particles.
+
+استخدم CSS / Framer Motion أو تقنية مناسبة وخفيفة.
+
+---
+
+Final Motion Experience
+
+يجب أن يشعر المستخدم بأن الموقع حي:
+
+Signals moving.
+Agents communicating.
+Intelligence flowing.
+Threats being analyzed.
+Decisions being formed.
+
+لكن بدون أن يتحول الموقع إلى شاشة مليئة بالمؤثرات.
+
+النتيجة المطلوبة:
+
+A premium AI Cybersecurity command-center experience.
