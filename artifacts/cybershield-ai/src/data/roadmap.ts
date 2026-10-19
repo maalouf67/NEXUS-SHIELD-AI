@@ -1,7 +1,7 @@
 export const roadmap = [
-  { phase: '01', title: { ar: 'تحليل التهديدات المستقل', en: 'Autonomous Threat Analysis' }, description: { ar: 'شبكة أساسية من الوكلاء مع أحكام قابلة للتفسير.', en: 'A foundational agent network with explainable judgments.' } },
-  { phase: '02', title: { ar: 'تكامل مركز العمليات الأمنية', en: 'SOC Integration' }, description: { ar: 'تكامل مع منصات SIEM مثل Splunk وMicrosoft Sentinel وGoogle Chronicle.', en: 'Proposed SIEM integrations such as Splunk, Microsoft Sentinel and Google Chronicle.' } },
-  { phase: '03', title: { ar: 'الاحتواء الآلي', en: 'Automated Containment' }, description: { ar: 'استجابة مرتبطة بالسياسات وعزل المضيف عند السماح بذلك.', en: 'Policy-linked response and host isolation where authorized.' } },
-  { phase: '04', title: { ar: 'النشر المؤسسي', en: 'Enterprise Deployment' }, description: { ar: 'On-Premise · Private Cloud · Multi-Tenant', en: 'On-Premise · Private Cloud · Multi-Tenant' } },
-  { phase: '05', title: { ar: 'شبكة استخبارات تهديدات عالمية', en: 'Global Threat Intelligence Network' }, description: { ar: 'تعلم وتحسين مستمر قائم على بيانات موثوقة ومصرح باستخدامها.', en: 'Continuous learning and improvement based on trusted, authorized data.' } },
+  { phase: '01', title: { ar: 'اكتشاف متعدد الوكلاء', en: 'Multi-Agent Detection' }, description: { ar: 'تأسيس شبكة الوكلاء وبناء خطوات تحقيق قابلة للمراجعة.', en: 'Establish the agent network and reviewable investigation steps.' } },
+  { phase: '02', title: { ar: 'تكاملات مركز العمليات', en: 'SOC Integrations' }, description: { ar: 'وصلات مخططة لمنصات SIEM ومصادر مصرح بها.', en: 'Planned connectors for SIEM platforms and authorized sources.' } },
+  { phase: '03', title: { ar: 'استجابة مرتبطة بالسياسات', en: 'Policy-Based Response' }, description: { ar: 'ضوابط وموافقات بشرية قبل أي إجراء مؤثر.', en: 'Controls and human approval before consequential actions.' } },
+  { phase: '04', title: { ar: 'النشر المؤسسي', en: 'Enterprise Deployment' }, description: { ar: 'خيارات نشر خاصة ومؤسسية قيد التخطيط.', en: 'Private and enterprise deployment options under consideration.' } },
+  { phase: '05', title: { ar: 'استخبارات تهديدات عالمية', en: 'Global Threat Intelligence' }, description: { ar: 'مصادر موثوقة ومصرح بها مع توثيق المنشأ.', en: 'Trusted, authorized sources with recorded provenance.' } },
 ] as const;

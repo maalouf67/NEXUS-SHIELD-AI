@@ -1,32 +1,59 @@
 import {
-  Activity, BrainCircuit, Bug, ClipboardCheck, FileBarChart2, Fingerprint,
-  GitBranch, Globe2, Network, Radar, ScanSearch, ShieldCheck, Siren, Workflow,
+  Activity, Bug, ClipboardCheck, FileBarChart2, GitBranch, Globe2, Radar, ShieldCheck,
 } from 'lucide-react';
 
 export const agents = [
-  { number: '01', short: { en: 'Detection', ar: 'الكشف' }, name: { en: 'Threat Detection Agent', ar: 'وكيل اكتشاف التهديدات' }, label: { en: 'Detection', ar: 'الكشف' }, description: { en: 'Reviews suspicious email, phishing attempts, links and attachments, then proposes an initial risk level.', ar: 'يراجع البريد المشبوه ومحاولات التصيد والروابط والمرفقات، ثم يقترح مستوى المخاطر الأولي.' }, outputs: [{ en: 'Threat Indicators', ar: 'مؤشرات التهديد' }, { en: 'Initial Severity', ar: 'الشدة الأولية' }, { en: 'Investigation Trigger', ar: 'بدء التحقيق' }], icon: Radar, color: '#56d5bc' },
-  { number: '02', short: { en: 'Intel', ar: 'الاستخبارات' }, name: { en: 'Threat Intelligence Agent', ar: 'وكيل استخبارات التهديدات' }, label: { en: 'Intel', ar: 'استخبارات' }, description: { en: 'Enriches indicators against threat-intelligence sources, IOC records and reputation services when connected.', ar: 'يثري المؤشرات بالرجوع إلى مصادر استخبارات التهديدات وسجلات IOC وخدمات السمعة عند توفر اتصال.' }, outputs: [{ en: 'Reputation Context', ar: 'سياق السمعة' }, { en: 'Intelligence Summary', ar: 'ملخص استخباراتي' }, { en: 'Attack Correlations', ar: 'ارتباطات الهجمات' }], icon: Globe2, color: '#7bb8df' },
-  { number: '03', short: { en: 'Analysis', ar: 'التحليل' }, name: { en: 'Malware Analysis Agent', ar: 'وكيل تحليل البرمجيات الخبيثة' }, label: { en: 'Analysis', ar: 'التحليل' }, description: { en: 'Conceptually reviews suspicious files, malware indicators and behavioral risk within an investigation workflow.', ar: 'يراجع تصوريًا الملفات المشبوهة ومؤشرات البرمجيات الخبيثة والمخاطر السلوكية ضمن سير التحقيق.' }, outputs: [{ en: 'Malware Classification', ar: 'تصنيف البرمجيات الخبيثة' }, { en: 'Behavioral Findings', ar: 'نتائج سلوكية' }, { en: 'Risk Assessment', ar: 'تقييم المخاطر' }], icon: Bug, color: '#e8aa72' },
-  { number: '04', short: { en: 'Response', ar: 'الاستجابة' }, name: { en: 'Incident Response Agent', ar: 'وكيل الاستجابة للحوادث' }, label: { en: 'Response', ar: 'الاستجابة' }, description: { en: 'Plans containment, prioritizes response options and outlines incident-specific playbooks.', ar: 'يخطط للاحتواء ويرتب أولويات الاستجابة ويضع أدلة عمل ملائمة لكل حادثة.' }, outputs: [{ en: 'Recommendations', ar: 'توصيات' }, { en: 'Response Plan', ar: 'خطة استجابة' }, { en: 'Containment Steps', ar: 'خطوات الاحتواء' }], icon: Siren, color: '#ee8b85' },
-  { number: '05', short: { en: 'Governance', ar: 'الحوكمة' }, name: { en: 'Compliance Agent', ar: 'وكيل الامتثال' }, label: { en: 'Compliance', ar: 'الامتثال' }, description: { en: 'Maps proposed findings to frameworks such as NIST, ISO 27001, SOC 2 and MITRE ATT&CK.', ar: 'يربط النتائج المقترحة بأطر NIST وISO 27001 وSOC 2 وMITRE ATT&CK.' }, outputs: [{ en: 'Compliance Summary', ar: 'ملخص الامتثال' }, { en: 'Audit Trail', ar: 'مسار التدقيق' }, { en: 'Governance Notes', ar: 'ملاحظات الحوكمة' }], icon: ClipboardCheck, color: '#bca9e6' },
-  { number: '06', short: { en: 'Reporting', ar: 'التقارير' }, name: { en: 'Reporting Agent', ar: 'وكيل إعداد التقارير' }, label: { en: 'Reporting', ar: 'التقارير' }, description: { en: 'Organizes example outputs into executive summaries, technical reports and incident documentation.', ar: 'ينظم المخرجات النموذجية في ملخصات تنفيذية وتقارير تقنية ووثائق للحوادث.' }, outputs: [{ en: 'Executive Summary', ar: 'ملخص تنفيذي' }, { en: 'Technical Report', ar: 'تقرير تقني' }, { en: 'Incident Notes', ar: 'ملاحظات الحادثة' }], icon: FileBarChart2, color: '#e3cb75' },
-  { number: '07', short: { en: 'Coordination', ar: 'التنسيق' }, name: { en: 'Coordination Agent', ar: 'وكيل التنسيق' }, label: { en: 'Coordination', ar: 'التنسيق' }, description: { en: 'Delegates tasks, reconciles agent perspectives and checks workflow completeness.', ar: 'يفوض المهام ويوفق بين وجهات نظر الوكلاء ويتحقق من اكتمال سير العمل.' }, outputs: [{ en: 'Task Delegation', ar: 'تفويض المهام' }, { en: 'Conflict Resolution', ar: 'حل التعارضات' }, { en: 'Final Assessment', ar: 'التقييم النهائي' }], icon: GitBranch, color: '#85cbb2' },
+  {
+    number: '01', short: { en: 'DETECT', ar: 'الكشف' }, name: { en: 'Threat Detection', ar: 'اكتشاف التهديدات' },
+    description: { en: 'Triage suspicious signals and identify what needs a closer look. Analysis is conceptual until a verified service is connected.', ar: 'فرز الإشارات المريبة وتحديد ما يستحق المراجعة. يبقى التحليل تصوريًا حتى توصيل خدمة موثقة.' },
+    outputs: { en: ['Signal indicators', 'Initial severity · not measured', 'Investigation trigger'], ar: ['مؤشرات الإشارة', 'الشدة الأولية · غير مقاسة', 'بدء التحقيق'] }, icon: Radar,
+  },
+  {
+    number: '02', short: { en: 'INTEL', ar: 'الاستخبارات' }, name: { en: 'Threat Intelligence', ar: 'استخبارات التهديدات' },
+    description: { en: 'A planned enrichment step for authorized reputation and IOC sources. No source is queried in this preview.', ar: 'خطوة إثراء مخططة لمصادر السمعة ومؤشرات الاختراق المصرح بها. لا يستعلم هذا العرض عن أي مصدر.' },
+    outputs: { en: ['Source status', 'Reputation context · unavailable', 'Correlation notes'], ar: ['حالة المصدر', 'سياق السمعة · غير متاح', 'ملاحظات الارتباط'] }, icon: Globe2,
+  },
+  {
+    number: '03', short: { en: 'ANALYZE', ar: 'التحليل' }, name: { en: 'Malware Analysis', ar: 'تحليل البرمجيات الخبيثة' },
+    description: { en: 'A proposed workflow for safe static and behavioral analysis. No files are uploaded, opened, or executed here.', ar: 'سير عمل مقترح للتحليل الثابت والسلوكي الآمن. لا تُرفع الملفات أو تُفتح أو تُشغّل هنا.' },
+    outputs: { en: ['File indicators · sample only', 'Behavioral summary · not run', 'Risk assessment · not measured'], ar: ['مؤشرات الملف · مثال فقط', 'ملخص السلوك · لم يُنفذ', 'تقييم المخاطر · غير مقاس'] }, icon: Bug,
+  },
+  {
+    number: '04', short: { en: 'RESPOND', ar: 'الاستجابة' }, name: { en: 'Incident Response', ar: 'الاستجابة للحوادث' },
+    description: { en: 'Drafts response options for human review. No containment or production actions are connected.', ar: 'يصوغ خيارات استجابة لمراجعتها بشريًا. لا يوجد اتصال بالاحتواء أو بإجراءات الإنتاج.' },
+    outputs: { en: ['Response options', 'Review checklist', 'Human approval gate'], ar: ['خيارات الاستجابة', 'قائمة مراجعة', 'بوابة موافقة بشرية'] }, icon: ShieldCheck,
+  },
+  {
+    number: '05', short: { en: 'GOVERN', ar: 'الحوكمة' }, name: { en: 'Compliance', ar: 'الامتثال' },
+    description: { en: 'Planned references to NIST, ISO 27001, SOC 2 and MITRE ATT&CK. No control mapping is currently verified.', ar: 'مراجع مخططة لـ NIST وISO 27001 وSOC 2 وMITRE ATT&CK. لم يتم التحقق من أي مواءمة للضوابط حتى الآن.' },
+    outputs: { en: ['Framework references · planned', 'Audit trail · planned', 'Governance notes'], ar: ['مراجع الأطر · مخطط', 'مسار التدقيق · مخطط', 'ملاحظات الحوكمة'] }, icon: ClipboardCheck,
+  },
+  {
+    number: '06', short: { en: 'REPORT', ar: 'التقارير' }, name: { en: 'Reporting', ar: 'إعداد التقارير' },
+    description: { en: 'Organizes verified findings into technical and executive formats when a real investigation pipeline exists.', ar: 'ينظم النتائج الموثقة بصيغ تقنية وتنفيذية عند توفر مسار تحقيق فعلي.' },
+    outputs: { en: ['Executive format', 'Technical format', 'Incident record'], ar: ['صيغة تنفيذية', 'صيغة تقنية', 'سجل الحادثة'] }, icon: FileBarChart2,
+  },
+  {
+    number: '07', short: { en: 'ORCHESTRATE', ar: 'التنسيق' }, name: { en: 'Orchestration', ar: 'التنسيق' },
+    description: { en: 'Coordinates agent tasks and context. This page illustrates the architecture; no autonomous agents are running.', ar: 'ينسق مهام الوكلاء والسياق. توضح الصفحة البنية فقط؛ ولا تعمل فيها وكلاء ذاتيون.' },
+    outputs: { en: ['Task routing · concept', 'Conflict checks · planned', 'Final review handoff'], ar: ['توجيه المهام · تصور', 'فحص التعارض · مخطط', 'إحالة للمراجعة النهائية'] }, icon: GitBranch,
+  },
 ] as const;
 
 export const differentiators = [
-  { icon: BrainCircuit, title: { en: 'Collaborative Reasoning', ar: 'استدلال تعاوني' }, body: { en: 'Agents share evidence and context to build a common incident picture.', ar: 'يتبادل الوكلاء الأدلة والسياق لبناء صورة مشتركة للحادثة.' } },
-  { icon: Workflow, title: { en: 'Autonomous Decision Support', ar: 'دعم القرار المستقل' }, body: { en: 'A coordinated investigation concept, from first signal to security assessment.', ar: 'تحقيق منسق ومتكامل من الإشارة الأولى حتى التقييم الأمني.' } },
-  { icon: Fingerprint, title: { en: 'Explainable by Design', ar: 'قابل للتفسير من التصميم' }, body: { en: 'Conclusions are intended to connect back to evidence and reasoning paths.', ar: 'تُربط الاستنتاجات بالأدلة ومسارات الاستدلال.' } },
-  { icon: Network, title: { en: 'SOC-Mirrored Architecture', ar: 'بنية تحاكي مركز العمليات' }, body: { en: 'A system blueprint inspired by security operations workflows.', ar: 'مخطط بنية مستوحى من سير عمل مراكز عمليات الأمن.' } },
+  { icon: Radar, title: { en: 'Collaborative reasoning', ar: 'استدلال تعاوني' }, body: { en: 'Specialist roles share a common context in the proposed system.', ar: 'تتشارك الأدوار المتخصصة سياقًا موحدًا في النظام المقترح.' } },
+  { icon: GitBranch, title: { en: 'Decision support', ar: 'دعم القرار' }, body: { en: 'A connected path from signal to human-reviewed recommendations.', ar: 'مسار متصل من الإشارة إلى توصيات يراجعها الإنسان.' } },
+  { icon: ClipboardCheck, title: { en: 'Explainability', ar: 'قابلية التفسير' }, body: { en: 'Expose evidence and decision factors rather than private chain-of-thought.', ar: 'عرض الأدلة وعوامل القرار بدلًا من سلسلة التفكير الخاصة.' } },
+  { icon: ShieldCheck, title: { en: 'SOC-mirrored architecture', ar: 'بنية تحاكي مركز العمليات' }, body: { en: 'A product concept organized around security operations work.', ar: 'تصور منتج منظم حول عمل مراكز العمليات الأمنية.' } },
 ] as const;
 
 export const capabilities = [
-  { icon: ScanSearch, title: { en: 'Autonomous Threat Investigation', ar: 'التحقيق المستقل في التهديدات' }, body: { en: 'Turn signals into a coordinated, multi-stage investigation concept.', ar: 'تحويل الإشارات إلى تحقيق منسق ومتعدد المراحل.' } },
-  { icon: Network, title: { en: 'Multi-Agent Collaboration', ar: 'تعاون متعدد الوكلاء' }, body: { en: 'Specialist agents share context and evidence in a proposed workflow.', ar: 'يتشارك الوكلاء المتخصصون السياق والأدلة ضمن سير عمل مقترح.' } },
-  { icon: Fingerprint, title: { en: 'Explainable AI Decisions', ar: 'قرارات ذكاء اصطناعي قابلة للتفسير' }, body: { en: 'Show the intended rationale and evidence behind each conclusion.', ar: 'إظهار الأساس والأدلة خلف كل استنتاج.' } },
-  { icon: Globe2, title: { en: 'Threat Intelligence Enrichment', ar: 'إثراء استخبارات التهديدات' }, body: { en: 'A planned capability that depends on authorized, connected sources.', ar: 'قدرة مخططة تعتمد على مصادر مصرح بها وموصولة.' } },
-  { icon: Bug, title: { en: 'Malware Analysis Workflow', ar: 'سير تحليل البرمجيات الخبيثة' }, body: { en: 'A proposed review of file and behavior indicators in an investigation.', ar: 'مراجعة مقترحة لمؤشرات الملفات والسلوك ضمن التحقيق.' } },
-  { icon: ClipboardCheck, title: { en: 'Compliance Mapping', ar: 'مواءمة الامتثال' }, body: { en: 'Relate investigation findings to security and governance frameworks.', ar: 'ربط نتائج التحقيق بأطر الأمن والحوكمة.' } },
-  { icon: Activity, title: { en: 'Contextual Risk Assessment', ar: 'تقييم المخاطر السياقي' }, body: { en: 'Assess risk in the context of a particular incident.', ar: 'تقييم المخاطر في ضوء سياق الحادثة.' } },
-  { icon: ShieldCheck, title: { en: 'Response with Human Approval', ar: 'استجابة بموافقة بشرية' }, body: { en: 'Recommend actions while keeping critical decisions with people.', ar: 'اقتراح إجراءات مع إبقاء القرارات الحرجة بيد الإنسان.' } },
+  { icon: Radar, title: { en: 'Autonomous threat investigation', ar: 'التحقيق المستقل في التهديدات' }, body: { en: 'A proposed path from first signal to a documented review.', ar: 'مسار مقترح من الإشارة الأولى إلى مراجعة موثقة.' } },
+  { icon: Globe2, title: { en: 'Threat intelligence enrichment', ar: 'إثراء استخبارات التهديدات' }, body: { en: 'Planned connections to authorized, attributable sources.', ar: 'اتصالات مخططة بمصادر مصرح بها وقابلة للتوثيق.' } },
+  { icon: Bug, title: { en: 'Malware analysis workflow', ar: 'سير تحليل البرمجيات الخبيثة' }, body: { en: 'A future safe-review workflow; no uploaded files are scanned here.', ar: 'مسار مراجعة آمن مستقبلي؛ لا تُفحص ملفات مرفوعة هنا.' } },
+  { icon: ShieldCheck, title: { en: 'Human-approved response', ar: 'استجابة بموافقة بشرية' }, body: { en: 'Recommendations only until safe controls are implemented and tested.', ar: 'توصيات فقط إلى أن تُنفذ الضوابط الآمنة وتُختبر.' } },
+  { icon: ClipboardCheck, title: { en: 'Compliance mapping', ar: 'مواءمة الامتثال' }, body: { en: 'Framework references with evidence and version tracking.', ar: 'مراجع للأطر مرتبطة بالأدلة وتتبع الإصدارات.' } },
+  { icon: FileBarChart2, title: { en: 'Explainable reporting', ar: 'تقارير قابلة للتفسير' }, body: { en: 'Evidence, decision factors and concise summaries—not hidden chain-of-thought.', ar: 'أدلة وعوامل قرار وملخصات موجزة، لا سلسلة تفكير خفية.' } },
+  { icon: GitBranch, title: { en: 'Multi-agent coordination', ar: 'تنسيق متعدد الوكلاء' }, body: { en: 'A coordinated architecture concept, not a currently running agent service.', ar: 'تصور لبنية منسقة، لا خدمة وكلاء تعمل حاليًا.' } },
+  { icon: Activity, title: { en: 'Contextual risk assessment', ar: 'تقييم المخاطر السياقي' }, body: { en: 'A proposed way to organize risk factors; no score is calculated in this preview.', ar: 'طريقة مقترحة لتنظيم عوامل المخاطر؛ لا تُحسب أي درجة في هذه المعاينة.' } },
 ] as const;

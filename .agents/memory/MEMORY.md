@@ -1,1 +1,1 @@
-- [CyberShield AI product truth](cybershield-product-truth.md) — Real cybersecurity project under development; never present disconnected analysis or roadmap items as live.
+- [Cybersecurity product truth](cybershield-product-truth.md) — Keep analysis, integrations, metrics, and response claims grounded in verifiable product behavior.

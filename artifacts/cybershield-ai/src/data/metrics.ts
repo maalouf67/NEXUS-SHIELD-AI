@@ -1,10 +1,10 @@
-// Editable illustrative values are centralized here. Do not replace placeholders or targets without measured evidence.
+// Public-facing metrics stay centralized. Replace placeholders only with sourced measurements.
 export const metrics = {
   hero: [
-    { value: '07', label: { en: 'Agent roles', ar: 'أدوار الوكلاء' }, note: { en: 'conceptual architecture', ar: 'بنية مفاهيمية' } },
-    { value: '<10s', label: { en: 'Investigation', ar: 'التحقيق' }, note: { en: 'target only · not measured', ar: 'هدف فقط · غير مقاس' } },
-    { value: '—', label: { en: 'Response improvement', ar: 'تحسن الاستجابة' }, note: { en: 'no verified result', ar: 'لا توجد نتيجة موثقة' } },
-    { value: '24/7', label: { en: 'Autonomous defense', ar: 'دفاع مستقل' }, note: { en: 'capability concept', ar: 'تصور للقدرة' } },
+    { value: '07', label: { en: 'AI agent roles', ar: 'أدوار للوكلاء' }, note: { en: 'architecture concept', ar: 'بنية تصورية' } },
+    { value: '<10s', label: { en: 'Investigation target', ar: 'هدف زمن التحقيق' }, note: { en: 'target · not measured', ar: 'هدف · غير مقاس' } },
+    { value: '24/7', label: { en: 'Autonomous monitoring', ar: 'مراقبة ذاتية' }, note: { en: 'concept · not live', ar: 'تصور · غير مباشر' } },
+    { value: '∞', label: { en: 'Collaborative context', ar: 'سياق تعاوني' }, note: { en: 'architecture concept', ar: 'تصور للبنية' } },
   ],
   problem: [
     { value: 'XX%', label: { en: 'Unprocessed alerts', ar: 'تنبيهات غير مُعالجة' } },
@@ -13,9 +13,9 @@ export const metrics = {
     { value: 'XX%', label: { en: 'Time spent on triage', ar: 'وقت يُهدر في الفرز' } },
   ],
   impact: [
-    { value: '—', label: { en: 'Investigation time', ar: 'وقت التحقيق' } },
-    { value: '—', label: { en: 'Incident response', ar: 'الاستجابة للحوادث' } },
-    { value: '—', label: { en: 'Threat visibility', ar: 'رؤية التهديدات' } },
-    { value: '—', label: { en: 'Security readiness', ar: 'الجاهزية الأمنية' } },
+    { value: 'XX%', label: { en: 'Reduction in investigation time', ar: 'انخفاض زمن التحقيق' } },
+    { value: 'XX×', label: { en: 'Faster incident response', ar: 'تسريع الاستجابة للحوادث' } },
+    { value: 'XX', label: { en: 'Threat visibility improvement', ar: 'تحسن رؤية التهديدات' } },
+    { value: 'X.X / 5', label: { en: 'Security readiness score', ar: 'درجة الجاهزية الأمنية' } },
   ],
 } as const;
