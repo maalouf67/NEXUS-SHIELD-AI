@@ -10,7 +10,9 @@
   },
   "private": true,
   "dependencies": {
-    "@replit/connectors-sdk": "^0.4.3"
+    "@ai-sdk/openai": "^4.0.102",
+    "@replit/connectors-sdk": "^0.4.3",
+    "ai": "^7.0.153"
   },
   "devDependencies": {
     "prettier": "^3.9.6",
