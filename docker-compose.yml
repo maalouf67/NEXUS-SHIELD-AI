@@ -1,0 +1,27 @@
+version: '3.9'
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: nexus-shield-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: nexus_shield_ai
+      POSTGRES_USER: nexus_user
+      POSTGRES_PASSWORD: change_me_securely
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init:/docker-entrypoint-initdb.d
+
+  adminer:
+    image: adminer:latest
+    container_name: nexus-shield-adminer
+    restart: unless-stopped
+    ports:
+      - '8080:8080'
+    depends_on:
+      - postgres
+
+volumes:
+  postgres_data:
