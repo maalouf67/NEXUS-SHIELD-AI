@@ -1,0 +1,50 @@
+name: NEXUS SHIELD AI - Webpack CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: webpack-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  webpack-build:
+    name: Install, Test and Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run tests
+        run: pnpm test --if-present
+
+      - name: Build project with Webpack
+        run: pnpm run build
+
+      - name: Upload build artifacts
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nexus-shield-ai-webpack-build
+          path: dist/
+          if-no-files-found: warn
+          retention-days: 14
