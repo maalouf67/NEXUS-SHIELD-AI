@@ -1,0 +1,37 @@
+name: NEXUS SHIELD AI - Datadog Synthetics
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: datadog-synthetics-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  synthetics:
+    name: Datadog Synthetic Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run Datadog Synthetic tests
+        if: ${{ hashFiles('**/*.synthetics.json') != '' }}
+        uses: DataDog/synthetics-ci-github-action@v4.1.1
+        with:
+          api-key: ${{ secrets.DD_API_KEY }}
+          app-key: ${{ secrets.DD_APP_KEY }}
+
+      - name: Skip when no Synthetic tests exist
+        if: ${{ hashFiles('**/*.synthetics.json') == '' }}
+        run: |
+          echo "No Datadog Synthetic test configuration files found."
+          echo "Synthetic tests were skipped."
