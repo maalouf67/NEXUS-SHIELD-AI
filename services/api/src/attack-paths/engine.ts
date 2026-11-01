@@ -15,6 +15,10 @@ const MAX_DEPTH_LIMIT = 8;
 const MAX_PATHS_LIMIT = 100;
 const VALID_EVIDENCE_STATUSES = new Set<EvidenceStatus>(['verified', 'unverified', 'stale', 'missing']);
 
+type DeduplicatedRelationship = AssetRelationship & {
+  duplicateRelationshipIds: string[];
+};
+
 function sortAssets(a: Asset, b: Asset): number {
   return a.id.localeCompare(b.id);
 }
@@ -135,8 +139,8 @@ function normalizeEvidenceList(
     .filter((reference): reference is EvidenceReference => reference !== null);
 }
 
-function deduplicateRelationships(relationships: AssetRelationship[]): AssetRelationship[] {
-  const unique = new Map<string, AssetRelationship>();
+function deduplicateRelationships(relationships: AssetRelationship[]): DeduplicatedRelationship[] {
+  const unique = new Map<string, DeduplicatedRelationship>();
 
   for (const relationship of [...relationships].sort(sortRelationships)) {
     const key = `${relationship.fromAssetId}->${relationship.toAssetId}:${relationship.relationshipType}`;
@@ -153,7 +157,7 @@ function deduplicateRelationships(relationships: AssetRelationship[]): AssetRela
 
     const mergedIds = filterNonEmptyStrings([
       ...(existing.duplicateRelationshipIds ?? [existing.id]),
-      ...(relationship.duplicateRelationshipIds ?? [relationship.id])
+      relationship.id
     ]);
 
     unique.set(key, {
@@ -393,7 +397,7 @@ export function analyzeAttackPaths(input: AnalysisInput): AnalysisOutput {
     }
   }
 
-  const adjacency = new Map<string, AssetRelationship[]>();
+  const adjacency = new Map<string, DeduplicatedRelationship[]>();
   for (const relationship of relationships) {
     if (!assetMap.has(relationship.fromAssetId) || !assetMap.has(relationship.toAssetId)) {
       continue;

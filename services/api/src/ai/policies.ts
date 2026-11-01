@@ -118,7 +118,7 @@ export function buildRoutingDecision(request: AIRequest, provider: ProviderName,
     provider,
     modelId,
     reason: `Selected for ${request.taskType} with ${request.complexity} complexity`,
-    fallbackProviders: getRoutingRules().default[request.complexity] ?? ['openai'],
+    fallbackProviders: [...(getRoutingRules().default[request.complexity] ?? ['openai'])],
     estimatedCostUsd: estimateCostUsd({
       provider,
       modelId,

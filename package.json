@@ -16,6 +16,10 @@
     "db:down": "docker compose down"
   },
   "devDependencies": {
-    "concurrently": "^9.0.1"
+    "concurrently": "^9.0.1",
+    "postcss": "^8.5.32"
+  },
+  "overrides": {
+    "postcss": "$postcss"
   }
 }

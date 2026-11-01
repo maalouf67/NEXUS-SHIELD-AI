@@ -117,7 +117,7 @@ describe('Attack path intelligence foundation', () => {
     expect(result.paths.some((path) => path.path.includes('asset-a') && path.path.length > 3)).toBe(false);
   });
 
-  it('deduplicates duplicate edges', () => {
+  it('deduplicates duplicate edges while preserving all relationship IDs and evidence', () => {
     const result = analyzeAttackPaths({
       assets: [asset('asset-a', 'identity', 'Asset A'), asset('asset-b', 'identity', 'Asset B')],
       relationships: [
@@ -129,7 +129,10 @@ describe('Attack path intelligence foundation', () => {
       maxPaths: 10
     });
 
-    expect(result.paths.filter((path) => path.path.join('>') === 'asset-a>asset-b')).toHaveLength(1);
+    expect(result.paths).toHaveLength(1);
+    expect(result.paths[0].path).toEqual(['asset-a', 'asset-b']);
+    expect(result.paths[0].relationshipIds).toEqual(['r1', 'r1-copy']);
+    expect(result.paths[0].evidence.map((item) => item.id)).toEqual(['r1-copy-ev', 'r1-ev']);
   });
 
   it('honors the configured maximum depth', () => {
