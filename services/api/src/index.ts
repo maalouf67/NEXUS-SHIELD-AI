@@ -1,33 +1,77 @@
+import { describe, expect, it } from 'vitest';
+import request from 'supertest';
 
-import express from 'express';
-import cors from 'cors';
-import helmet from 'helmet';
-import { healthRouter } from './routes/health.js';
-import { threatsRouter } from './routes/threats.js';
-import { apiRateLimiter } from './middleware/rate-limit.js';
+import { app } from '../index.js';
 
-export const app = express();
+const validConsent = {
+  granted: true,
+  explicit: true,
+  purpose: 'security_review',
+  data_categories: ['network', 'application'],
+  timestamp: new Date().toISOString(),
+  source: 'dashboard'
+} as const;
 
-const allowedOrigins = process.env.ALLOWED_ORIGINS
-  ?.split(',')
-  .map((origin) => origin.trim())
-  .filter(Boolean) ?? [];
+describe('NEXUS Privacy Guard API', () => {
+  it('returns a safe unavailable state when explicit consent is present', async () => {
+    const response = await request(app)
+      .post('/api/privacy/scan')
+      .send({
+        request_id: 'privacy-001',
+        consent: validConsent,
+        payload: {
+          summary: 'Privacy review for monitoring dashboard',
+          data_classes: ['network', 'application'],
+          notes: 'No personal data included.',
+          metadata: {
+            environment: 'test',
+            region: 'eu-west-1'
+          }
+        }
+      });
 
-app.use(helmet());
+    expect(response.status).toBe(200);
+    expect(response.body.status).toBe('ok');
+    expect(response.body.no_external_data_transfer).toBe(true);
+    expect(response.body.external_scan.status).toBe('not_available');
+    expect(response.body.external_scan.message).toContain('AJAXX Data Scrubber');
+  });
 
-app.use(cors({
-  origin: allowedOrigins.length > 0 ? allowedOrigins : false
-}));
+  it('rejects requests without explicit consent', async () => {
+    const response = await request(app)
+      .post('/api/privacy/scan')
+      .send({
+        request_id: 'privacy-002',
+        consent: {
+          granted: true,
+          explicit: false,
+          purpose: 'security_review',
+          data_categories: ['network'],
+          source: 'dashboard'
+        },
+        payload: {
+          summary: 'Attempted review without explicit consent',
+          data_classes: ['network']
+        }
+      });
 
-app.use(express.json({ limit: '1mb' }));
-app.use('/api', apiRateLimiter);
+    expect(response.status).toBe(403);
+    expect(response.body.error).toBe('CONSENT_REQUIRED');
+  });
 
-app.use('/health', healthRouter);
-app.use('/api', threatsRouter);
+  it('rejects invalid privacy payloads', async () => {
+    const response = await request(app)
+      .post('/api/privacy/scan')
+      .send({
+        request_id: 'privacy-003',
+        consent: validConsent,
+        payload: {
+          summary: 'x'.repeat(300),
+          data_classes: ['network']
+        }
+      });
 
-app.get('/', (_req, res) => {
-  res.json({
-    name: 'NEXUS SHIELD AI API',
-    status: 'ok'
+    expect(response.status).toBe(400);
+    expect(response.body.error).toBe('INVALID_REQUEST');
   });
 });
