@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-const privacyDataCategory = z.enum([
+export const privacyDataCategory = z.enum([
   'device',
   'network',
   'application',
