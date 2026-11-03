@@ -6,6 +6,8 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:4
 
 type ThreatSummary = {
   status: string;
+  is_demo: boolean;
+  data_source: string;
   summary: {
     total_incidents: number;
     critical: number;
@@ -121,17 +123,17 @@ function MetricCard({
 }
 
 const staticAgents = [
-  { name: 'AI Triage Engine', state: 'Operational', health: '99.7%' },
-  { name: 'Threat Graph Correlator', state: 'Monitoring', health: '97.8%' },
-  { name: 'Identity Guardian', state: 'Stable', health: '98.9%' },
-  { name: 'Network Sentinel', state: 'Defense Ready', health: '99.1%' }
+  { name: 'AI Triage Engine', state: 'Demo only', health: '—' },
+  { name: 'Threat Graph Correlator', state: 'Demo only', health: '—' },
+  { name: 'Identity Guardian', state: 'Demo only', health: '—' },
+  { name: 'Network Sentinel', state: 'Demo only', health: '—' }
 ];
 
 const activityFeed = [
-  'Credential anomalies reviewed',
-  'Lateral-movement markers evaluated',
-  'Outbound traffic policy synced',
-  'AI response workflow updated'
+  'Demo event: credential anomaly example',
+  'Demo event: lateral-movement marker example',
+  'Demo event: outbound traffic policy example',
+  'Demo event: AI response workflow example'
 ];
 
 export default function HomePage() {
@@ -204,8 +206,8 @@ export default function HomePage() {
       },
       {
         title: 'Coverage',
-        value: '94%',
-        detail: 'network + endpoint coverage',
+        value: 'Demo',
+        detail: 'coverage is not measured yet',
         accent: 'linear-gradient(135deg, rgba(36,107,253,.2), rgba(139,92,246,.25))',
         icon: <ChartIcon />
       }
@@ -259,10 +261,10 @@ export default function HomePage() {
           </nav>
 
           <div className="status-panel">
-            <div className="panel-label">System Health</div>
+            <div className="panel-label">Development Status</div>
             <div className="status-row">
-              <span className="status-dot success" />
-              All defensive layers online
+              <span className="status-dot" />
+              Live protection telemetry is not connected
             </div>
           </div>
         </aside>
@@ -278,11 +280,16 @@ export default function HomePage() {
               <button type="button" className="icon-button" aria-label="Notifications">
                 <BellIcon />
               </button>
-              <button type="button" className="cta-button">Run AI Scan</button>
+              <button type="button" className="cta-button" disabled title="A real system scan is not implemented yet">Scan unavailable</button>
             </div>
           </header>
 
           {error ? <div className="error-banner">{error}</div> : null}
+          {summary?.is_demo ? (
+            <div className="error-banner" role="status">
+              DEMO DATA — incident counts, AI score, chart, agent states, and activity examples are sample content, not live security telemetry.
+            </div>
+          ) : null}
 
           <section className="metrics-grid">
             {metrics.length > 0 ? (
@@ -305,8 +312,8 @@ export default function HomePage() {
             <div className="panel large-panel">
               <div className="panel-header">
                 <div>
-                  <div className="panel-label">Operational Overview</div>
-                  <h3>Threat flow signal</h3>
+                  <div className="panel-label">Demo visualization</div>
+                  <h3>Illustrative threat flow</h3>
                 </div>
                 <span className="chip">Updated {updated}</span>
               </div>
