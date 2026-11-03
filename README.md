@@ -9,7 +9,8 @@ NEXUS SHIELD AI is an actively developed cyber-defense platform foundation combi
 - The cost-incurring AI threat-analysis endpoint also requires the same server-side service token; the dashboard does not trigger AI requests automatically.
 - The threat summary and dashboard examples are demo data, not live security telemetry.
 - AI threat analysis evaluates information explicitly supplied to the API. It is not a system scan or incident confirmation.
-- Authentication for human dashboard users, persistent asset inventory, live telemetry ingestion, and automated response are not yet production-ready.
+- Authentication for human dashboard users, live telemetry ingestion, and automated response are not yet production-ready.
+- A PostgreSQL-backed asset inventory API now supports authenticated, transactional upserts and read-only analysis of stored relationships.
 
 Do not describe sample data or planned capabilities as active protection.
 
@@ -83,11 +84,27 @@ The attack-path endpoint and the cost-incurring AI threat-analysis endpoint requ
 Authorization: Bearer <NEXUS_SERVICE_API_TOKEN>
 ```
 
-The service token is optional at startup, but both protected routes fail closed with `503 SERVICE_AUTH_NOT_CONFIGURED` until a token of at least 32 characters is configured. Invalid or missing credentials receive `401`.
+The service token is optional at startup, but all protected inventory, graph-analysis, and AI-analysis routes fail closed with `503 SERVICE_AUTH_NOT_CONFIGURED` until a token of at least 32 characters is configured. Invalid or missing credentials receive `401`.
 
 Safety limits are enforced at the API boundary: up to 500 assets, 2,000 relationships, 20 evidence records per asset/relationship, traversal depth up to 8, and up to 100 returned paths. Duplicate identifiers and unknown request fields are rejected.
 
 The response explicitly marks the operation as read-only, confirms that no external scan ran, and states that results are potential graph paths rather than proof of compromise or exploitability. Submitted graph data is not persisted by this endpoint.
+
+## Persistent asset inventory API
+
+The API also exposes a PostgreSQL-backed inventory. These endpoints require the same bearer service token:
+
+- `POST /api/assets/inventory/import` — validates and transactionally upserts a batch of assets, relationships, and evidence records. It never deletes records omitted from a request.
+- `GET /api/assets/inventory` — reads the saved inventory.
+- `POST /api/attack-paths/analyze-inventory` — runs the read-only graph engine against the saved inventory. It does not scan external systems or change database records.
+
+The inventory schema is defined in `database/init/002_attack_path_inventory.sql`. It is included in Docker's initialization directory for new databases. For an existing database, back it up and apply the migration once:
+
+```bash
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/init/002_attack_path_inventory.sql
+```
+
+The database must be reachable by the API and the migration must be applied before using persistent inventory endpoints. A successful HTTP route response alone does not prove that a database has been initialized.
 
 This is a service-to-service integration surface, not a substitute for end-user authentication or authorization. Keep it on trusted infrastructure until the platform's user identity and RBAC layer is implemented.
 
