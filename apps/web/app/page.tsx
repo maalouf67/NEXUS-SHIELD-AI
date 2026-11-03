@@ -3,79 +3,20 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { useSession } from '../hooks/use-session';
 
-type UserRole = 'admin' | 'analyst' | 'viewer';
-type ManagedUser = { id: string; email: string; role: UserRole; isActive: boolean; createdAt: string };
-
-type ThreatSummary = {
-  is_demo: boolean;
-  data_source: string;
-  summary: {
-    total_incidents: number;
-    critical: number;
-    mitigated: number;
-    ai_score: number;
-    updated_at: string;
-  };
-};
-
-type Incident = {
-  id: string;
-  title: string;
-  severity: 'low' | 'medium' | 'high' | 'critical';
-  status: 'open' | 'investigating' | 'contained' | 'resolved' | 'closed';
-  source: string | null;
-  createdAt: string;
-  updatedAt: string;
-};
-
-type Alert = {
-  id: string;
-  incidentId: string | null;
-  incidentTitle: string | null;
-  incidentSeverity: string | null;
-  incidentStatus: string | null;
-  type: string;
-  riskScore: number;
-  status: 'active' | 'acknowledged' | 'resolved';
-  createdAt: string;
-};
-
-type SecurityEvent = {
-  id: string;
-  source: string;
-  externalEventId: string;
-  eventType: string;
-  severity: 'informational' | 'low' | 'medium' | 'high' | 'critical';
-  observedAt: string;
-  receivedAt: string;
-  assetId: string | null;
-  summary: string;
-  attributes: Record<string, string>;
-  reviewStatus: 'new' | 'reviewed';
-  reviewedAt: string | null;
-  reviewedByUserId: string | null;
-};
-
-type ThreatAnalysisResult = {
-  target: string;
-  source: string;
-  provider: string;
-  model: string;
-  classification: 'low' | 'medium' | 'high' | 'critical';
-  risk_score: number;
-  findings: string[];
-  recommendations: string[];
-  explanation: string;
-  disclaimer: string;
-};
-
-type ListResponse<T> = {
-  status: string;
-  incidents?: T[];
-  alerts?: T[];
-  events?: T[];
-  pagination: { total: number; limit: number; offset: number; has_more: boolean };
-};
+import type {
+  Incident, Alert, SecurityEvent, ThreatSummary, ThreatAnalysisResult, ManagedUser
+} from '../services/dashboard-api';
+import {
+  fetchDashboardData,
+  createIncidentRecord as apiCreateIncident,
+  createAlertRecord as apiCreateAlert,
+  analyzeThreat as apiAnalyzeThreat,
+  reviewSecurityEvent as apiReviewSecurityEvent,
+  createManagedUser as apiCreateManagedUser,
+  changeIncidentStatus as apiChangeIncidentStatus,
+  changeAlertStatus as apiChangeAlertStatus
+} from '../services/dashboard-api';
+import { ApiClientError } from '../api/client';
 
 function ShieldMark() {
   return (
@@ -140,55 +81,20 @@ export default function HomePage() {
     setLoadError('');
 
     try {
-      const [incidentResponse, alertResponse, securityEventResponse, summaryResponse] = await Promise.all([
-        fetch('/api/nexus/incidents?limit=100', { cache: 'no-store' }),
-        fetch('/api/nexus/alerts?limit=100', { cache: 'no-store' }),
-        fetch('/api/nexus/security-events?limit=100', { cache: 'no-store' }),
-        fetch('/api/nexus/threats/summary', { cache: 'no-store' })
-      ]);
-
-      if (
-        incidentResponse.status === 401 ||
-        alertResponse.status === 401 ||
-        securityEventResponse.status === 401
-      ) {
+      const data = await fetchDashboardData(user?.role === 'admin');
+      setIncidents(data.incidents);
+      setAlerts(data.alerts);
+      setSecurityEvents(data.securityEvents);
+      setIncidentTotal(data.incidentTotal);
+      setAlertTotal(data.alertTotal);
+      setSecurityEventTotal(data.securityEventTotal);
+      setSummary(data.summary);
+      setManagedUsers(data.managedUsers);
+    } catch (error) {
+      if (error instanceof ApiClientError && error.status === 401) {
         window.location.replace('/login');
         return;
       }
-
-      if (!incidentResponse.ok || !alertResponse.ok || !securityEventResponse.ok) {
-        throw new Error('The incident, alert, or event service is unavailable. Check the database migrations and API configuration.');
-      }
-
-      const incidentData = await incidentResponse.json() as ListResponse<Incident>;
-      const alertData = await alertResponse.json() as ListResponse<Alert>;
-      const securityEventData = await securityEventResponse.json() as ListResponse<SecurityEvent>;
-      setIncidents(incidentData.incidents ?? []);
-      setAlerts(alertData.alerts ?? []);
-      setSecurityEvents(securityEventData.events ?? []);
-      setIncidentTotal(incidentData.pagination?.total ?? 0);
-      setAlertTotal(alertData.pagination?.total ?? 0);
-      setSecurityEventTotal(securityEventData.pagination?.total ?? 0);
-
-      if (summaryResponse.ok) {
-        setSummary(await summaryResponse.json() as ThreatSummary);
-      } else {
-        setSummary(null);
-      }
-
-      if (user?.role === 'admin') {
-        const usersResponse = await fetch('/api/nexus/users', { cache: 'no-store' });
-        if (usersResponse.status === 401) {
-          window.location.replace('/login');
-          return;
-        }
-        if (!usersResponse.ok) throw new Error('The user directory could not be loaded.');
-        const usersData = await usersResponse.json() as { users: ManagedUser[] };
-        setManagedUsers(usersData.users ?? []);
-      } else {
-        setManagedUsers([]);
-      }
-    } catch (error) {
       setLoadError(error instanceof Error ? error.message : 'Unable to load the dashboard.');
     } finally {
       setIsLoading(false);
@@ -218,17 +124,11 @@ export default function HomePage() {
     setActionError('');
 
     try {
-      const response = await fetch('/api/nexus/incidents', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: incidentTitle,
-          severity: incidentSeverity,
-          source: incidentSource || undefined
-        })
+      await apiCreateIncident({
+        title: incidentTitle,
+        severity: incidentSeverity,
+        source: incidentSource || undefined
       });
-      const result = await response.json().catch(() => null);
-      if (!response.ok) throw new Error(result?.message ?? result?.error ?? 'Incident creation failed.');
 
       setIncidentTitle('');
       await loadDashboard();
@@ -249,13 +149,7 @@ export default function HomePage() {
     setActionError('');
 
     try {
-      const response = await fetch(`/api/nexus/incidents/${alertIncidentId}/alerts`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: alertType, riskScore: Number(alertRisk) })
-      });
-      const result = await response.json().catch(() => null);
-      if (!response.ok) throw new Error(result?.message ?? result?.error ?? 'Alert recording failed.');
+      await apiCreateAlert(alertIncidentId, { type: alertType, riskScore: Number(alertRisk) });
 
       setAlertType('');
       await loadDashboard();
@@ -273,24 +167,13 @@ export default function HomePage() {
     setIsAnalyzing(true);
 
     try {
-      const response = await fetch('/api/ai/threat-analysis', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          target: analysisTarget,
-          source: analysisSource,
-          signal_type: analysisSignalType || undefined,
-          details: analysisDetails || undefined
-        }),
-        cache: 'no-store'
+      const result = await apiAnalyzeThreat({
+        target: analysisTarget,
+        source: analysisSource,
+        signal_type: analysisSignalType || undefined,
+        details: analysisDetails || undefined
       });
-      const result = await response.json().catch(() => null);
-
-      if (!response.ok) {
-        throw new Error(result?.message ?? result?.error ?? 'AI analysis could not be completed.');
-      }
-
-      setAiAnalysis(result.analysis as ThreatAnalysisResult);
+      setAiAnalysis(result.analysis);
     } catch (error) {
       setAiError(error instanceof Error ? error.message : 'AI analysis could not be completed.');
     } finally {
@@ -301,13 +184,7 @@ export default function HomePage() {
   async function reviewSecurityEvent(eventId: string) {
     setActionError('');
     try {
-      const response = await fetch(`/api/nexus/security-events/${eventId}/review`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ note: 'Reviewed by an authenticated dashboard user.' })
-      });
-      const result = await response.json().catch(() => null);
-      if (!response.ok) throw new Error(result?.message ?? result?.error ?? 'Event review failed.');
+      await apiReviewSecurityEvent(eventId);
       await loadDashboard();
     } catch (error) {
       setActionError(error instanceof Error ? error.message : 'Event review failed.');
@@ -320,17 +197,11 @@ export default function HomePage() {
     setActionError('');
 
     try {
-      const response = await fetch('/api/nexus/users', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: newUserEmail,
-          password: newUserPassword,
-          role: newUserRole
-        })
+      await apiCreateManagedUser({
+        email: newUserEmail,
+        password: newUserPassword,
+        role: newUserRole
       });
-      const result = await response.json().catch(() => null);
-      if (!response.ok) throw new Error(result?.message ?? result?.error ?? 'User creation failed.');
 
       setNewUserEmail('');
       setNewUserPassword('');
@@ -345,13 +216,7 @@ export default function HomePage() {
   async function updateIncidentStatus(incidentId: string, status: Incident['status']) {
     setActionError('');
     try {
-      const response = await fetch(`/api/nexus/incidents/${incidentId}/status`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status, note: 'Updated by an authenticated dashboard user.' })
-      });
-      const result = await response.json().catch(() => null);
-      if (!response.ok) throw new Error(result?.message ?? result?.error ?? 'Incident update failed.');
+      await apiChangeIncidentStatus(incidentId, status);
       await loadDashboard();
     } catch (error) {
       setActionError(error instanceof Error ? error.message : 'Incident update failed.');
@@ -361,13 +226,7 @@ export default function HomePage() {
   async function updateAlertStatus(alertId: string, status: Alert['status']) {
     setActionError('');
     try {
-      const response = await fetch(`/api/nexus/alerts/${alertId}/status`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status, note: 'Updated by an authenticated dashboard user.' })
-      });
-      const result = await response.json().catch(() => null);
-      if (!response.ok) throw new Error(result?.message ?? result?.error ?? 'Alert update failed.');
+      await apiChangeAlertStatus(alertId, status);
       await loadDashboard();
     } catch (error) {
       setActionError(error instanceof Error ? error.message : 'Alert update failed.');
