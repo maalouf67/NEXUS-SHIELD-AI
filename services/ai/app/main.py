@@ -3,7 +3,6 @@ import os
 import json
 import logging
 import hmac
-import re
 from typing import Literal
 
 from starlette.concurrency import run_in_threadpool
@@ -75,8 +74,8 @@ async def scan_file(request: ScanFileRequest, authorization: str | None = Header
             detail={"code": "SCANNER_AUTH_NOT_CONFIGURED"}
         )
 
-    match = re.fullmatch(r"Bearer\\s+(.+)", authorization or "", flags=re.IGNORECASE)
-    provided_token = match.group(1).strip() if match else ""
+    auth_parts = (authorization or "").split(None, 1)
+    provided_token = auth_parts[1].strip() if len(auth_parts) == 2 and auth_parts[0].lower() == "bearer" else ""
     if not provided_token or not hmac.compare_digest(provided_token, expected_token):
         raise HTTPException(status_code=401, detail={"code": "UNAUTHORIZED"})
 
