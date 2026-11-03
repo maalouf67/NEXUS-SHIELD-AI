@@ -149,6 +149,10 @@ export default function MalwareScanPage() {
     return <main className="loading-screen"><div className="loading-mark">◈</div><p>Verifying secure session…</p></main>;
   }
 
+  if (sessionStatus === 'unavailable') {
+    return <main className="loading-screen"><p role="alert">{sessionError || 'Your secure session could not be verified.'}</p><a href="/login">Return to sign in</a></main>;
+  }
+
   return (
     <main className="scan-shell">
       <header className="scan-header">
