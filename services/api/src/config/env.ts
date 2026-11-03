@@ -8,6 +8,7 @@ const envSchema = z.object({
   SESSION_SECRET: z.string().min(32),
   ALLOWED_ORIGINS: z.string().min(1),
   AI_BASE_URL: z.string().url(),
+  // Required PostgreSQL connection URL; keep the real value in a private .env file.
   DATABASE_URL: z.string().url()
 });
 
