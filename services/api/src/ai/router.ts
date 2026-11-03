@@ -13,8 +13,10 @@ export function chooseProvider(request: AIRequest, providers: ProviderContract[]
   const candidates = getModelsForRequest(request, providers);
   if (candidates.length === 0) throw new Error('AI_NO_PROVIDER_AVAILABLE');
 
-  const registeredNames = new Set(providers.map((provider) => provider.name));
-  const priority = getRoutingRules().default[request.complexity] ?? ['openai'];
+  const candidateProviders = new Set(candidates.map((candidate) => candidate.provider));
+  const priority: ProviderName[] = [
+    ...(getRoutingRules().default[request.complexity] ?? ['openai'])
+  ] as ProviderName[];
   const preferred = [...candidates].sort((left, right) => {
     const leftRank = priority.indexOf(left.provider);
     const rightRank = priority.indexOf(right.provider);
@@ -22,7 +24,12 @@ export function chooseProvider(request: AIRequest, providers: ProviderContract[]
       (rightRank < 0 ? Number.MAX_SAFE_INTEGER : rightRank);
   })[0];
 
-  return buildRoutingDecision(request, preferred.provider, preferred.modelId, [...registeredNames] as ProviderName[]);
+  return buildRoutingDecision(
+    request,
+    preferred.provider,
+    preferred.modelId,
+    [...candidateProviders]
+  );
 }
 
 export function getFallbackChain(request: AIRequest, providers: ProviderContract[]): ProviderName[] {
