@@ -58,7 +58,7 @@ Require TypeScript build, unit/API integration tests on disposable DB, Python te
 ## Capability truth
 Implemented foundations: web console, TypeScript API, PostgreSQL-backed inventory/incidents/alerts/events, role checks, event intake and analyst review, attack-path graph analysis, analyst-submitted AI analysis plumbing.
 
-Not active/verified: endpoint agent, device/network discovery, production antivirus engine, ClamAV adapter, upload/quarantine pipeline, dynamic sandbox, threat-feed connectors, MFA, retention enforcement, autonomous response, production deployment.
+Not active/verified: endpoint agent, device/network discovery, deployed ClamAV engine/signature updates, user-facing upload and quarantine staging pipeline, scan queue/dashboard integration, dynamic sandbox, threat-feed connectors, MFA, retention enforcement, autonomous response, production deployment. A Python ClamAV adapter and authenticated scan-file endpoint now exist in code, but they are not deployed or connected to an upload flow.
 
 ## Phases
 - P0 Security baseline and threat model.
