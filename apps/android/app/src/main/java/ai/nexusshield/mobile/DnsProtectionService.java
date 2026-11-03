@@ -17,8 +17,11 @@ import ai.nexusshield.mobile.security.Quad9DnsOverTlsResolver;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class DnsProtectionService extends VpnService {
@@ -29,9 +32,23 @@ public final class DnsProtectionService extends VpnService {
     private static final String PREFS = "nexus_dns_protection";
     private static final String VIRTUAL_ADDRESS = "10.89.0.1";
     private static final String VIRTUAL_DNS = "10.89.0.2";
+    private static final int DNS_WORKER_COUNT = 2;
+    private static final int MAX_PENDING_DNS_REQUESTS = 64;
 
     private final AtomicBoolean running = new AtomicBoolean(false);
-    private final ExecutorService dnsWorkers = Executors.newFixedThreadPool(2);
+    // A bounded queue prevents a burst of DNS traffic from growing memory without limit.
+    // When the queue is full, the reader returns DNS SERVFAIL instead of silently dropping work.
+    private final ExecutorService dnsWorkers = new ThreadPoolExecutor(
+            DNS_WORKER_COUNT,
+            DNS_WORKER_COUNT,
+            0L,
+            TimeUnit.MILLISECONDS,
+            new ArrayBlockingQueue<>(MAX_PENDING_DNS_REQUESTS),
+            runnable -> {
+                Thread worker = new Thread(runnable, "nexus-dns-worker");
+                worker.setDaemon(true);
+                return worker;
+            });
     private ParcelFileDescriptor tunnel;
     private FileInputStream tunnelInput;
     private FileOutputStream tunnelOutput;
@@ -99,7 +116,12 @@ public final class DnsProtectionService extends VpnService {
             while (running.get()) {
                 try {
                     int length = tunnelInput.read(buffer);
-                    if (length <= 0) continue;
+                    if (length < 0) {
+                        stopAfterPacketReaderFailure("The local DNS tunnel closed unexpectedly.");
+                        break;
+                    }
+                    if (length == 0) continue;
+
                     Ipv4DnsPacketCodec.Query query = Ipv4DnsPacketCodec.parseQuery(buffer, length);
                     if (query == null) continue;
 
@@ -107,11 +129,17 @@ public final class DnsProtectionService extends VpnService {
                     long total = prefs.getLong("query_count", 0L) + 1L;
                     prefs.edit().putLong("query_count", total).apply();
 
-                    dnsWorkers.execute(() -> processQuery(query));
+                    try {
+                        dnsWorkers.execute(() -> processQuery(query));
+                    } catch (RejectedExecutionException overloaded) {
+                        long rejected = prefs.getLong("queue_overflow_count", 0L) + 1L;
+                        prefs.edit().putLong("queue_overflow_count", rejected).apply();
+                        // Fail closed under load: do not forward this query over plaintext DNS.
+                        writeResponse(query, Ipv4DnsPacketCodec.buildServFail(query));
+                    }
                 } catch (IOException error) {
                     if (running.get()) {
-                        preferences().edit().putString("last_error", "The local DNS tunnel stopped reading packets.").apply();
-                        stopTunnel();
+                        stopAfterPacketReaderFailure("The local DNS tunnel stopped reading packets.");
                     }
                     break;
                 } catch (RuntimeException error) {
@@ -125,7 +153,18 @@ public final class DnsProtectionService extends VpnService {
         packetReader.start();
     }
 
+    private void stopAfterPacketReaderFailure(String message) {
+        if (!running.get()) return;
+        preferences().edit().putString("last_error", message).apply();
+        stopTunnel();
+        // Stop the foreground service as well; do not leave an active notification
+        // claiming DNS protection after its packet reader has failed.
+        stopSelf();
+    }
+
     private void processQuery(Ipv4DnsPacketCodec.Query query) {
+        if (!running.get()) return;
+
         byte[] response;
         try {
             response = Quad9DnsOverTlsResolver.resolve(this, query.dnsPayload);
@@ -135,8 +174,12 @@ public final class DnsProtectionService extends VpnService {
             preferences().edit().putString("last_error", "Secure DNS resolver temporarily unavailable; no plaintext fallback was used.").apply();
         }
 
+        writeResponse(query, response);
+    }
+
+    private void writeResponse(Ipv4DnsPacketCodec.Query query, byte[] dnsResponse) {
         try {
-            byte[] packet = Ipv4DnsPacketCodec.buildResponse(query, response);
+            byte[] packet = Ipv4DnsPacketCodec.buildResponse(query, dnsResponse);
             synchronized (this) {
                 if (running.get() && tunnelOutput != null) {
                     tunnelOutput.write(packet);
@@ -144,7 +187,9 @@ public final class DnsProtectionService extends VpnService {
                 }
             }
         } catch (IOException | IllegalArgumentException error) {
-            preferences().edit().putString("last_error", "A DNS response could not be returned to the device.").apply();
+            if (running.get()) {
+                preferences().edit().putString("last_error", "A DNS response could not be returned to the device.").apply();
+            }
         }
     }
 
