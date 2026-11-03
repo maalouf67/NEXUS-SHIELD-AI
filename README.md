@@ -141,6 +141,26 @@ The database must be reachable by the API and the migration must be applied befo
 
 This is a service-to-service integration surface, not a substitute for end-user authentication or authorization. Keep it on trusted infrastructure until the platform's user identity and RBAC layer is implemented.
 
+## Incident management API
+
+The authenticated incident API is available to admin, analyst, and viewer roles for reading:
+
+- `GET /api/incidents` — filter by status or severity, with bounded pagination.
+- `GET /api/incidents/:id` — returns the incident, related alerts, and up to the latest 100 audit activities.
+
+Admin and analyst roles can also:
+
+- `POST /api/incidents` — create an incident with a title, severity, and optional source.
+- `PATCH /api/incidents/:id/status` — change the incident status through allowed transitions.
+
+Every incident creation and status change is recorded in `incident_activity` in the same database transaction as the incident change. Status changes use row-level locking to prevent concurrent updates from silently overwriting one another. Reopening resolved or closed incidents is restricted to admins. Viewing is read-only; this API does not run containment, scans, or automated remediation actions.
+
+The schema is in `database/init/004_incident_management.sql`. Docker applies it automatically only when creating a new database. For an existing database, back it up and apply the migration once:
+
+```bash
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/init/004_incident_management.sql
+```
+
 ## Checks
 
 The API package exposes:
