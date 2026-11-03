@@ -10,6 +10,11 @@ const optionalServiceToken = z.preprocess(
   z.string().min(32).optional()
 );
 
+const optionalEventIngestionToken = z.preprocess(
+  (value) => typeof value === 'string' && value.trim() === '' ? undefined : value,
+  z.string().min(32).optional()
+);
+
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   PORT: z.coerce.number().int().min(1).max(65535).default(4000),
@@ -17,6 +22,7 @@ const envSchema = z.object({
   JWT_SECRET: z.string().min(32),
   SESSION_SECRET: z.string().min(32),
   NEXUS_SERVICE_API_TOKEN: optionalServiceToken,
+  NEXUS_EVENT_INGESTION_TOKEN: optionalEventIngestionToken,
   ALLOWED_ORIGINS: z.string().default(''),
   AI_BASE_URL: z.string().url(),
   DATABASE_URL: z.string().url(),
