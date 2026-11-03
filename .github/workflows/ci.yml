@@ -160,7 +160,7 @@ jobs:
           NEXUS_SERVICE_API_TOKEN: nexus-ci-only-service-token-please-never-reuse
           OPENAI_API_KEY: ""
         run: |
-          docker compose up -d --build postgres clamav ai
+          docker compose up -d postgres clamav
           for attempt in $(seq 1 60); do
             if pg_isready -h 127.0.0.1 -p 5432 -U nexus_ci -d nexus_ci >/dev/null 2>&1; then
               echo "PostgreSQL is ready."
@@ -179,13 +179,16 @@ jobs:
               break
             fi
             if [ "$attempt" -eq 360 ]; then
-              docker compose logs --tail 200 clamav ai
-              docker inspect --format '{{json .State.Health}}' nexus-shield-clamav || true
+              echo "ClamAV container diagnostics:" >&2
+              docker compose ps -a >&2 || true
+              docker compose logs --no-color --tail 300 clamav >&2 || true
+              docker inspect --format '{{json .State}} {{json .State.Health}}' nexus-shield-clamav >&2 || true
               echo "ClamAV did not become healthy within the 30-minute startup allowance." >&2
               exit 1
             fi
             sleep 5
           done
+          docker compose up -d --build ai
           for attempt in $(seq 1 30); do
             if curl --fail --silent http://127.0.0.1:8001/health >/dev/null; then
               echo "NEXUS AI scanner is healthy."
