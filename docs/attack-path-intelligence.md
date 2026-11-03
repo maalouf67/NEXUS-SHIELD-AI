@@ -60,3 +60,14 @@ A discovered path is a plausible route through asset relationships, not proof th
 The engine does not claim probability of compromise. It only surfaces a directed, evidence-aware graph traversal. Human analysts must still verify business context, controls, trust boundaries, and operational reality before treating a path as actionable.
 
 This preserves a strict boundary between graph reasoning and real-world exploitation assessment.
+
+
+## Protected API integration
+
+The engine is exposed through `POST /api/attack-paths/analyze`. The endpoint accepts caller-supplied assets, directed relationships, and evidence references, validates the payload with Zod, and then invokes the deterministic graph engine.
+
+The endpoint requires a bearer token in the `Authorization` header. Configure `NEXUS_SERVICE_API_TOKEN` on the API server with at least 32 characters. If the token is absent or too short, the route fails closed and returns `503 SERVICE_AUTH_NOT_CONFIGURED`. Never put this token in browser-visible configuration.
+
+Request limits are enforced before traversal: 500 assets, 2,000 relationships, 20 evidence references per asset or relationship, depth 0–8, and 1–100 returned paths. Asset, relationship, and target identifiers must be unique. Unknown fields are rejected.
+
+This endpoint is read-only. It does not persist submitted graph data, scan external systems, execute commands, or change assets. Its output describes potential paths in the submitted graph only and must not be interpreted as proof of compromise or exploitability. The general API rate limiter also applies.
