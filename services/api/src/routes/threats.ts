@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { analyzeThreatWithAgent } from '../ai/agents/threat-analysis.js';
+import { requireServiceToken } from '../middleware/service-token.js';
 
 export const threatsRouter = Router();
 
@@ -26,7 +27,7 @@ threatsRouter.get('/threats/summary', async (_req, res) => {
   });
 });
 
-threatsRouter.post('/threats/analyze', async (req, res) => {
+threatsRouter.post('/threats/analyze', requireServiceToken, async (req, res) => {
   const parsed = ThreatRequestSchema.safeParse(req.body);
 
   if (!parsed.success) {
