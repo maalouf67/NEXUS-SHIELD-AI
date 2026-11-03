@@ -2,7 +2,18 @@
 import os
 import json
 import logging
+import hmac
 from typing import Literal
+
+from starlette.concurrency import run_in_threadpool
+from app.security.file_scanner import (
+    ScanInputError,
+    QuarantineFileNotFound,
+    ScannerUnavailable,
+    ScannerTimeout,
+    ScannerExecutionError,
+    scan_quarantined_file,
+)
 
 import httpx
 from fastapi import FastAPI, HTTPException
@@ -39,6 +50,10 @@ class ThreatAnalysis(BaseModel):
     explanation: str
 
 
+class ScanFileRequest(BaseModel):
+    sample_id: str = Field(pattern=r"^[a-f0-9]{64}$")
+
+
 @app.get("/health")
 async def health():
     return {
@@ -48,6 +63,49 @@ async def health():
         "ai_provider": "openai",
         "ai_configured": bool(os.getenv("OPENAI_API_KEY"))
     }
+
+
+@app.post("/scan-file")
+async def scan_file(request: ScanFileRequest, authorization: str | None = None):
+    expected_token = os.getenv("NEXUS_SERVICE_API_TOKEN", "")
+    if len(expected_token) < 32:
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "SCANNER_AUTH_NOT_CONFIGURED"}
+        )
+
+    # FastAPI's Header dependency is needed to bind this value from the HTTP header.
+    if not authorization or not hmac.compare_digest(
+        authorization.removeprefix("Bearer ").strip(),
+        expected_token
+    ):
+        raise HTTPException(status_code=401, detail={"code": "UNAUTHORIZED"})
+
+    quarantine_dir = os.getenv("NEXUS_QUARANTINE_DIR", "")
+    if not quarantine_dir:
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "QUARANTINE_NOT_CONFIGURED"}
+        )
+
+    try:
+        result = await run_in_threadpool(
+            scan_quarantined_file,
+            request.sample_id,
+            quarantine_dir,
+            scanner_binary=os.getenv("CLAMDSCAN_BIN", "clamdscan"),
+        )
+        return {"status": "ok", "scan": result}
+    except ScanInputError as exc:
+        raise HTTPException(status_code=400, detail={"code": "INVALID_SAMPLE", "message": str(exc)})
+    except QuarantineFileNotFound:
+        raise HTTPException(status_code=404, detail={"code": "SAMPLE_NOT_FOUND"})
+    except ScannerUnavailable:
+        raise HTTPException(status_code=503, detail={"code": "SCANNER_UNAVAILABLE"})
+    except ScannerTimeout:
+        raise HTTPException(status_code=504, detail={"code": "SCAN_TIMEOUT"})
+    except ScannerExecutionError:
+        raise HTTPException(status_code=502, detail={"code": "SCANNER_ERROR"})
 
 
 @app.post("/analyze")
