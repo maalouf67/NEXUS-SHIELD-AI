@@ -341,6 +341,7 @@ export default function HomePage() {
           <a className="side-nav-link active" href="#overview"><span>◈</span> Overview</a>
           <a className="side-nav-link" href="#incidents"><span>⌁</span> Incidents</a>
           <a className="side-nav-link" href="#alerts"><span>◎</span> Alerts</a>
+          {isAdmin ? <a className="side-nav-link" href="#team"><span>♙</span> Team access</a> : null}
           <a className="side-nav-link" href="#intelligence"><span>✧</span> AI intelligence</a>
         </nav>
 
