@@ -2,9 +2,9 @@
   "name": "@nexus-shield/web",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev --port 3000",
     "build": "next build",
-    "start": "next start",
+    "start": "next start --port 3000",
     "lint": "next lint"
   },
   "dependencies": {
