@@ -74,16 +74,43 @@ uvicorn app.main:app --reload --host 127.0.0.1 --port 8001
 
 Configure `OPENAI_API_KEY` as a server-side environment variable. Never put it in frontend configuration.
 
-## Quarantined file scan adapter (limited foundation)
+## Malware file scanning foundation
 
-The Python AI service includes an authenticated POST /scan-file endpoint and a bounded ClamAV clamdscan adapter. The endpoint accepts a lowercase SHA-256-shaped sample_id and scans only a file already staged under the configured private NEXUS_QUARANTINE_DIR with that exact identifier as its filename. The shared server-side NEXUS_SERVICE_API_TOKEN is required in the HTTP Bearer header.
+The web console contains a protected `/scan` page for Admin and Analyst users. The same-origin Next.js route verifies the session with the API, checks the user's role server-side, and forwards a single multipart upload to the internal Python AI service. The browser never receives the internal service token.
 
-Configure NEXUS_QUARANTINE_DIR as a restricted, non-public directory on the AI service host and CLAMDSCAN_BIN as the scanner executable. Install and configure ClamAV separately before a scan can return a clean/detected verdict. The adapter enforces a 100 MiB default file limit and a 60-second timeout, hashes the file, calls the scanner without a shell, and never executes the sample.
+The AI service:
 
-**Important scope:** this is a scan adapter foundation only. A user-facing upload/staging pipeline, quarantine provisioning, scan queue, dashboard integration, and deployed ClamAV service are not implemented or verified. Do not upload malware samples to the development app. A clean signature scan is not a guarantee that a file is harmless.
+- Accepts exactly one multipart file, requires a request content length, rejects empty files, and enforces a configurable maximum of 100 MiB.
+- Ignores the supplied filename and MIME type. It streams bytes to a private quarantine volume under a generated SHA-256 identifier.
+- Uses restrictive directory/file permissions (0700/0600), rejects symlinked quarantine paths, hashes content, and never executes uploaded content.
+- Calls ClamAV `clamdscan` with a 60-second subprocess timeout. A successful signature scan returns `clean` or `detected`; scanner errors/timeouts are never converted to a clean verdict.
+- Uses a retry endpoint for a quarantined sample when the scanner was unavailable. The sample remains private and is not released by the app.
 
-Python unit tests mock scanner outcomes and validate input/size/path controls; they do not certify a deployed ClamAV engine.
+The local Compose configuration adds a ClamAV 1.5.4 service and a separately built Python AI service. ClamAV's TCP port 3310 is exposed only to the private Compose network; it is not published to the host. The AI HTTP service binds to host loopback at `127.0.0.1:8001`. The quarantine and ClamAV signature database use separate persistent Docker volumes.
 
+**Configuration for local development only:**
+
+1. In the repository root `.env`, create unique strong values for `POSTGRES_PASSWORD`, `JWT_SECRET`, `SESSION_SECRET`, and `NEXUS_SERVICE_API_TOKEN`. The service token must be at least 32 characters. Keep these values private.
+2. Put the same `NEXUS_SERVICE_API_TOKEN` in `services/api/.env` and `apps/web/.env.local`. Set `API_BASE_URL=http://127.0.0.1:4000` and `AI_BASE_URL=http://127.0.0.1:8001` in the Next.js server environment. Set `DATABASE_URL`, `JWT_SECRET`, and the same service token in the API environment.
+3. Start only the local data and scanner services after reviewing the configuration:
+
+   ```bash
+   docker compose up -d postgres clamav ai
+   ```
+
+4. Start the web console and Node API without a second Python process on port 8001:
+
+   ```bash
+   npm run dev:web-api
+   ```
+
+5. Sign in with an Admin or Analyst account, open `/scan`, and submit only a benign test document. Do not upload malware samples or sensitive business/personal files to an unreviewed development environment.
+
+ClamAV initializes and updates its signature database inside its own container. First startup may take several minutes and requires sufficient memory and network access for official signature updates. The Docker configuration has been added to source but has **not been run or runtime-verified** in this repository session.
+
+**Known limitations:** this is a synchronous, single-file scan flow, not a full endpoint antivirus product. There is no scan queue, database-backed scan history or owner/tenant metadata, automatic expiry/deletion, release workflow, dynamic sandbox, or automatic response. If ClamAV is unavailable, the sample remains in the private quarantine volume and can be retried by an authorized Analyst/Admin. A clean signature result does not guarantee that a file is harmless.
+
+Python tests use synthetic benign fixtures and mocked ClamAV outcomes. They validate adapter behavior, not the real ClamAV engine or its current signatures.
 ## Application Trust Center
 
 The dashboard links to /settings, /help, /contact, /license, and /privacy. Settings currently saves language preference (English, Arabic, French) and optional privacy preference toggles in browser storage only. Full dashboard localization and server-side preference synchronization are not yet implemented.

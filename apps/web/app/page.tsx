@@ -439,6 +439,7 @@ export default function HomePage() {
           <a className="side-nav-link" href="#events"><span>⌖</span> Event intake</a>
           {isAdmin ? <a className="side-nav-link" href="#team"><span>♙</span> Team access</a> : null}
           <a className="side-nav-link" href="#intelligence"><span>✧</span> AI intelligence</a>
+          {canManage ? <a className="side-nav-link" href="/scan"><span>⌕</span> Malware file scan</a> : null}
           <a className="side-nav-link" href="/settings"><span>⚙</span> Settings & privacy</a>
           <a className="side-nav-link" href="/help"><span>?</span> Help center</a>
         </nav>
