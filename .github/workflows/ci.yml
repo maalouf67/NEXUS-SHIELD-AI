@@ -271,11 +271,14 @@ jobs:
         run: |
           TOKEN="$(node -e "const jwt=require('jsonwebtoken'); process.stdout.write(jwt.sign({email:'scan-admin@example.test',role:'admin'}, process.env.JWT_SECRET, {algorithm:'HS256',subject:'00000000-0000-4000-8000-000000000001',issuer:'nexus-shield-ai',audience:'nexus-shield-ai-api',expiresIn:'15m'}))")"
           printf '%s\n' 'NEXUS SHIELD AI benign web gateway test fixture.' > /tmp/nexus-clean.txt
-          curl --fail --silent --show-error \
+          HTTP_STATUS="$(curl --silent --show-error --output /tmp/nexus-clean-result.json --write-out '%{http_code}' \
             -H "Cookie: nexus_access_token=$TOKEN" \
             -H "Origin: http://127.0.0.1:3000" \
             -F "file=@/tmp/nexus-clean.txt;filename=benign.txt" \
-            http://127.0.0.1:3000/api/security/scan > /tmp/nexus-clean-result.json
+            http://127.0.0.1:3000/api/security/scan)"
+          echo "Benign upload gateway HTTP status: $HTTP_STATUS"
+          cat /tmp/nexus-clean-result.json
+          test "$HTTP_STATUS" = "200"
           python -c "import json; d=json.load(open('/tmp/nexus-clean-result.json')); assert d['scan']['verdict'] == 'clean', d; assert d['history_persisted'] is True, d; print('Web gateway benign scan: clean; history saved')"
 
       - name: Detect the harmless EICAR test string through the web gateway
