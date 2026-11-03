@@ -184,7 +184,7 @@ public final class DnsProtectionService extends VpnService {
                 .setCategory(Notification.CATEGORY_SERVICE)
                 .setOngoing(true)
                 .setContentIntent(content)
-                .addAction(new Notification.Action.Builder(null, "Stop", stopAction).build());
+                .addAction(new Notification.Action.Builder(android.R.drawable.ic_media_pause, "Stop", stopAction).build());
         return builder.build();
     }
 
