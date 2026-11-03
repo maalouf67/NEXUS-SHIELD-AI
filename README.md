@@ -35,7 +35,7 @@ Do not describe sample data or planned capabilities as active protection.
    ```
 
 5. For local Docker PostgreSQL, keep `DATABASE_SSL=false`. For remote PostgreSQL, enable TLS and configure a trusted CA path when the provider requires one.
-6. The optional `NEXUS_SERVICE_API_TOKEN` must be at least 32 characters. Configure it only in the API server environment. Never expose it through `apps/web/.env.local` or client-side code.
+6. The optional `NEXUS_SERVICE_API_TOKEN` must be at least 32 characters. Configure it only in trusted server environments that require it (API, Next.js server, and AI service scanner). Never expose it through browser-visible configuration.
 7. Set `NEXT_PUBLIC_API_BASE_URL` in `apps/web/.env.local` to the API URL reachable by the browser.
 
 Never commit populated `.env`, `.env.local`, API keys, passwords, or service tokens.
@@ -73,6 +73,22 @@ uvicorn app.main:app --reload --host 127.0.0.1 --port 8001
 ```
 
 Configure `OPENAI_API_KEY` as a server-side environment variable. Never put it in frontend configuration.
+
+## Quarantined file scan adapter (limited foundation)
+
+The Python AI service includes an authenticated POST /scan-file endpoint and a bounded ClamAV clamdscan adapter. The endpoint accepts a lowercase SHA-256-shaped sample_id and scans only a file already staged under the configured private NEXUS_QUARANTINE_DIR with that exact identifier as its filename. The shared server-side NEXUS_SERVICE_API_TOKEN is required in the HTTP Bearer header.
+
+Configure NEXUS_QUARANTINE_DIR as a restricted, non-public directory on the AI service host and CLAMDSCAN_BIN as the scanner executable. Install and configure ClamAV separately before a scan can return a clean/detected verdict. The adapter enforces a 100 MiB default file limit and a 60-second timeout, hashes the file, calls the scanner without a shell, and never executes the sample.
+
+**Important scope:** this is a scan adapter foundation only. A user-facing upload/staging pipeline, quarantine provisioning, scan queue, dashboard integration, and deployed ClamAV service are not implemented or verified. Do not upload malware samples to the development app. A clean signature scan is not a guarantee that a file is harmless.
+
+Python unit tests mock scanner outcomes and validate input/size/path controls; they do not certify a deployed ClamAV engine.
+
+## Application Trust Center
+
+The dashboard links to /settings, /help, /contact, /license, and /privacy. Settings currently saves language preference (English, Arabic, French) and optional privacy preference toggles in browser storage only. Full dashboard localization and server-side preference synchronization are not yet implemented.
+
+The Application License and Privacy Policy pages are marked as drafts. The project owner must choose/finalize the repository and application license, verify the legal rights holder, configure a monitored support/privacy contact, and obtain qualified legal review (including applicable Moroccan requirements) before production publication. The contact page deliberately does not invent an email address.
 
 ## Attack Path Intelligence API
 
