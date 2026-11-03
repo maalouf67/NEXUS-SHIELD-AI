@@ -135,7 +135,7 @@ The command refuses to run if an admin account already exists. It stores only a 
 
 The user-management API can create analyst and viewer accounts after an administrator signs in. Admin promotion remains a controlled provisioning operation, not a normal API request.
 
-The current web dashboard does not yet include a complete sign-in screen or authenticated browser session. These API routes are intended for trusted clients while the web session and CSRF design is developed. Do not put the service token, JWT signing secret, or AI provider key in browser-visible configuration.
+The web dashboard now includes an initial sign-in screen, an HttpOnly cookie session, and a same-origin server-side API proxy. Treat this as an initial authenticated dashboard implementation, not a production-certified identity platform. Before production use, complete an independent security review of the session and CSRF design, add session revocation and refresh handling, and consider MFA. Never put the service token, JWT signing secret, or AI provider key in browser-visible configuration.
 
 ## Persistent asset inventory API
 
