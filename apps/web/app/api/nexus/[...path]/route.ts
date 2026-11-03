@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { isSameOriginRequest } from 
+import { isSameOriginRequest } from '../../../../api/origin';
 
 const SESSION_COOKIE = 'nexus_access_token';
 const ALLOWED_ROOTS = new Set([
