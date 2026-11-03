@@ -51,7 +51,7 @@ class QuarantineScannerTests(unittest.TestCase):
     def test_remote_clamd_uses_client_config_and_stream_transport(self, run):
         run.return_value = CompletedProcess(args=[], returncode=0, stdout="", stderr="")
         config = self.root / "clamdscan.conf"
-        config.write_text("TCPSocket 3310\\nTCPAddr clamav\\n", encoding="utf-8")
+        config.write_text("\n".join(("TCPSocket 3310", "TCPAddr clamav")) + "\n", encoding="utf-8")
         scan_quarantined_file(self.sample_id, self.root, scanner_config_file=config)
         command = run.call_args.args[0]
         self.assertIn(f"--config-file={config.resolve()}", command)
