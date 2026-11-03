@@ -6,6 +6,7 @@ NEXUS SHIELD AI is an actively developed cyber-defense platform foundation combi
 
 - The Attack Path Intelligence engine performs bounded, deterministic, read-only graph traversal over asset relationships supplied by a caller.
 - The API exposes that engine through a service-token-protected endpoint. It does not scan devices, discover assets, execute security actions, or prove exploitability.
+- The cost-incurring AI threat-analysis endpoint also requires the same server-side service token; the dashboard does not trigger AI requests automatically.
 - The threat summary and dashboard examples are demo data, not live security telemetry.
 - AI threat analysis evaluates information explicitly supplied to the API. It is not a system scan or incident confirmation.
 - Authentication for human dashboard users, persistent asset inventory, live telemetry ingestion, and automated response are not yet production-ready.
@@ -76,13 +77,13 @@ Configure `OPENAI_API_KEY` as a server-side environment variable. Never put it i
 
 `POST /api/attack-paths/analyze` accepts a bounded graph of assets, directed relationships, and evidence references.
 
-The endpoint requires:
+The attack-path endpoint and the cost-incurring AI threat-analysis endpoint require:
 
 ```
 Authorization: Bearer <NEXUS_SERVICE_API_TOKEN>
 ```
 
-The service token is optional at startup, but the route fails closed with `503 SERVICE_AUTH_NOT_CONFIGURED` until a token of at least 32 characters is configured. Invalid or missing credentials receive `401`.
+The service token is optional at startup, but both protected routes fail closed with `503 SERVICE_AUTH_NOT_CONFIGURED` until a token of at least 32 characters is configured. Invalid or missing credentials receive `401`.
 
 Safety limits are enforced at the API boundary: up to 500 assets, 2,000 relationships, 20 evidence records per asset/relationship, traversal depth up to 8, and up to 100 returned paths. Duplicate identifiers and unknown request fields are rejected.
 
