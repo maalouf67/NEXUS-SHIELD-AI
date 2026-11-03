@@ -1,0 +1,58 @@
+name: NEXUS SHIELD AI - Build and Test
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  api-web:
+    name: Node.js build and API tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Build web and API workspaces
+        run: npm run build
+
+      - name: Run API tests
+        run: npm test
+
+      - name: Type-check API
+        run: npm run lint --workspace @nexus-shield/api
+
+  python-ai:
+    name: Python AI service validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install AI service dependencies
+        run: python -m pip install -r services/ai/requirements.txt
+
+      - name: Compile Python sources
+        run: python -m compileall -q services/ai
