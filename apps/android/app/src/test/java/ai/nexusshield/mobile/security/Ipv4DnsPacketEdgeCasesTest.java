@@ -23,7 +23,7 @@ public final class Ipv4DnsPacketEdgeCasesTest {
     @Test
     public void rejectsDnsResponseInsteadOfTreatingItAsQuery() {
         byte[] packet = queryPacket();
-        packet[30] = (byte) 0x81; // QR bit in DNS flags.
+        packet[30] = (byte) 0x81;
         assertNull(Ipv4DnsPacketCodec.parseQuery(packet, packet.length));
     }
 
@@ -70,6 +70,7 @@ public final class Ipv4DnsPacketEdgeCasesTest {
     private static int udpChecksum(byte[] packet) {
         int udpOffset = 20;
         int udpLength = u16(packet, udpOffset + 4);
+        int end = udpOffset + udpLength;
         long sum = 0;
         sum += word(packet, 12);
         sum += word(packet, 14);
@@ -77,9 +78,12 @@ public final class Ipv4DnsPacketEdgeCasesTest {
         sum += word(packet, 18);
         sum += 17;
         sum += udpLength;
-        for (int i = udpOffset; i < udpOffset + udpLength; i += 2) {
+        int i = udpOffset;
+        while (i + 1 < end) {
             sum += ((packet[i] & 0xff) << 8) | (packet[i + 1] & 0xff);
+            i += 2;
         }
+        if (i < end) sum += (packet[i] & 0xff) << 8;
         while ((sum >>> 16) != 0) sum = (sum & 0xffff) + (sum >>> 16);
         return (int) (~sum) & 0xffff;
     }
