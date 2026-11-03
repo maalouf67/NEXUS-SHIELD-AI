@@ -14,6 +14,8 @@ const ThreatRequestSchema = z.object({
 threatsRouter.get('/threats/summary', async (_req, res) => {
   res.json({
     status: 'ok',
+    is_demo: true,
+    data_source: 'sample',
     summary: {
       total_incidents: 17,
       critical: 4,
