@@ -8,6 +8,8 @@ import { privacyRouter } from './routes/privacy.js';
 import { attackPathsRouter } from './routes/attack-paths.js';
 import { assetInventoryRouter } from './assets/asset-inventory.routes.js';
 import { apiRateLimiter } from './middleware/rate-limit.js';
+import { authRouter } from './auth/auth.routes.js';
+import { usersRouter } from './auth/users.routes.js';
 
 export const app = express();
 
@@ -30,6 +32,8 @@ app.use('/api', threatsRouter);
 app.use('/api', privacyRouter);
 app.use('/api', attackPathsRouter);
 app.use('/api', assetInventoryRouter);
+app.use('/api', authRouter);
+app.use('/api', usersRouter);
 
 app.get('/', (_req, res) => {
   res.json({
