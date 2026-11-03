@@ -1,11 +1,11 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:4000';
+type UserRole = 'admin' | 'analyst' | 'viewer';
+type User = { id: string; email: string; role: UserRole };
 
 type ThreatSummary = {
-  status: string;
   is_demo: boolean;
   data_source: string;
   summary: {
@@ -17,363 +17,427 @@ type ThreatSummary = {
   };
 };
 
-function ShieldIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M12 2.75 5.5 5.25v6.4c0 4.64 2.8 8.66 6.5 10.6 3.7-1.94 6.5-5.96 6.5-10.6v-6.4L12 2.75Zm2.9 8.5-3.4 3.4-1.7-1.7 1.2-1.2 0.5 0.5 2.2-2.2 1.2 1.2Z" />
-    </svg>
-  );
-}
-
-function CpuIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M9 2h6v2h2.5A2.5 2.5 0 0 1 20 6.5V9h2v6h-2v2.5a2.5 2.5 0 0 1-2.5 2.5H15v2H9v-2H6.5A2.5 2.5 0 0 1 4 17.5V15H2V9h2V6.5A2.5 2.5 0 0 1 6.5 4H9V2Zm3 5.5a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9Zm0 2a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5Z" />
-    </svg>
-  );
-}
-
-function RadarIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M12 2.5a9.5 9.5 0 0 1 9.5 9.5c0 5.25-4.25 9.5-9.5 9.5S2.5 17.25 2.5 12 7.75 2.5 12 2.5Zm0 2a7.5 7.5 0 0 0 0 15 7.5 7.5 0 0 0 0-15Zm0 2a5.5 5.5 0 1 1 0 11 5.5 5.5 0 0 1 0-11Zm0 2a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Zm0 2a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3Z" />
-    </svg>
-  );
-}
-
-function NetworkIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M4.5 6.5A2.5 2.5 0 0 1 7 4h10a2.5 2.5 0 0 1 2.5 2.5v11A2.5 2.5 0 0 1 17 18H7a2.5 2.5 0 0 1-2.5-2.5v-11Zm2.5 2h7v2H7v-2Zm0 4h10v2H7v-2Zm5 4h5v2h-5v-2Z" />
-    </svg>
-  );
-}
-
-function IdentityIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M12 2.5a5 5 0 0 1 5 5 5 5 0 0 1-10 0 5 5 0 0 1 5-5Zm-7 16.5a7 7 0 0 1 14 0v1H5v-1Zm5-9.5a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z" />
-    </svg>
-  );
-}
-
-function BotIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M7 5.5A2.5 2.5 0 0 1 9.5 3h5A2.5 2.5 0 0 1 17 5.5V7h1.5A2.5 2.5 0 0 1 21 9.5v5A2.5 2.5 0 0 1 18.5 17H17v1.5A2.5 2.5 0 0 1 14.5 21h-5A2.5 2.5 0 0 1 7 18.5V17H5.5A2.5 2.5 0 0 1 3 14.5v-5A2.5 2.5 0 0 1 5.5 7H7V5.5Zm2 1.5h6V5.5a.5.5 0 0 0-.5-.5h-5a.5.5 0 0 0-.5.5V7Zm-1.5 4a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3Zm8 0a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3ZM9 14h6v2H9v-2Z" />
-    </svg>
-  );
-}
-
-function ChartIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M4 19.5h16v2H4v-2Zm2-2h2V9H6v8.5Zm5 0h2V5h-2v12.5Zm5 0h2v-7h-2v7Z" />
-    </svg>
-  );
-}
-
-function BellIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M12 2.5a5.5 5.5 0 0 1 5.5 5.5v3.7l1.7 4.3H4.8l1.7-4.3V8A5.5 5.5 0 0 1 12 2.5Zm0 19a2.75 2.75 0 0 1-2.75-2.75h5.5A2.75 2.75 0 0 1 12 21.5Z" />
-    </svg>
-  );
-}
-
-function CogIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M19.14 12.94c.04-.31.06-.62.06-.94s-.02-.63-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.65l-1.92-3.32a.5.5 0 0 0-.61-.18l-2.39.96a7.4 7.4 0 0 0-1.63-.94L14.4 2.5a.5.5 0 0 0-.5-.5h-3.8a.5.5 0 0 0-.5.5l-.41 2.52c-.56.23-1.08.54-1.63.94l-2.39-.96a.5.5 0 0 0-.61.18L2.71 8.83a.5.5 0 0 0 .12.65l2.03 1.58c-.04.31-.06.62-.06.94s.02.63.06.94L2.83 14.52a.5.5 0 0 0-.12.65l1.92 3.32a.5.5 0 0 0 .61.18l2.39-.96c.55.4 1.07.71 1.63.94l.41 2.52a.5.5 0 0 0 .5.5h3.8a.5.5 0 0 0 .5-.5l.41-2.52c.56-.23 1.08-.54 1.63-.94l2.39.96a.5.5 0 0 0 .61-.18l1.92-3.32a.5.5 0 0 0-.12-.65l-2.03-1.58ZM12 15.5A3.5 3.5 0 1 1 12 8a3.5 3.5 0 0 1 0 7.5Z" />
-    </svg>
-  );
-}
-
-function MetricCard({
-  title,
-  value,
-  detail,
-  accent,
-  icon
-}: {
+type Incident = {
+  id: string;
   title: string;
-  value: string;
-  detail: string;
-  accent: string;
-  icon: React.ReactNode;
-}) {
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  status: 'open' | 'investigating' | 'contained' | 'resolved' | 'closed';
+  source: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type Alert = {
+  id: string;
+  incidentId: string | null;
+  incidentTitle: string | null;
+  incidentSeverity: string | null;
+  incidentStatus: string | null;
+  type: string;
+  riskScore: number;
+  status: 'active' | 'acknowledged' | 'resolved';
+  createdAt: string;
+};
+
+type ListResponse<T> = {
+  status: string;
+  incidents?: T[];
+  alerts?: T[];
+  pagination: { total: number; limit: number; offset: number; has_more: boolean };
+};
+
+function ShieldMark() {
   return (
-    <div className="metric-card">
-      <div className="metric-header">
-        <span className="metric-icon" style={{ background: accent }}>{icon}</span>
-        <span className="metric-title">{title}</span>
-      </div>
-      <div className="metric-value">{value}</div>
-      <div className="metric-detail">{detail}</div>
-    </div>
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12 2.5 4.5 5.4v6.1c0 5.1 3.1 8.4 7.5 10 4.4-1.6 7.5-4.9 7.5-10V5.4L12 2.5Zm3.7 7.3-4.2 4.6-2.2-2.2 1.4-1.4.7.7 2.8-3.1 1.5 1.4Z" />
+    </svg>
   );
 }
 
-const staticAgents = [
-  { name: 'AI Triage Engine', state: 'Demo only', health: '—' },
-  { name: 'Threat Graph Correlator', state: 'Demo only', health: '—' },
-  { name: 'Identity Guardian', state: 'Demo only', health: '—' },
-  { name: 'Network Sentinel', state: 'Demo only', health: '—' }
-];
-
-const activityFeed = [
-  'Demo event: credential anomaly example',
-  'Demo event: lateral-movement marker example',
-  'Demo event: outbound traffic policy example',
-  'Demo event: AI response workflow example'
-];
+function displayDate(value: string) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? 'Unknown date' : date.toLocaleString();
+}
 
 export default function HomePage() {
+  const [user, setUser] = useState<User | null>(null);
+  const [checkingSession, setCheckingSession] = useState(true);
+  const [incidents, setIncidents] = useState<Incident[]>([]);
+  const [alerts, setAlerts] = useState<Alert[]>([]);
+  const [incidentTotal, setIncidentTotal] = useState(0);
+  const [alertTotal, setAlertTotal] = useState(0);
   const [summary, setSummary] = useState<ThreatSummary | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState('');
+  const [actionError, setActionError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [incidentTitle, setIncidentTitle] = useState('');
+  const [incidentSeverity, setIncidentSeverity] = useState<Incident['severity']>('medium');
+  const [incidentSource, setIncidentSource] = useState('analyst-entry');
+  const [alertIncidentId, setAlertIncidentId] = useState('');
+  const [alertType, setAlertType] = useState('');
+  const [alertRisk, setAlertRisk] = useState('50');
+
+  const canManage = user?.role === 'admin' || user?.role === 'analyst';
+  const isAdmin = user?.role === 'admin';
 
   useEffect(() => {
-    async function loadData() {
+    let active = true;
+
+    async function checkSession() {
       try {
-        const summaryResponse = await fetch(`${API_BASE_URL}/api/threats/summary`);
-        if (!summaryResponse.ok) {
-          throw new Error(`Summary fetch failed: ${summaryResponse.status}`);
+        const response = await fetch('/api/auth/me', { cache: 'no-store' });
+        if (!response.ok) {
+          window.location.replace('/login');
+          return;
         }
-        const summaryData: ThreatSummary = await summaryResponse.json();
-        setSummary(summaryData);
-      } catch (loadError) {
-        setError(loadError instanceof Error ? loadError.message : 'Unable to reach the API.');
+        const result = await response.json();
+        if (active) {
+          setUser(result.user as User);
+          setCheckingSession(false);
+        }
+      } catch {
+        if (active) {
+          setLoadError('Could not verify your secure session.');
+          setCheckingSession(false);
+        }
       }
     }
 
-    void loadData();
+    void checkSession();
+    return () => {
+      active = false;
+    };
   }, []);
 
-  const metrics = useMemo(() => {
-    if (!summary) {
-      return [];
-    }
+  const loadDashboard = useCallback(async () => {
+    setIsLoading(true);
+    setLoadError('');
 
-    return [
-      {
-        title: 'Demo AI score',
-        value: `${summary.summary.ai_score}/100`,
-        detail: 'illustrative sample; not a measured score',
-        accent: 'linear-gradient(135deg, rgba(0,229,255,.2), rgba(36,107,253,.45))',
-        icon: <ShieldIcon />
-      },
-      {
-        title: 'Demo incidents',
-        value: summary.summary.total_incidents.toString(),
-        detail: `${summary.summary.critical} critical examples`,
-        accent: 'linear-gradient(135deg, rgba(139,92,246,.18), rgba(0,230,160,.3))',
-        icon: <RadarIcon />
-      },
-      {
-        title: 'Demo mitigations',
-        value: `${summary.summary.mitigated}`,
-        detail: 'illustrative count; no automated response ran',
-        accent: 'linear-gradient(135deg, rgba(0,230,160,.2), rgba(0,229,255,.28))',
-        icon: <NetworkIcon />
-      },
-      {
-        title: 'Coverage',
-        value: 'Demo',
-        detail: 'coverage is not measured yet',
-        accent: 'linear-gradient(135deg, rgba(36,107,253,.2), rgba(139,92,246,.25))',
-        icon: <ChartIcon />
+    try {
+      const [incidentResponse, alertResponse, summaryResponse] = await Promise.all([
+        fetch('/api/nexus/incidents?limit=100', { cache: 'no-store' }),
+        fetch('/api/nexus/alerts?limit=100', { cache: 'no-store' }),
+        fetch('/api/nexus/threats/summary', { cache: 'no-store' })
+      ]);
+
+      if (incidentResponse.status === 401 || alertResponse.status === 401) {
+        window.location.replace('/login');
+        return;
       }
-    ];
-  }, [summary]);
 
-  const updated = summary ? new Date(summary.summary.updated_at).toLocaleString() : 'Awaiting API';
+      if (!incidentResponse.ok || !alertResponse.ok) {
+        throw new Error('The incident or alert service is unavailable. Check the database migrations and API configuration.');
+      }
+
+      const incidentData = await incidentResponse.json() as ListResponse<Incident>;
+      const alertData = await alertResponse.json() as ListResponse<Alert>;
+      setIncidents(incidentData.incidents ?? []);
+      setAlerts(alertData.alerts ?? []);
+      setIncidentTotal(incidentData.pagination?.total ?? 0);
+      setAlertTotal(alertData.pagination?.total ?? 0);
+
+      if (summaryResponse.ok) {
+        setSummary(await summaryResponse.json() as ThreatSummary);
+      } else {
+        setSummary(null);
+      }
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : 'Unable to load the dashboard.');
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (user) void loadDashboard();
+  }, [user, loadDashboard]);
+
+  useEffect(() => {
+    if (!alertIncidentId && incidents.length > 0) {
+      setAlertIncidentId(incidents[0].id);
+    }
+  }, [incidents, alertIncidentId]);
+
+  const metrics = useMemo(() => {
+    const open = incidents.filter((item) => ['open', 'investigating', 'contained'].includes(item.status)).length;
+    const critical = incidents.filter((item) => item.severity === 'critical').length;
+    const activeAlerts = alerts.filter((item) => item.status === 'active').length;
+    return { open, critical, activeAlerts };
+  }, [incidents, alerts]);
+
+  async function createIncident(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setIsSaving(true);
+    setActionError('');
+
+    try {
+      const response = await fetch('/api/nexus/incidents', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: incidentTitle,
+          severity: incidentSeverity,
+          source: incidentSource || undefined
+        })
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(result?.message ?? result?.error ?? 'Incident creation failed.');
+
+      setIncidentTitle('');
+      await loadDashboard();
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Incident creation failed.');
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function createAlert(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!alertIncidentId) {
+      setActionError('Create or select an incident before recording an alert.');
+      return;
+    }
+    setIsSaving(true);
+    setActionError('');
+
+    try {
+      const response = await fetch(`/api/nexus/incidents/${alertIncidentId}/alerts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: alertType, riskScore: Number(alertRisk) })
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(result?.message ?? result?.error ?? 'Alert recording failed.');
+
+      setAlertType('');
+      await loadDashboard();
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Alert recording failed.');
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function updateIncidentStatus(incidentId: string, status: Incident['status']) {
+    setActionError('');
+    try {
+      const response = await fetch(`/api/nexus/incidents/${incidentId}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status, note: 'Updated by an authenticated dashboard user.' })
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(result?.message ?? result?.error ?? 'Incident update failed.');
+      await loadDashboard();
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Incident update failed.');
+    }
+  }
+
+  async function updateAlertStatus(alertId: string, status: Alert['status']) {
+    setActionError('');
+    try {
+      const response = await fetch(`/api/nexus/alerts/${alertId}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status, note: 'Updated by an authenticated dashboard user.' })
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(result?.message ?? result?.error ?? 'Alert update failed.');
+      await loadDashboard();
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Alert update failed.');
+    }
+  }
+
+  async function signOut() {
+    await fetch('/api/auth/logout', { method: 'POST' });
+    window.location.replace('/login');
+  }
+
+  if (checkingSession) {
+    return <main className="loading-screen"><div className="loading-mark"><ShieldMark /></div><p>Verifying secure session…</p></main>;
+  }
+
+  if (!user) {
+    return (
+      <main className="loading-screen">
+        <div className="loading-mark"><ShieldMark /></div>
+        <p>{loadError || 'Redirecting to secure sign-in…'}</p>
+        <a className="primary-button" href="/login">Open sign in</a>
+      </main>
+    );
+  }
+
+  const transitionOptions = (incident: Incident): Incident['status'][] => {
+    switch (incident.status) {
+      case 'open': return ['investigating', 'contained', 'closed'];
+      case 'investigating': return ['contained', 'resolved', 'closed'];
+      case 'contained': return ['investigating', 'resolved', 'closed'];
+      case 'resolved': return isAdmin ? ['open', 'closed'] : ['closed'];
+      case 'closed': return isAdmin ? ['open'] : [];
+      default: return [];
+    }
+  };
 
   return (
-    <main className="page-shell">
-      <div className="background-glow glow-one" />
-      <div className="background-glow glow-two" />
+    <main className="app-shell">
+      <aside className="sidebar">
+        <a className="brand" href="/" aria-label="NEXUS SHIELD AI home">
+          <span className="brand-mark"><ShieldMark /></span>
+          <span><strong>NEXUS SHIELD AI</strong><small>SECURITY OPERATIONS</small></span>
+        </a>
 
-      <div className="dashboard-frame">
-        <aside className="sidebar">
-          <div className="brand-block">
-            <div className="brand-mark">
-              <ShieldIcon />
-            </div>
-            <div>
-              <div className="brand-mini">AI SECURITY</div>
-              <h1>NEXUS SHIELD AI</h1>
-            </div>
+        <div className="sidebar-label">WORKSPACE</div>
+        <nav className="side-nav">
+          <a className="side-nav-link active" href="#overview"><span>◈</span> Overview</a>
+          <a className="side-nav-link" href="#incidents"><span>⌁</span> Incidents</a>
+          <a className="side-nav-link" href="#alerts"><span>◎</span> Alerts</a>
+          <a className="side-nav-link" href="#intelligence"><span>✧</span> AI intelligence</a>
+        </nav>
+
+        <div className="sidebar-spacer" />
+        <div className="sidebar-status">
+          <span className="status-indicator" />
+          <div><strong>Development mode</strong><small>Live telemetry is not connected</small></div>
+        </div>
+        <div className="profile-row">
+          <div className="avatar">{user.email.slice(0, 1).toUpperCase()}</div>
+          <div className="profile-details"><strong>{user.email}</strong><small>{user.role}</small></div>
+          <button className="icon-action" onClick={signOut} title="Sign out" aria-label="Sign out">↗</button>
+        </div>
+      </aside>
+
+      <section className="main-content">
+        <header className="topbar">
+          <div>
+            <div className="eyebrow">SECURITY COMMAND CENTER</div>
+            <h1 id="overview">Operational overview</h1>
+          </div>
+          <div className="topbar-actions">
+            <span className="role-pill">{user.role.toUpperCase()}</span>
+            <button className="secondary-button" onClick={() => void loadDashboard()} disabled={isLoading}>
+              {isLoading ? 'Refreshing…' : '↻ Refresh'}
+            </button>
+          </div>
+        </header>
+
+        {summary?.is_demo ? (
+          <div className="notice notice-warning">
+            <strong>DEMO THREAT DATA</strong>
+            <span>AI score and threat-summary values are sample data. They are not live detections or measured protection.</span>
+          </div>
+        ) : null}
+        {loadError ? <div className="notice notice-error">{loadError}</div> : null}
+        {actionError ? <div className="notice notice-error">{actionError}</div> : null}
+
+        <section className="metrics-grid">
+          <article className="metric-card"><span className="metric-label">Open workflow</span><strong>{metrics.open}</strong><small>Open, investigating, or contained incidents</small></article>
+          <article className="metric-card"><span className="metric-label">Critical incidents</span><strong>{metrics.critical}</strong><small>From the latest {incidents.length} loaded records</small></article>
+          <article className="metric-card"><span className="metric-label">Active alerts</span><strong>{metrics.activeAlerts}</strong><small>From the latest {alerts.length} loaded records</small></article>
+          <article className="metric-card metric-demo"><span className="metric-label">Demo AI score</span><strong>{summary ? `${summary.summary.ai_score}/100` : '—'}</strong><small>Illustrative only · not a calibrated risk score</small></article>
+        </section>
+
+        <section className="section-block" id="incidents">
+          <div className="section-heading">
+            <div><div className="eyebrow">CASE MANAGEMENT</div><h2>Incidents <span className="count-pill">{incidentTotal}</span></h2></div>
+            <span className="section-subtitle">Latest 100 records</span>
           </div>
 
-          <nav className="nav">
-            <button type="button" className="nav-item active">
-              <CpuIcon />
-              Overview
-            </button>
-            <button type="button" className="nav-item">
-              <RadarIcon />
-              Threat Intel
-            </button>
-            <button type="button" className="nav-item">
-              <NetworkIcon />
-              Network Defense
-            </button>
-            <button type="button" className="nav-item">
-              <IdentityIcon />
-              Identity
-            </button>
-            <button type="button" className="nav-item">
-              <BotIcon />
-              AI Assistant
-            </button>
-            <button type="button" className="nav-item">
-              <CogIcon />
-              Settings
-            </button>
-          </nav>
+          {canManage ? (
+            <form className="inline-form" onSubmit={createIncident}>
+              <div className="form-field grow"><label htmlFor="incident-title">New incident title</label><input id="incident-title" value={incidentTitle} onChange={(event) => setIncidentTitle(event.target.value)} maxLength={255} placeholder="Describe the reported security issue" required /></div>
+              <div className="form-field"><label htmlFor="incident-severity">Severity</label><select id="incident-severity" value={incidentSeverity} onChange={(event) => setIncidentSeverity(event.target.value as Incident['severity'])}><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="critical">Critical</option></select></div>
+              <div className="form-field"><label htmlFor="incident-source">Source</label><input id="incident-source" value={incidentSource} onChange={(event) => setIncidentSource(event.target.value)} maxLength={255} /></div>
+              <button className="primary-button" type="submit" disabled={isSaving}>Create incident</button>
+            </form>
+          ) : (
+            <div className="muted-note">Viewer access is read-only. An analyst or administrator can create and update incidents.</div>
+          )}
 
-          <div className="status-panel">
-            <div className="panel-label">Development Status</div>
-            <div className="status-row">
-              <span className="status-dot" />
-              Live protection telemetry is not connected
-            </div>
+          <div className="data-table-wrap">
+            <table className="data-table">
+              <thead><tr><th>Incident</th><th>Severity</th><th>Status</th><th>Source</th><th>Created</th><th>Workflow</th></tr></thead>
+              <tbody>
+                {incidents.map((incident) => (
+                  <tr key={incident.id}>
+                    <td><strong>{incident.title}</strong><small className="row-id">{incident.id.slice(0, 8)}</small></td>
+                    <td><span className={`severity-pill severity-${incident.severity}`}>{incident.severity}</span></td>
+                    <td><span className={`status-pill status-${incident.status}`}>{incident.status.replace('_', ' ')}</span></td>
+                    <td>{incident.source || '—'}</td>
+                    <td>{displayDate(incident.createdAt)}</td>
+                    <td>
+                      {canManage && transitionOptions(incident).length > 0 ? (
+                        <select
+                          className="table-select"
+                          aria-label={`Change status for ${incident.title}`}
+                          value=""
+                          onChange={(event) => {
+                            if (event.target.value) void updateIncidentStatus(incident.id, event.target.value as Incident['status']);
+                          }}
+                        >
+                          <option value="">Update…</option>
+                          {transitionOptions(incident).map((status) => <option key={status} value={status}>{status}</option>)}
+                        </select>
+                      ) : <span className="muted-note">No action</span>}
+                    </td>
+                  </tr>
+                ))}
+                {incidents.length === 0 ? <tr><td colSpan={6} className="empty-cell">{isLoading ? 'Loading incidents…' : 'No incidents have been recorded yet.'}</td></tr> : null}
+              </tbody>
+            </table>
           </div>
-        </aside>
+        </section>
 
-        <div className="content">
-          <header className="topbar">
-            <div>
-              <div className="eyebrow">Security Command Center</div>
-              <h2>AI Security Overview</h2>
-            </div>
+        <section className="section-block" id="alerts">
+          <div className="section-heading">
+            <div><div className="eyebrow">SIGNAL REVIEW</div><h2>Alerts <span className="count-pill">{alertTotal}</span></h2></div>
+            <span className="section-subtitle">Risk values are submitted by a user or upstream system</span>
+          </div>
 
-            <div className="topbar-actions">
-              <button type="button" className="icon-button" aria-label="Notifications">
-                <BellIcon />
-              </button>
-              <button type="button" className="cta-button" disabled title="A real system scan is not implemented yet">Scan unavailable</button>
-            </div>
-          </header>
-
-          {error ? <div className="error-banner">{error}</div> : null}
-          {summary?.is_demo ? (
-            <div className="error-banner" role="status">
-              DEMO DATA — incident counts, AI score, chart, agent states, and activity examples are sample content, not live security telemetry.
-            </div>
+          {canManage ? (
+            <form className="inline-form" onSubmit={createAlert}>
+              <div className="form-field grow"><label htmlFor="alert-type">Alert type</label><input id="alert-type" value={alertType} onChange={(event) => setAlertType(event.target.value)} maxLength={128} placeholder="e.g. identity-anomaly" required /></div>
+              <div className="form-field"><label htmlFor="alert-incident">Incident</label><select id="alert-incident" value={alertIncidentId} onChange={(event) => setAlertIncidentId(event.target.value)} required><option value="">Select incident</option>{incidents.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}</select></div>
+              <div className="form-field risk-field"><label htmlFor="alert-risk">Risk value (0–100)</label><input id="alert-risk" type="number" min={0} max={100} step={1} value={alertRisk} onChange={(event) => setAlertRisk(event.target.value)} required /></div>
+              <button className="primary-button" type="submit" disabled={isSaving || incidents.length === 0}>Record alert</button>
+            </form>
           ) : null}
 
-          <section className="metrics-grid">
-            {metrics.length > 0 ? (
-              metrics.map((metric) => (
-                <MetricCard
-                  key={metric.title}
-                  title={metric.title}
-                  value={metric.value}
-                  detail={metric.detail}
-                  accent={metric.accent}
-                  icon={metric.icon}
-                />
-              ))
-            ) : (
-              <div className="placeholder-card">Loading dashboard summary…</div>
-            )}
-          </section>
-
-          <section className="panel-grid main-grid">
-            <div className="panel large-panel">
-              <div className="panel-header">
-                <div>
-                  <div className="panel-label">Demo visualization</div>
-                  <h3>Illustrative threat flow</h3>
+          <div className="alert-grid">
+            {alerts.map((alert) => (
+              <article className="alert-card" key={alert.id}>
+                <div className="alert-card-top"><span className={`status-pill status-${alert.status}`}>{alert.status}</span><strong className="risk-number">{alert.riskScore}<small>/100</small></strong></div>
+                <h3>{alert.type}</h3>
+                <p>{alert.incidentTitle || 'Unlinked incident'}</p>
+                <div className="alert-card-footer">
+                  <small>{displayDate(alert.createdAt)}</small>
+                  {canManage && alert.status !== 'resolved' ? (
+                    <button className="text-button" onClick={() => void updateAlertStatus(alert.id, alert.status === 'active' ? 'acknowledged' : 'resolved')}>
+                      {alert.status === 'active' ? 'Acknowledge' : 'Resolve'}
+                    </button>
+                  ) : isAdmin && alert.status === 'resolved' ? (
+                    <button className="text-button" onClick={() => void updateAlertStatus(alert.id, 'active')}>Reopen</button>
+                  ) : null}
                 </div>
-                <span className="chip">Sample response {updated}</span>
-              </div>
+              </article>
+            ))}
+            {alerts.length === 0 ? <div className="empty-state">{isLoading ? 'Loading alerts…' : 'No alerts have been recorded yet.'}</div> : null}
+          </div>
+        </section>
 
-              <div className="chart-area" aria-label="Threat trend chart">
-                {[38, 52, 48, 74, 82, 94, 88, 70].map((value, index) => (
-                  <div className="bar-col" key={`${value}-${index}`}>
-                    <span className="bar" style={{ height: `${value}%` }} />
-                  </div>
-                ))}
-              </div>
-            </div>
+        <section className="section-block intelligence-block" id="intelligence">
+          <div><div className="eyebrow">AI INTELLIGENCE</div><h2>Analyst decision support</h2><p>The AI analysis endpoint is available for explicitly submitted information, but this dashboard does not trigger paid AI requests automatically. No scan or containment action runs from this panel.</p></div>
+          <div className="intelligence-status"><span className="status-indicator" /><strong>Ready for controlled integration</strong><small>OpenAI credentials and a human-reviewed workflow must be configured.</small></div>
+        </section>
 
-            <div className="panel side-panel">
-              <div className="panel-header compact-header">
-                <div>
-                  <div className="panel-label">Planned AI workflow</div>
-                  <h3>Response concepts</h3>
-                </div>
-              </div>
-
-              <ul className="checklist">
-                <li>Proposed: correlate analyst-supplied identity events</li>
-                <li>Planned: prioritize verified asset relationships</li>
-                <li>Planned: explain evidence gaps</li>
-                <li>Planned: recommend human-reviewed actions</li>
-              </ul>
-            </div>
-          </section>
-
-          <section className="panel-grid lower-grid">
-            <div className="panel">
-              <div className="panel-header compact-header">
-                <div>
-                  <div className="panel-label">Demo agent concepts</div>
-                  <h3>Planned agent matrix</h3>
-                </div>
-              </div>
-
-              <div className="agent-list">
-                {staticAgents.map((agent) => (
-                  <div className="agent-row" key={agent.name}>
-                    <div className="agent-meta">
-                      <span className="agent-dot">•</span>
-                      <div>
-                        <div className="agent-name">{agent.name}</div>
-                        <div className="agent-state">{agent.state}</div>
-                      </div>
-                    </div>
-                    <span className="agent-health">{agent.health}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="panel">
-              <div className="panel-header compact-header">
-                <div>
-                  <div className="panel-label">Example activity (demo)</div>
-                  <h3>Sample event list</h3>
-                </div>
-              </div>
-
-              <div className="activity-list">
-                {activityFeed.map((item) => (
-                  <div className="activity-row" key={item}>
-                    <span className="activity-dot" />
-                    <span>{item}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="panel assistant-panel">
-              <div className="panel-header compact-header">
-                <div>
-                  <div className="panel-label">AI Assistant</div>
-                  <h3>Analyst decision support</h3>
-                </div>
-              </div>
-
-              <div className="placeholder-card small">
-                AI analysis is not triggered automatically. An analyst must submit verified information before an assessment is generated.
-              </div>
-            </div>
-          </section>
-        </div>
-      </div>
+        <footer className="dashboard-footer">
+          <span>NEXUS SHIELD AI · Development build</span>
+          <span>No live telemetry connected · No automated response enabled</span>
+        </footer>
+      </section>
     </main>
   );
 }
