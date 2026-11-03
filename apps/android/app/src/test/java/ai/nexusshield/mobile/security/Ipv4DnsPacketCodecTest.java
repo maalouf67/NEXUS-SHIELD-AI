@@ -13,7 +13,7 @@ public class Ipv4DnsPacketCodecTest {
         assertEquals("example.com", query.queriedDomain);
         assertEquals(53000, query.sourcePort);
         assertEquals(53, query.destinationPort);
-        assertEquals(0x1234, query.identification);
+        assertEquals(0x2345, query.identification);
     }
 
     @Test
