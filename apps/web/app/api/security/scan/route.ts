@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { isSameOriginRequest } from 
+import { isSameOriginRequest } from '../../../../api/origin';
 
 export const runtime = 'nodejs';
 
