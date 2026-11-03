@@ -5,7 +5,8 @@ const ALLOWED_ROOTS = new Set([
   'incidents',
   'alerts',
   'threats',
-  'users'
+  'users',
+  'security-events'
 ]);
 const MAX_BODY_BYTES = 1024 * 1024;
 
