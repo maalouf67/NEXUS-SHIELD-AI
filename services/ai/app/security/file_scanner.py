@@ -53,7 +53,10 @@ def scan_quarantined_file(
     if max_file_bytes < 1 or timeout_seconds < 1:
         raise ScanInputError("scan limits must be positive integers")
 
-    root = Path(quarantine_dir).expanduser().resolve(strict=True)
+    try:
+        root = Path(quarantine_dir).expanduser().resolve(strict=True)
+    except FileNotFoundError as exc:
+        raise ScannerUnavailable("configured quarantine directory does not exist") from exc
     if not root.is_dir():
         raise ScanInputError("quarantine directory must be a directory")
 
@@ -78,6 +81,8 @@ def scan_quarantined_file(
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     sha256 = digest.hexdigest()
+    if sha256 != sample_id:
+        raise ScanInputError("sample identifier does not match the file SHA-256 digest")
 
     binary = scanner_binary or os.getenv("CLAMDSCAN_BIN", "clamdscan")
     try:
