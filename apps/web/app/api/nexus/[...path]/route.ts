@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { isSameOriginRequest } from 
 
 const SESSION_COOKIE = 'nexus_access_token';
 const ALLOWED_ROOTS = new Set([
@@ -40,7 +41,7 @@ async function proxy(request: NextRequest, context: RouteContext) {
 
   if (request.method !== 'GET') {
     const origin = request.headers.get('origin');
-    if (!origin || origin !== request.nextUrl.origin) {
+    if (!origin || !isSameOriginRequest(request)) {
       return NextResponse.json({ error: 'INVALID_ORIGIN' }, { status: 403 });
     }
   }
