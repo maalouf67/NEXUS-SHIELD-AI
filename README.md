@@ -102,7 +102,7 @@ For local development, create `apps/web/.env.local` and set:
 NEXT_PUBLIC_API_BASE_URL="http://127.0.0.1:4000"
 ```
 
-The BFF reads this value server-side as a fallback when `API_BASE_URL` is not set. For hosted environments, prefer a server-only `API_BASE_URL` value and keep secrets out of `NEXT_PUBLIC_*` variables. The JWT cookie expires after 15 minutes; sign-out clears the browser cookie. Because the API uses short-lived stateless access tokens, a signed-out token may remain cryptographically valid until its expiry, but the browser no longer retains it.
+The BFF reads this value server-side as a fallback when `API_BASE_URL` is not set. The API's CORS allow-list is empty by default because browser requests use the same-origin BFF; leave `ALLOWED_ORIGINS` empty unless a separately authorized browser origin must call the API directly. For hosted environments, prefer a server-only `API_BASE_URL` value and keep secrets out of `NEXT_PUBLIC_*` variables. The JWT cookie expires after 15 minutes; sign-out clears the browser cookie. Because the API uses short-lived stateless access tokens, a signed-out token may remain cryptographically valid until its expiry, but the browser no longer retains it.
 
 ## Human user authentication and roles
 
