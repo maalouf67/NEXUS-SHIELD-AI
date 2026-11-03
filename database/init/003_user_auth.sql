@@ -15,8 +15,8 @@ BEGIN
     RAISE EXCEPTION
       'Cannot create normalized unique email index: duplicate email addresses differ only by case.';
   END IF;
-END
-$$;
+END;
+$;
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_normalized
   ON users (LOWER(email));
