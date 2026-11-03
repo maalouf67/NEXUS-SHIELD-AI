@@ -4,7 +4,8 @@ const SESSION_COOKIE = 'nexus_access_token';
 const ALLOWED_ROOTS = new Set([
   'incidents',
   'alerts',
-  'threats'
+  'threats',
+  'users'
 ]);
 const MAX_BODY_BYTES = 1024 * 1024;
 
