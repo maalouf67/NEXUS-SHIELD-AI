@@ -16,6 +16,10 @@ describe.skipIf(!enabled)('PostgreSQL alert audit integration', () => {
   afterAll(async () => {
     if (incidentIds.length > 0) {
       await pool.query(
+        'DELETE FROM alerts WHERE incident_id = ANY($1::uuid[])',
+        [incidentIds]
+      );
+      await pool.query(
         'DELETE FROM incidents WHERE id = ANY($1::uuid[])',
         [incidentIds]
       );
