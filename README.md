@@ -9,7 +9,7 @@ NEXUS SHIELD AI is an actively developed cyber-defense platform foundation combi
 - The cost-incurring AI threat-analysis endpoint also requires the same server-side service token; the dashboard does not trigger AI requests automatically.
 - The threat summary and dashboard examples are demo data, not live security telemetry.
 - AI threat analysis evaluates information explicitly supplied to the API. It is not a system scan or incident confirmation.
-- Authentication for human dashboard users, live telemetry ingestion, and automated response are not yet production-ready.
+- API bearer authentication and admin/analyst/viewer role checks are implemented. The web dashboard login flow, live telemetry ingestion, and automated response are not yet production-ready.
 - A PostgreSQL-backed asset inventory API now supports authenticated, transactional upserts and read-only analysis of stored relationships.
 
 Do not describe sample data or planned capabilities as active protection.
@@ -89,6 +89,39 @@ The service token is optional at startup, but all protected inventory, graph-ana
 Safety limits are enforced at the API boundary: up to 500 assets, 2,000 relationships, 20 evidence records per asset/relationship, traversal depth up to 8, and up to 100 returned paths. Duplicate identifiers and unknown request fields are rejected.
 
 The response explicitly marks the operation as read-only, confirms that no external scan ran, and states that results are potential graph paths rather than proof of compromise or exploitability. Submitted graph data is not persisted by this endpoint.
+
+## Human user authentication and roles
+
+The API provides short-lived JWT bearer access tokens:
+
+- `POST /api/auth/login` — accepts an email and password, then issues a 15-minute access token.
+- `GET /api/auth/me` — returns the identity and role encoded in a valid token.
+- `GET /api/users` — admin-only user directory.
+- `POST /api/users` — admin-only creation of analyst or viewer accounts. Public self-registration and HTTP promotion to admin are deliberately disabled.
+
+Every new user password is hashed with bcrypt before storage. Failed login responses do not reveal whether an email address exists. Login attempts are rate-limited. Tokens are signed with `JWT_SECRET` and restricted to the HS256 algorithm, issuer, audience, and expiry.
+
+### Apply the user authentication migration
+
+The schema is in `database/init/003_user_auth.sql`. Docker applies it automatically only when it initializes a new database. For an existing database, back it up and apply the migration once:
+
+```bash
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/init/003_user_auth.sql
+```
+
+### Create the first administrator
+
+There is no public admin signup endpoint. After applying migration 003, set `BOOTSTRAP_ADMIN_EMAIL` and a unique `BOOTSTRAP_ADMIN_PASSWORD` of at least 16 characters in the API environment, then run the one-time command from the repository root:
+
+```bash
+npm run bootstrap:admin --workspace @nexus-shield/api
+```
+
+The command refuses to run if an admin account already exists. It stores only a bcrypt hash. Remove `BOOTSTRAP_ADMIN_PASSWORD` from the environment immediately after successful provisioning. Never commit the value.
+
+The user-management API can create analyst and viewer accounts after an administrator signs in. Admin promotion remains a controlled provisioning operation, not a normal API request.
+
+The current web dashboard does not yet include a complete sign-in screen or authenticated browser session. These API routes are intended for trusted clients while the web session and CSRF design is developed. Do not put the service token, JWT signing secret, or AI provider key in browser-visible configuration.
 
 ## Persistent asset inventory API
 
