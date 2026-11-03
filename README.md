@@ -9,7 +9,7 @@ NEXUS SHIELD AI is an actively developed cyber-defense platform foundation combi
 - The cost-incurring AI threat-analysis endpoint also requires the same server-side service token; the dashboard does not trigger AI requests automatically.
 - The threat summary and dashboard examples are demo data, not live security telemetry.
 - AI threat analysis evaluates information explicitly supplied to the API. It is not a system scan or incident confirmation.
-- API bearer authentication and admin/analyst/viewer role checks are implemented. The web dashboard login flow, live telemetry ingestion, and automated response are not yet production-ready.
+- API bearer authentication and admin/analyst/viewer role checks are implemented. The web dashboard includes an initial authenticated flow and team management. A normalized event ingestion endpoint is ready for trusted upstream sources, but provider-specific connectors, live source configuration, and automated response are not yet in place.
 - A PostgreSQL-backed asset inventory API now supports authenticated, transactional upserts and read-only analysis of stored relationships.
 
 Do not describe sample data or planned capabilities as active protection.
@@ -189,6 +189,26 @@ The alert-to-audit link is added by `database/init/005_alert_audit_link.sql`. Fo
 
 ```bash
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/init/005_alert_audit_link.sql
+```
+
+## Normalized security event ingestion
+
+Trusted upstream security tools can send normalized events to:
+
+`POST /api/integrations/security-events`
+
+The route requires the dedicated `NEXUS_EVENT_INGESTION_TOKEN` in the `X-NEXUS-INGESTION-TOKEN` header. This secret is separate from the service token and user JWT signing secret. Keep it on the API server and trusted connector only. If it is absent or shorter than 32 characters, ingestion fails closed with `503`.
+
+The request contains an `events` array of 1–100 normalized records. Each record includes a source identifier, source event ID, event type, severity, observed timestamp, summary, optional asset ID, and at most 20 string attributes. Batch size is bounded by the API's 1 MB JSON body limit. Source and external event ID form an idempotency key; retries do not duplicate rows.
+
+Authenticated admin, analyst, and viewer users can read `GET /api/security-events` with severity, source, review-status, and pagination filters. Admin and analyst users can review an event using `POST /api/security-events/:id/review`. Reviews are recorded with the user identity and a timestamp.
+
+Ingestion only stores the normalized event for review. It does not verify the upstream product's detection, create an incident or alert automatically, run a scan, or execute containment. A provider-specific connector or SIEM/EDR configuration must still be built and configured; no external source is connected by default.
+
+The schema is in `database/init/006_security_event_ingestion.sql`. Docker applies it automatically only when creating a new database. For an existing database, back it up and apply the migration once:
+
+```bash
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/init/006_security_event_ingestion.sql
 ```
 
 ## Checks
