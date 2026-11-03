@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { isSameOriginRequest } from 
 
 const SESSION_COOKIE = 'nexus_access_token';
 const SESSION_MAX_AGE_SECONDS = 15 * 60;
@@ -19,7 +20,7 @@ function apiBaseUrl(): URL | null {
 export async function POST(request: NextRequest) {
   const requestOrigin = request.nextUrl.origin;
   const origin = request.headers.get('origin');
-  if (!origin || origin !== requestOrigin) {
+  if (!origin || !isSameOriginRequest(request)) {
     return NextResponse.json({ error: 'INVALID_ORIGIN' }, { status: 403 });
   }
 
