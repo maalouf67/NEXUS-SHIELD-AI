@@ -56,6 +56,19 @@ type SecurityEvent = {
   reviewedByUserId: string | null;
 };
 
+type ThreatAnalysisResult = {
+  target: string;
+  source: string;
+  provider: string;
+  model: string;
+  classification: 'low' | 'medium' | 'high' | 'critical';
+  risk_score: number;
+  findings: string[];
+  recommendations: string[];
+  explanation: string;
+  disclaimer: string;
+};
+
 type ListResponse<T> = {
   status: string;
   incidents?: T[];
@@ -101,6 +114,13 @@ export default function HomePage() {
   const [newUserEmail, setNewUserEmail] = useState('');
   const [newUserPassword, setNewUserPassword] = useState('');
   const [newUserRole, setNewUserRole] = useState<'analyst' | 'viewer'>('analyst');
+  const [analysisTarget, setAnalysisTarget] = useState('');
+  const [analysisSource, setAnalysisSource] = useState('');
+  const [analysisSignalType, setAnalysisSignalType] = useState('');
+  const [analysisDetails, setAnalysisDetails] = useState('');
+  const [aiAnalysis, setAiAnalysis] = useState<ThreatAnalysisResult | null>(null);
+  const [aiError, setAiError] = useState('');
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
 
   const canManage = user?.role === 'admin' || user?.role === 'analyst';
   const isAdmin = user?.role === 'admin';
@@ -262,6 +282,38 @@ export default function HomePage() {
       setActionError(error instanceof Error ? error.message : 'Alert recording failed.');
     } finally {
       setIsSaving(false);
+    }
+  }
+
+  async function submitThreatAnalysis(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setAiError('');
+    setAiAnalysis(null);
+    setIsAnalyzing(true);
+
+    try {
+      const response = await fetch('/api/ai/threat-analysis', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          target: analysisTarget,
+          source: analysisSource,
+          signal_type: analysisSignalType || undefined,
+          details: analysisDetails || undefined
+        }),
+        cache: 'no-store'
+      });
+      const result = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(result?.message ?? result?.error ?? 'AI analysis could not be completed.');
+      }
+
+      setAiAnalysis(result.analysis as ThreatAnalysisResult);
+    } catch (error) {
+      setAiError(error instanceof Error ? error.message : 'AI analysis could not be completed.');
+    } finally {
+      setIsAnalyzing(false);
     }
   }
 
@@ -589,9 +641,44 @@ export default function HomePage() {
           </section>
         ) : null}
 
-        <section className="section-block intelligence-block" id="intelligence">
-          <div><div className="eyebrow">AI INTELLIGENCE</div><h2>Analyst decision support</h2><p>The AI analysis endpoint is available for explicitly submitted information, but this dashboard does not trigger paid AI requests automatically. No scan or containment action runs from this panel.</p></div>
-          <div className="intelligence-status"><span className="status-indicator" /><strong>Ready for controlled integration</strong><small>OpenAI credentials and a human-reviewed workflow must be configured.</small></div>
+        <section className="section-block" id="intelligence">
+          <div className="section-heading">
+            <div><div className="eyebrow">AI INTELLIGENCE</div><h2>Analyst decision support</h2></div>
+            <span className="section-subtitle">Manual request only · No background AI calls</span>
+          </div>
+
+          {canManage ? (
+            <form className="ai-analysis-form" onSubmit={submitThreatAnalysis}>
+              <div className="ai-form-grid">
+                <div className="form-field"><label htmlFor="analysis-target">Target or asset label</label><input id="analysis-target" value={analysisTarget} onChange={(event) => setAnalysisTarget(event.target.value)} maxLength={200} placeholder="e.g. endpoint-01" required /></div>
+                <div className="form-field"><label htmlFor="analysis-source">Information source</label><input id="analysis-source" value={analysisSource} onChange={(event) => setAnalysisSource(event.target.value)} maxLength={200} placeholder="e.g. analyst-report" required /></div>
+                <div className="form-field"><label htmlFor="analysis-signal">Signal type (optional)</label><input id="analysis-signal" value={analysisSignalType} onChange={(event) => setAnalysisSignalType(event.target.value)} maxLength={100} placeholder="e.g. authentication anomaly" /></div>
+              </div>
+              <div className="form-field ai-details-field"><label htmlFor="analysis-details">Observed details supplied by the analyst</label><textarea id="analysis-details" value={analysisDetails} onChange={(event) => setAnalysisDetails(event.target.value)} maxLength={5000} rows={4} placeholder="Paste a short, sanitized description of the observed signal. Do not include passwords, API keys, or unnecessary personal data." /></div>
+              <div className="ai-submit-row">
+                <span className="muted-note">This sends only the text above to the configured AI provider. It does not scan a device or network.</span>
+                <button className="primary-button" type="submit" disabled={isAnalyzing}>{isAnalyzing ? 'Analyzing…' : 'Analyze submitted information'}</button>
+              </div>
+              {aiError ? <div className="notice notice-error" role="alert">{aiError}</div> : null}
+            </form>
+          ) : (
+            <div className="muted-note">Viewer access is read-only. An administrator or analyst can submit information for AI analysis.</div>
+          )}
+
+          {aiAnalysis ? (
+            <div className="ai-analysis-result">
+              <div className="ai-result-header">
+                <div><div className="eyebrow">AI-GENERATED ASSESSMENT</div><h3>{aiAnalysis.classification.toUpperCase()} · {aiAnalysis.target}</h3><p>Source: {aiAnalysis.source} · {aiAnalysis.provider} / {aiAnalysis.model}</p></div>
+                <div className="ai-score"><strong>{aiAnalysis.risk_score}</strong><small>/100</small><span>model-assigned score</span></div>
+              </div>
+              <p className="ai-explanation">{aiAnalysis.explanation}</p>
+              <div className="ai-result-grid">
+                <div><h4>Findings</h4>{aiAnalysis.findings.length ? <ul>{aiAnalysis.findings.map((item, index) => <li key={index}>{item}</li>)}</ul> : <p className="muted-note">No findings were returned.</p>}</div>
+                <div><h4>Recommendations</h4>{aiAnalysis.recommendations.length ? <ul>{aiAnalysis.recommendations.map((item, index) => <li key={index}>{item}</li>)}</ul> : <p className="muted-note">No recommendations were returned.</p>}</div>
+              </div>
+              <div className="ai-disclaimer">{aiAnalysis.disclaimer} This assessment is based only on submitted information and is not evidence of a confirmed incident.</div>
+            </div>
+          ) : null}
         </section>
 
         <footer className="dashboard-footer">
