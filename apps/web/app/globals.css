@@ -215,7 +215,7 @@ svg { display: block; width: 100%; height: 100%; fill: currentColor; }
 .notice-warning { background: rgba(113,75,26,.18); border: 1px solid rgba(255,195,106,.24); color: #f0d6a8; }
 .notice-error { background: rgba(116,38,54,.18); border: 1px solid rgba(255,126,139,.22); color: #ffc3c9; }
 
-.metrics-grid { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 13px; margin-bottom: 34px; }
+.metrics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 13px; margin-bottom: 34px; }
 .metric-card {
   position: relative;
   overflow: hidden;
