@@ -3,6 +3,7 @@ import os
 import json
 import logging
 import hmac
+import re
 from typing import Literal
 
 from starlette.concurrency import run_in_threadpool
@@ -16,7 +17,7 @@ from app.security.file_scanner import (
 )
 
 import httpx
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Header
 from pydantic import BaseModel, Field
 
 
@@ -66,7 +67,7 @@ async def health():
 
 
 @app.post("/scan-file")
-async def scan_file(request: ScanFileRequest, authorization: str | None = None):
+async def scan_file(request: ScanFileRequest, authorization: str | None = Header(default=None)):
     expected_token = os.getenv("NEXUS_SERVICE_API_TOKEN", "")
     if len(expected_token) < 32:
         raise HTTPException(
@@ -74,11 +75,9 @@ async def scan_file(request: ScanFileRequest, authorization: str | None = None):
             detail={"code": "SCANNER_AUTH_NOT_CONFIGURED"}
         )
 
-    # FastAPI's Header dependency is needed to bind this value from the HTTP header.
-    if not authorization or not hmac.compare_digest(
-        authorization.removeprefix("Bearer ").strip(),
-        expected_token
-    ):
+    match = re.fullmatch(r"Bearer\\s+(.+)", authorization or "", flags=re.IGNORECASE)
+    provided_token = match.group(1).strip() if match else ""
+    if not provided_token or not hmac.compare_digest(provided_token, expected_token):
         raise HTTPException(status_code=401, detail={"code": "UNAUTHORIZED"})
 
     quarantine_dir = os.getenv("NEXUS_QUARANTINE_DIR", "")
