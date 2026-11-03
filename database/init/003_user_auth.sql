@@ -4,7 +4,7 @@ ALTER TABLE users
 ALTER TABLE users
   ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE;
 
-DO $$
+DO $migration$
 BEGIN
   IF EXISTS (
     SELECT LOWER(email)
@@ -16,7 +16,7 @@ BEGIN
       'Cannot create normalized unique email index: duplicate email addresses differ only by case.';
   END IF;
 END;
-$;
+$migration$;
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_normalized
   ON users (LOWER(email));
