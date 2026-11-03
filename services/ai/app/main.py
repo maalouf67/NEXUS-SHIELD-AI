@@ -2,8 +2,10 @@
 import os
 import json
 import logging
+import re
 import hmac
 from typing import Literal
+from pathlib import Path
 
 from starlette.concurrency import run_in_threadpool
 from app.security.file_scanner import (
@@ -16,6 +18,7 @@ from app.security.file_scanner import (
     DEFAULT_MAX_FILE_BYTES,
     scan_quarantined_file,
     stage_uploaded_file,
+    delete_quarantined_file,
 )
 
 import httpx
@@ -58,6 +61,36 @@ class ScanFileRequest(BaseModel):
     sample_id: str = Field(pattern=r"^[a-f0-9]{64}$")
 
 
+OWNER_ID_PATTERN = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
+
+
+def _owner_quarantine_path(owner_user_id: str) -> str:
+    if not OWNER_ID_PATTERN.fullmatch(owner_user_id):
+        raise HTTPException(status_code=400, detail={"code": "INVALID_OWNER_ID"})
+    base = os.getenv("NEXUS_QUARANTINE_DIR", "")
+    if not base:
+        raise HTTPException(status_code=503, detail={"code": "QUARANTINE_NOT_CONFIGURED"})
+    root = Path(base).expanduser()
+    try:
+        root.mkdir(parents=True, exist_ok=True, mode=0o700)
+        if root.is_symlink():
+            raise OSError("quarantine root must not be a symlink")
+        root = root.resolve(strict=True)
+        if os.name != "nt" and root.stat().st_mode & 0o077:
+            raise OSError("quarantine root permissions must be 0700 or stricter")
+        owner_dir = root / owner_user_id
+        if owner_dir.is_symlink():
+            raise OSError("owner quarantine directory must not be a symlink")
+        owner_dir.mkdir(mode=0o700, exist_ok=True)
+        if owner_dir.is_symlink() or not owner_dir.is_dir():
+            raise OSError("owner quarantine path is invalid")
+        if os.name != "nt" and owner_dir.stat().st_mode & 0o077:
+            raise OSError("owner quarantine permissions must be 0700 or stricter")
+        return str(owner_dir.resolve(strict=True))
+    except OSError:
+        raise HTTPException(status_code=503, detail={"code": "QUARANTINE_UNAVAILABLE"})
+
+
 @app.get("/health")
 async def health():
     return {
@@ -76,7 +109,6 @@ def _require_service_auth(authorization: str | None) -> None:
             status_code=503,
             detail={"code": "SCANNER_AUTH_NOT_CONFIGURED"}
         )
-
     auth_parts = (authorization or "").split(None, 1)
     provided_token = auth_parts[1].strip() if len(auth_parts) == 2 and auth_parts[0].lower() == "bearer" else ""
     if not provided_token or not hmac.compare_digest(provided_token, expected_token):
@@ -97,16 +129,6 @@ def _scanner_options() -> dict:
     return options
 
 
-def _quarantine_path() -> str:
-    quarantine_dir = os.getenv("NEXUS_QUARANTINE_DIR", "")
-    if not quarantine_dir:
-        raise HTTPException(
-            status_code=503,
-            detail={"code": "QUARANTINE_NOT_CONFIGURED"}
-        )
-    return quarantine_dir
-
-
 def _max_upload_bytes() -> int:
     raw_limit = os.getenv("NEXUS_MAX_UPLOAD_BYTES", str(DEFAULT_MAX_FILE_BYTES))
     try:
@@ -119,9 +141,15 @@ def _max_upload_bytes() -> int:
 
 
 @app.post("/scan-file")
-async def scan_file(request: ScanFileRequest, authorization: str | None = Header(default=None)):
+async def scan_file(
+    request: ScanFileRequest,
+    authorization: str | None = Header(default=None),
+    x_nexus_user_id: str | None = Header(default=None, alias="X-NEXUS-USER-ID"),
+):
     _require_service_auth(authorization)
-    quarantine_dir = _quarantine_path()
+    if not x_nexus_user_id:
+        raise HTTPException(status_code=400, detail={"code": "OWNER_ID_REQUIRED"})
+    quarantine_dir = _owner_quarantine_path(x_nexus_user_id)
 
     try:
         result = await run_in_threadpool(
@@ -144,9 +172,15 @@ async def scan_file(request: ScanFileRequest, authorization: str | None = Header
 
 
 @app.post("/scan-upload")
-async def scan_upload(request: Request, authorization: str | None = Header(default=None)):
+async def scan_upload(
+    request: Request,
+    authorization: str | None = Header(default=None),
+    x_nexus_user_id: str | None = Header(default=None, alias="X-NEXUS-USER-ID"),
+):
     _require_service_auth(authorization)
-    quarantine_dir = _quarantine_path()
+    if not x_nexus_user_id:
+        raise HTTPException(status_code=400, detail={"code": "OWNER_ID_REQUIRED"})
+    quarantine_dir = _owner_quarantine_path(x_nexus_user_id)
     max_upload_bytes = _max_upload_bytes()
 
     content_type = request.headers.get("content-type", "")
@@ -201,15 +235,34 @@ async def scan_upload(request: Request, authorization: str | None = Header(defau
             )
             return {"status": "ok", "scan": result}
         except ScannerUnavailable:
-            raise HTTPException(status_code=503, detail={"code": "SCANNER_UNAVAILABLE", "sample_id": sample_id})
+            raise HTTPException(status_code=503, detail={"code": "SCANNER_UNAVAILABLE", "sample_id": sample_id, "size_bytes": staged["size_bytes"]})
         except ScannerTimeout:
-            raise HTTPException(status_code=504, detail={"code": "SCAN_TIMEOUT", "sample_id": sample_id})
+            raise HTTPException(status_code=504, detail={"code": "SCAN_TIMEOUT", "sample_id": sample_id, "size_bytes": staged["size_bytes"]})
         except ScannerExecutionError:
-            raise HTTPException(status_code=502, detail={"code": "SCANNER_ERROR", "sample_id": sample_id})
+            raise HTTPException(status_code=502, detail={"code": "SCANNER_ERROR", "sample_id": sample_id, "size_bytes": staged["size_bytes"]})
         except ScanInputError:
-            raise HTTPException(status_code=400, detail={"code": "INVALID_QUARANTINED_SAMPLE", "sample_id": sample_id})
+            raise HTTPException(status_code=400, detail={"code": "INVALID_QUARANTINED_SAMPLE", "sample_id": sample_id, "size_bytes": staged["size_bytes"]})
     finally:
         await form.close()
+
+
+@app.delete("/samples/{sample_id}")
+async def delete_sample(
+    sample_id: str,
+    authorization: str | None = Header(default=None),
+    x_nexus_user_id: str | None = Header(default=None, alias="X-NEXUS-USER-ID"),
+):
+    _require_service_auth(authorization)
+    if not x_nexus_user_id:
+        raise HTTPException(status_code=400, detail={"code": "OWNER_ID_REQUIRED"})
+    quarantine_dir = _owner_quarantine_path(x_nexus_user_id)
+    try:
+        deleted = await run_in_threadpool(delete_quarantined_file, sample_id, quarantine_dir)
+        return {"status": "ok", "deleted": deleted}
+    except ScanInputError:
+        raise HTTPException(status_code=400, detail={"code": "INVALID_SAMPLE"})
+    except ScannerUnavailable:
+        raise HTTPException(status_code=503, detail={"code": "QUARANTINE_UNAVAILABLE"})
 
 @app.post("/analyze")
 async def analyze(request: ThreatRequest):

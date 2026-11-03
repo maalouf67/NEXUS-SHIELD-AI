@@ -63,8 +63,8 @@ Not runtime-verified or production-active: Docker image builds and ClamAV signat
 ## Phases
 - P0 Security baseline and threat model.
 - P1 App trust center: settings, language, privacy preference, help, contact, license and policy drafts.
-- P2 Malware scan source implementation: authenticated upload route, private quarantine, size limits, scan adapter and UI (runtime validation still required).
-- P3 Local ClamAV/AI Compose integration: build/start health verification, benign end-to-end scan, signature freshness, upload rate limiting, scan history/ownership, retention and queue.
+- P2 Malware inspection: implemented upload path, per-user quarantine, ClamAV adapter, scan history and retention; verify in Docker CI and the target runtime.
+- P3 Android network protection: user-approved VPN/DNS filtering engine, blocklist provenance, encrypted DNS coverage disclosure, foreground notification and battery/abuse testing; iOS requires a separate entitlement-reviewed implementation.
 - P4 Threat-intel connectors, provenance, rate limits, cache and licensing.
 - P5 Endpoint agent only after platform permissions, update signing, tamper controls and privacy review.
 - P6 Independent penetration test, legal review, retention, response, backups and explicitly approved release.

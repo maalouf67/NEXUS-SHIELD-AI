@@ -13,6 +13,7 @@ from app.security.file_scanner import (
     UploadTooLarge,
     scan_quarantined_file,
     stage_uploaded_file,
+    delete_quarantined_file,
 )
 
 
@@ -114,6 +115,16 @@ class QuarantineScannerTests(unittest.TestCase):
             stage_uploaded_file(io.BytesIO(b"12345"), quarantine, max_file_bytes=4)
         self.assertEqual(list(quarantine.glob("*.part")), [])
         self.assertEqual(list(quarantine.iterdir()), [])
+
+    def test_delete_removes_only_the_matching_hash_sample(self):
+        self.assertTrue(delete_quarantined_file(self.sample_id, self.root))
+        self.assertFalse((self.root / self.sample_id).exists())
+        self.assertFalse(delete_quarantined_file(self.sample_id, self.root))
+
+    def test_delete_rejects_a_sample_whose_contents_were_modified(self):
+        (self.root / self.sample_id).write_bytes(b"modified content")
+        with self.assertRaises(ScanInputError):
+            delete_quarantined_file(self.sample_id, self.root)
 
     def test_insecure_quarantine_permissions_are_rejected(self):
         quarantine = self.root / "insecure-quarantine"

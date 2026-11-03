@@ -244,3 +244,23 @@ def scan_quarantined_file(
         "execution_performed": False,
         "disclaimer": "A clean signature scan does not guarantee that a file is harmless.",
     }
+
+
+def delete_quarantined_file(sample_id: str, quarantine_dir: str | Path) -> bool:
+    """Delete one owner-scoped quarantined sample after strict path/hash checks."""
+    if not SAMPLE_ID_PATTERN.fullmatch(sample_id):
+        raise ScanInputError("sample_id must be a lowercase SHA-256 hex identifier")
+    root = _quarantine_root(quarantine_dir)
+    candidate = root / sample_id
+    if candidate.is_symlink():
+        raise ScanInputError("symlinks are not accepted in quarantine")
+    try:
+        resolved = candidate.resolve(strict=True)
+    except FileNotFoundError:
+        return False
+    if resolved.parent != root or not resolved.is_file():
+        raise ScanInputError("sample must be a regular file directly inside quarantine")
+    if _sha256_file(resolved) != sample_id:
+        raise ScanInputError("sample content hash does not match its identifier")
+    resolved.unlink()
+    return True

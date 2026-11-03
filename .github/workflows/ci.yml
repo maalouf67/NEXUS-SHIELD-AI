@@ -66,6 +66,7 @@ jobs:
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/init/004_incident_management.sql
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/init/005_alert_audit_link.sql
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/init/006_security_event_ingestion.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/init/007_malware_scan_history.sql
 
       - name: Build web and API workspaces
         run: npm run build
@@ -97,3 +98,103 @@ jobs:
         env:
           PYTHONPATH: services/ai
         run: python -m unittest discover -s services/ai/tests -v
+
+
+  android-build:
+    name: Android companion debug build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Set up Gradle 9.6.0
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.6.0"
+      - name: Install Android SDK 36
+        run: |
+          yes | "\${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null
+          "\${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0"
+      - name: Build Android debug APK
+        working-directory: apps/android
+        run: gradle --no-daemon :app:assembleDebug
+      - name: Upload development APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nexus-shield-android-debug
+          path: apps/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 7
+
+  clamav-integration:
+    name: Real Docker and ClamAV scan integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Start ClamAV and NEXUS AI containers
+        env:
+          POSTGRES_DB: nexus_ci
+          POSTGRES_USER: nexus_ci
+          POSTGRES_PASSWORD: nexus_ci_password
+          NEXUS_SERVICE_API_TOKEN: nexus-ci-only-service-token-please-never-reuse
+          OPENAI_API_KEY: ""
+        run: |
+          docker compose up -d --build clamav ai
+          for attempt in $(seq 1 180); do
+            state="$(docker inspect --format '{{.State.Health.Status}}' nexus-shield-clamav 2>/dev/null || true)"
+            if [ "$state" = "healthy" ]; then
+              echo "ClamAV daemon is healthy."
+              break
+            fi
+            if [ "$attempt" -eq 180 ]; then
+              docker compose logs clamav ai
+              echo "ClamAV did not become healthy." >&2
+              exit 1
+            fi
+            sleep 5
+          done
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:8001/health >/dev/null; then
+              echo "NEXUS AI scanner is healthy."
+              break
+            fi
+            if [ "$attempt" -eq 30 ]; then
+              docker compose logs ai
+              echo "NEXUS AI scanner did not become healthy." >&2
+              exit 1
+            fi
+            sleep 2
+          done
+      - name: Scan a benign fixture with the real ClamAV daemon
+        env:
+          NEXUS_SERVICE_API_TOKEN: nexus-ci-only-service-token-please-never-reuse
+          NEXUS_CI_USER_ID: "00000000-0000-4000-8000-000000000001"
+        run: |
+          printf '%s\n' 'NEXUS SHIELD AI benign ClamAV integration fixture.' > /tmp/nexus-clean.txt
+          curl --fail --silent --show-error \
+            -H "Authorization: Bearer $NEXUS_SERVICE_API_TOKEN" \
+            -H "X-NEXUS-USER-ID: $NEXUS_CI_USER_ID" \
+            -F "file=@/tmp/nexus-clean.txt;filename=benign.txt" \
+            http://127.0.0.1:8001/scan-upload > /tmp/nexus-clean-result.json
+          python -c "import json; d=json.load(open('/tmp/nexus-clean-result.json')); assert d['scan']['verdict'] == 'clean', d; print('Benign fixture: clean')"
+      - name: Detect the harmless EICAR antivirus test string
+        env:
+          NEXUS_SERVICE_API_TOKEN: nexus-ci-only-service-token-please-never-reuse
+          NEXUS_CI_USER_ID: "00000000-0000-4000-8000-000000000001"
+        run: |
+          printf '%s' 'X5O!P%@AP[4\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*' > /tmp/eicar.com
+          curl --fail --silent --show-error \
+            -H "Authorization: Bearer $NEXUS_SERVICE_API_TOKEN" \
+            -H "X-NEXUS-USER-ID: $NEXUS_CI_USER_ID" \
+            -F "file=@/tmp/eicar.com;filename=eicar.com" \
+            http://127.0.0.1:8001/scan-upload > /tmp/nexus-eicar-result.json
+          python -c "import json; d=json.load(open('/tmp/nexus-eicar-result.json')); assert d['scan']['verdict'] == 'detected', d; print('EICAR test fixture: detected by ClamAV')"
+      - name: Stop test containers and remove test volumes
+        if: always()
+        run: docker compose down --volumes --remove-orphans

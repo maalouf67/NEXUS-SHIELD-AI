@@ -15,10 +15,24 @@ type ScanResult = {
   execution_performed: false;
   disclaimer: string;
 };
+type ScanHistoryItem = {
+  id: string;
+  sampleId: string;
+  sha256: string;
+  sizeBytes: number;
+  verdict: 'pending' | 'clean' | 'detected' | 'error' | 'timeout';
+  scanner: string;
+  errorCode: string | null;
+  scannedAt: string | null;
+  createdAt: string;
+  sampleExpiresAt: string;
+  storageDeletedAt: string | null;
+};
 type ApiResponse = {
   error?: string;
   message?: string;
   sample_id?: string;
+  history_persisted?: boolean;
   scan?: ScanResult;
 };
 
@@ -36,6 +50,8 @@ export default function MalwareScanPage() {
   const [pendingSampleId, setPendingSampleId] = useState('');
   const [error, setError] = useState('');
   const [isScanning, setIsScanning] = useState(false);
+  const [history, setHistory] = useState<ScanHistoryItem[]>([]);
+  const [historyError, setHistoryError] = useState('');
 
   useEffect(() => {
     let active = true;
@@ -58,6 +74,22 @@ export default function MalwareScanPage() {
     return () => { active = false; };
   }, []);
 
+  async function loadHistory() {
+    try {
+      const response = await fetch('/api/security/scan?limit=10', { cache: 'no-store' });
+      if (!response.ok) throw new Error('Scan history is currently unavailable.');
+      const result = await response.json() as { scans?: ScanHistoryItem[] };
+      setHistory(result.scans ?? []);
+      setHistoryError('');
+    } catch (cause) {
+      setHistoryError(cause instanceof Error ? cause.message : 'Scan history is currently unavailable.');
+    }
+  }
+
+  useEffect(() => {
+    if (user) void loadHistory();
+  }, [user]);
+
   async function applyScanResponse(response: Response) {
     const payload = await response.json().catch(() => ({})) as ApiResponse;
     if (!response.ok) {
@@ -69,7 +101,10 @@ export default function MalwareScanPage() {
     }
     setScan(payload.scan);
     setPendingSampleId('');
-    setError('');
+    setError(payload.history_persisted === false
+      ? 'The scan completed, but its audit record could not be saved. Ask an administrator to check the database.'
+      : '');
+    await loadHistory();
   }
 
   async function submitUpload(event: FormEvent<HTMLFormElement>) {
@@ -99,6 +134,7 @@ export default function MalwareScanPage() {
       await applyScanResponse(response);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'The scan could not be completed.');
+      await loadHistory();
     } finally {
       setIsScanning(false);
     }
@@ -118,6 +154,7 @@ export default function MalwareScanPage() {
       await applyScanResponse(response);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'The staged sample could not be rescanned.');
+      await loadHistory();
     } finally {
       setIsScanning(false);
     }
@@ -216,9 +253,36 @@ export default function MalwareScanPage() {
         </>
       )}
 
+      {canScan ? (
+        <section className="scan-panel">
+          <div className="scan-panel-heading">
+            <div><span className="eyebrow">AUDIT TRAIL</span><h2>Recent scan history</h2></div>
+            <button className="secondary-button" type="button" onClick={() => void loadHistory()}>Refresh history</button>
+          </div>
+          {historyError ? <p className="scan-muted" role="alert">{historyError}</p> : null}
+          {history.length === 0 ? <p className="scan-muted">No stored scans yet. Results will appear here after the audit database records them.</p> : (
+            <div className="data-table-wrap">
+              <table className="data-table">
+                <thead><tr><th>Verdict</th><th>SHA-256 sample</th><th>File size</th><th>Recorded</th><th>File retention</th></tr></thead>
+                <tbody>{history.map((item) => (
+                  <tr key={item.id}>
+                    <td><span className={item.verdict === 'clean' ? 'scan-status-clean' : item.verdict === 'detected' ? 'scan-status-detected' : 'scan-status-pending'}>{item.verdict.toUpperCase()}</span></td>
+                    <td><code>{item.sampleId.slice(0, 12)}…</code></td>
+                    <td>{formatBytes(item.sizeBytes)}</td>
+                    <td>{new Date(item.createdAt).toLocaleString()}</td>
+                    <td>{item.storageDeletedAt ? 'Sample file deleted' : new Date(item.sampleExpiresAt).toLocaleString()}</td>
+                  </tr>
+                ))}</tbody>
+              </table>
+            </div>
+          )}
+          <p className="scan-muted">Quarantined files are scheduled for deletion after 7 days. Scan metadata is retained for up to 30 days.</p>
+        </section>
+      ) : null}
+
       <section className="scan-safety-note">
         <strong>Important safety and privacy limits</strong>
-        <p>Only Admin and Analyst roles can submit files. The scanner must be configured and reachable. Samples stay in private quarantine; automatic release, permanent scan history, retention cleanup and an asynchronous scan queue are not implemented. Do not upload files containing highly sensitive personal or business data unless the deployment owner has approved that processing.</p>
+        <p>Only Admin and Analyst roles can submit files. The scanner must be configured and reachable. Samples stay in private owner-scoped quarantine. Scan results are saved to PostgreSQL; the API cleanup scheduler deletes expired files after 7 days and scan metadata after 30 days. Do not upload files containing highly sensitive personal or business data unless the deployment owner has approved that processing.</p>
       </section>
     </main>
   );

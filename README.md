@@ -74,43 +74,55 @@ uvicorn app.main:app --reload --host 127.0.0.1 --port 8001
 
 Configure `OPENAI_API_KEY` as a server-side environment variable. Never put it in frontend configuration.
 
-## Malware file scanning foundation
+## Malware file scanning and owner-scoped history
 
-The web console contains a protected `/scan` page for Admin and Analyst users. The same-origin Next.js route verifies the session with the API, checks the user's role server-side, and forwards a single multipart upload to the internal Python AI service. The browser never receives the internal service token.
+The web console includes a protected `/scan` page for Admin and Analyst users. The native Android companion is in `apps/android`; it signs in to the API, scans one user-selected file through the protected web gateway, and displays that user's scan history. It does not request broad Android storage access.
 
-The AI service:
+The web gateway verifies a short-lived API session/JWT, enforces same-origin checks for cookie-authenticated browsers, accepts bearer authentication for native clients, restricts scan submissions to Admin/Analyst roles, and applies an initial per-process limit of five scan requests per account every 15 minutes. The AI service receives an owner UUID from the authenticated gateway and stores each account's files in a separate private quarantine subdirectory.
 
-- Accepts exactly one multipart file, requires a request content length, rejects empty files, and enforces a configurable maximum of 100 MiB.
-- Ignores the supplied filename and MIME type. It streams bytes to a private quarantine volume under a generated SHA-256 identifier.
-- Uses restrictive directory/file permissions (0700/0600), rejects symlinked quarantine paths, hashes content, and never executes uploaded content.
-- Calls ClamAV `clamdscan` with a 60-second subprocess timeout. A successful signature scan returns `clean` or `detected`; scanner errors/timeouts are never converted to a clean verdict.
-- Uses a retry endpoint for a quarantined sample when the scanner was unavailable. The sample remains private and is not released by the app.
+The Python AI service:
 
-The local Compose configuration adds a ClamAV 1.5.4 service and a separately built Python AI service. ClamAV's TCP port 3310 is exposed only to the private Compose network; it is not published to the host. The AI HTTP service binds to host loopback at `127.0.0.1:8001`. The quarantine and ClamAV signature database use separate persistent Docker volumes.
+- Accepts exactly one multipart file and enforces a configurable maximum of 100 MiB.
+- Ignores the supplied file name and MIME type. It streams bytes into a private owner-scoped quarantine directory using a generated SHA-256 identifier.
+- Uses restrictive directory/file permissions (0700/0600), checks symlinks and content hashes, and never executes an uploaded file.
+- Uses ClamAV `clamdscan` with a 60-second process timeout. Scanner failures/timeouts are never converted into a clean verdict.
+- Keeps a sample quarantined if ClamAV cannot return a verdict; a retry can only reference a sample owned by the authenticated account.
 
-**Configuration for local development only:**
+## Scan history and retention
 
-1. In the repository root `.env`, create unique strong values for `POSTGRES_PASSWORD`, `JWT_SECRET`, `SESSION_SECRET`, and `NEXUS_SERVICE_API_TOKEN`. The service token must be at least 32 characters. Keep these values private.
-2. Put the same `NEXUS_SERVICE_API_TOKEN` in `services/api/.env` and `apps/web/.env.local`. Set `API_BASE_URL=http://127.0.0.1:4000` and `AI_BASE_URL=http://127.0.0.1:8001` in the Next.js server environment. Set `DATABASE_URL`, `JWT_SECRET`, and the same service token in the API environment.
-3. Start only the local data and scanner services after reviewing the configuration:
+Migration `database/init/007_malware_scan_history.sql` adds owner-scoped sample metadata and scan-run history. Each user can retrieve only their own records. Stored audit data includes the SHA-256 identifier, byte size, verdict, scanner, timestamps and error code—not the original file name or file contents.
+
+The API retention scheduler attempts cleanup at startup and every six hours:
+- Quarantined sample files are scheduled for deletion after 7 days.
+- Scan-history metadata is scheduled for deletion after 30 days.
+- If the AI service or private quarantine cannot be reached, cleanup fails closed and retries later. It does not mark a file deleted when the storage deletion call fails.
+
+These are configured source-code policies. Their behavior must still be observed in the target runtime before production use.
+
+## Local development — Docker and a real ClamAV test
+
+ClamAV's TCP socket is reachable only over the private Docker Compose network; port 3310 is not published to the host. The AI HTTP service binds to host loopback at `127.0.0.1:8001`. The quarantine volume and ClamAV signature database use separate persistent Docker volumes. The Compose ClamAV container is assigned 4 GiB memory, aligned with ClamAV's documented preferred memory budget for signature loading and reloads.
+
+1. Configure strong, unique values for `POSTGRES_PASSWORD`, `JWT_SECRET`, `SESSION_SECRET`, and `NEXUS_SERVICE_API_TOKEN` in the root `.env`. The service token must be at least 32 characters.
+2. Copy the required values into `services/api/.env` and `apps/web/.env.local`. Set `API_BASE_URL=http://127.0.0.1:4000` and `AI_BASE_URL=http://127.0.0.1:8001` in the web server environment; set `AI_BASE_URL` and the same service token in the API environment.
+3. Start the local database, ClamAV, and AI scanner:
 
    ```bash
    docker compose up -d postgres clamav ai
    ```
 
-4. Start the web console and Node API without a second Python process on port 8001:
+4. Start the web console and Node API separately (do not start a second Python AI process):
 
    ```bash
    npm run dev:web-api
    ```
 
-5. Sign in with an Admin or Analyst account, open `/scan`, and submit only a benign test document. Do not upload malware samples or sensitive business/personal files to an unreviewed development environment.
+5. Sign in as an Admin or Analyst and open `/scan`. Use only benign files while developing. A signature-clean result is not a guarantee that a file is harmless.
 
-ClamAV initializes and updates its signature database inside its own container. First startup may take several minutes and requires sufficient memory and network access for official signature updates. The Docker configuration has been added to source but has **not been run or runtime-verified** in this repository session.
+The CI workflow builds the Docker images, waits for the real ClamAV daemon to become healthy, submits a benign fixture and the harmless EICAR antivirus test string, and verifies the expected `clean` and `detected` results. This runtime test is separate from Python unit tests, which mock scanner responses.
 
-**Known limitations:** this is a synchronous, single-file scan flow, not a full endpoint antivirus product. There is no scan queue, database-backed scan history or owner/tenant metadata, automatic expiry/deletion, release workflow, dynamic sandbox, or automatic response. If ClamAV is unavailable, the sample remains in the private quarantine volume and can be retried by an authorized Analyst/Admin. A clean signature result does not guarantee that a file is harmless.
+**Important:** the Android module is an on-demand file-scanning companion, not a full-device antivirus. Continuous VPN/network filtering, an endpoint agent, iOS support, asynchronous scan queues, file-release workflows and automated response are not active. The Android debug APK is a development artifact only.
 
-Python tests use synthetic benign fixtures and mocked ClamAV outcomes. They validate adapter behavior, not the real ClamAV engine or its current signatures.
 ## Application Trust Center
 
 The dashboard links to /settings, /help, /contact, /license, and /privacy. Settings currently saves language preference (English, Arabic, French) and optional privacy preference toggles in browser storage only. Full dashboard localization and server-side preference synchronization are not yet implemented.
