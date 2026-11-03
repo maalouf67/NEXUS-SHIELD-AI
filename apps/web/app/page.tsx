@@ -91,7 +91,7 @@ function displayDate(value: string) {
 }
 
 export default function HomePage() {
-  const { user, status: sessionStatus, error: sessionError } = useSession();
+  const { user, status: sessionStatus, error: sessionError, signOut: endSession } = useSession();
   const checkingSession = sessionStatus === 'checking';
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [alerts, setAlerts] = useState<Alert[]>([]);
@@ -375,7 +375,7 @@ export default function HomePage() {
   }
 
   async function signOut() {
-    await fetch('/api/auth/logout', { method: 'POST' });
+    await endSession();
     window.location.replace('/login');
   }
 
