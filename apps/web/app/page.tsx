@@ -40,10 +40,27 @@ type Alert = {
   createdAt: string;
 };
 
+type SecurityEvent = {
+  id: string;
+  source: string;
+  externalEventId: string;
+  eventType: string;
+  severity: 'informational' | 'low' | 'medium' | 'high' | 'critical';
+  observedAt: string;
+  receivedAt: string;
+  assetId: string | null;
+  summary: string;
+  attributes: Record<string, string>;
+  reviewStatus: 'new' | 'reviewed';
+  reviewedAt: string | null;
+  reviewedByUserId: string | null;
+};
+
 type ListResponse<T> = {
   status: string;
   incidents?: T[];
   alerts?: T[];
+  events?: T[];
   pagination: { total: number; limit: number; offset: number; has_more: boolean };
 };
 
@@ -65,8 +82,10 @@ export default function HomePage() {
   const [checkingSession, setCheckingSession] = useState(true);
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [alerts, setAlerts] = useState<Alert[]>([]);
+  const [securityEvents, setSecurityEvents] = useState<SecurityEvent[]>([]);
   const [incidentTotal, setIncidentTotal] = useState(0);
   const [alertTotal, setAlertTotal] = useState(0);
+  const [securityEventTotal, setSecurityEventTotal] = useState(0);
   const [summary, setSummary] = useState<ThreatSummary | null>(null);
   const [loadError, setLoadError] = useState('');
   const [actionError, setActionError] = useState('');
@@ -120,27 +139,35 @@ export default function HomePage() {
     setLoadError('');
 
     try {
-      const [incidentResponse, alertResponse, summaryResponse] = await Promise.all([
+      const [incidentResponse, alertResponse, securityEventResponse, summaryResponse] = await Promise.all([
         fetch('/api/nexus/incidents?limit=100', { cache: 'no-store' }),
         fetch('/api/nexus/alerts?limit=100', { cache: 'no-store' }),
+        fetch('/api/nexus/security-events?limit=100', { cache: 'no-store' }),
         fetch('/api/nexus/threats/summary', { cache: 'no-store' })
       ]);
 
-      if (incidentResponse.status === 401 || alertResponse.status === 401) {
+      if (
+        incidentResponse.status === 401 ||
+        alertResponse.status === 401 ||
+        securityEventResponse.status === 401
+      ) {
         window.location.replace('/login');
         return;
       }
 
-      if (!incidentResponse.ok || !alertResponse.ok) {
-        throw new Error('The incident or alert service is unavailable. Check the database migrations and API configuration.');
+      if (!incidentResponse.ok || !alertResponse.ok || !securityEventResponse.ok) {
+        throw new Error('The incident, alert, or event service is unavailable. Check the database migrations and API configuration.');
       }
 
       const incidentData = await incidentResponse.json() as ListResponse<Incident>;
       const alertData = await alertResponse.json() as ListResponse<Alert>;
+      const securityEventData = await securityEventResponse.json() as ListResponse<SecurityEvent>;
       setIncidents(incidentData.incidents ?? []);
       setAlerts(alertData.alerts ?? []);
+      setSecurityEvents(securityEventData.events ?? []);
       setIncidentTotal(incidentData.pagination?.total ?? 0);
       setAlertTotal(alertData.pagination?.total ?? 0);
+      setSecurityEventTotal(securityEventData.pagination?.total ?? 0);
 
       if (summaryResponse.ok) {
         setSummary(await summaryResponse.json() as ThreatSummary);
@@ -235,6 +262,22 @@ export default function HomePage() {
       setActionError(error instanceof Error ? error.message : 'Alert recording failed.');
     } finally {
       setIsSaving(false);
+    }
+  }
+
+  async function reviewSecurityEvent(eventId: string) {
+    setActionError('');
+    try {
+      const response = await fetch(`/api/nexus/security-events/${eventId}/review`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ note: 'Reviewed by an authenticated dashboard user.' })
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(result?.message ?? result?.error ?? 'Event review failed.');
+      await loadDashboard();
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Event review failed.');
     }
   }
 
@@ -341,6 +384,7 @@ export default function HomePage() {
           <a className="side-nav-link active" href="#overview"><span>◈</span> Overview</a>
           <a className="side-nav-link" href="#incidents"><span>⌁</span> Incidents</a>
           <a className="side-nav-link" href="#alerts"><span>◎</span> Alerts</a>
+          <a className="side-nav-link" href="#events"><span>⌖</span> Event intake</a>
           {isAdmin ? <a className="side-nav-link" href="#team"><span>♙</span> Team access</a> : null}
           <a className="side-nav-link" href="#intelligence"><span>✧</span> AI intelligence</a>
         </nav>
@@ -384,6 +428,7 @@ export default function HomePage() {
           <article className="metric-card"><span className="metric-label">Open workflow</span><strong>{metrics.open}</strong><small>Open, investigating, or contained incidents</small></article>
           <article className="metric-card"><span className="metric-label">Critical incidents</span><strong>{metrics.critical}</strong><small>From the latest {incidents.length} loaded records</small></article>
           <article className="metric-card"><span className="metric-label">Active alerts</span><strong>{metrics.activeAlerts}</strong><small>From the latest {alerts.length} loaded records</small></article>
+          <article className="metric-card"><span className="metric-label">New security events</span><strong>{securityEvents.filter((item) => item.reviewStatus === 'new').length}</strong><small>Latest {securityEvents.length} of {securityEventTotal} received</small></article>
           <article className="metric-card metric-demo"><span className="metric-label">Demo AI score</span><strong>{summary ? `${summary.summary.ai_score}/100` : '—'}</strong><small>Illustrative only · not a calibrated risk score</small></article>
         </section>
 
@@ -473,6 +518,41 @@ export default function HomePage() {
             ))}
             {alerts.length === 0 ? <div className="empty-state">{isLoading ? 'Loading alerts…' : 'No alerts have been recorded yet.'}</div> : null}
           </div>
+        </section>
+
+        <section className="section-block" id="events">
+          <div className="section-heading">
+            <div><div className="eyebrow">TELEMETRY INTAKE</div><h2>Security events <span className="count-pill">{securityEventTotal}</span></h2></div>
+            <span className="section-subtitle">Normalized upstream events · No automatic detection or response</span>
+          </div>
+
+          <div className="data-table-wrap">
+            <table className="data-table">
+              <thead><tr><th>Event</th><th>Source</th><th>Severity</th><th>Asset</th><th>Observed</th><th>Review</th></tr></thead>
+              <tbody>
+                {securityEvents.map((event) => (
+                  <tr key={event.id}>
+                    <td><strong>{event.eventType}</strong><small className="row-id">{event.summary}</small></td>
+                    <td>{event.source}</td>
+                    <td><span className={`severity-pill severity-${event.severity === 'informational' ? 'low' : event.severity}`}>{event.severity}</span></td>
+                    <td>{event.assetId || '—'}</td>
+                    <td>{displayDate(event.observedAt)}</td>
+                    <td>
+                      {event.reviewStatus === 'reviewed' ? (
+                        <span className="status-pill status-contained">reviewed</span>
+                      ) : canManage ? (
+                        <button className="text-button" onClick={() => void reviewSecurityEvent(event.id)}>Mark reviewed</button>
+                      ) : (
+                        <span className="status-pill status-open">new</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+                {securityEvents.length === 0 ? <tr><td colSpan={6} className="empty-cell">{isLoading ? 'Loading security events…' : 'No upstream security events have been received.'}</td></tr> : null}
+              </tbody>
+            </table>
+          </div>
+          <p className="muted-note">Events are accepted only from a trusted source configured with the separate ingestion token. They remain evidence for analyst review and are not independently verified by NEXUS SHIELD AI.</p>
         </section>
 
         {isAdmin ? (
