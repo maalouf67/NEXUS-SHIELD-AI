@@ -156,23 +156,23 @@ export default function HomePage() {
 
     return [
       {
-        title: 'Threat Exposure',
-        value: `${(summary.summary.ai_score / 10).toFixed(1)}%`,
-        detail: 'AI confidence score',
+        title: 'Demo AI score',
+        value: `${summary.summary.ai_score}/100`,
+        detail: 'illustrative sample; not a measured score',
         accent: 'linear-gradient(135deg, rgba(0,229,255,.2), rgba(36,107,253,.45))',
         icon: <ShieldIcon />
       },
       {
-        title: 'Active Incidents',
+        title: 'Demo incidents',
         value: summary.summary.total_incidents.toString(),
-        detail: `${summary.summary.critical} critical`,
+        detail: `${summary.summary.critical} critical examples`,
         accent: 'linear-gradient(135deg, rgba(139,92,246,.18), rgba(0,230,160,.3))',
         icon: <RadarIcon />
       },
       {
-        title: 'Mitigated',
+        title: 'Demo mitigations',
         value: `${summary.summary.mitigated}`,
-        detail: 'resolved automatically',
+        detail: 'illustrative count; no automated response ran',
         accent: 'linear-gradient(135deg, rgba(0,230,160,.2), rgba(0,229,255,.28))',
         icon: <NetworkIcon />
       },
@@ -276,7 +276,7 @@ export default function HomePage() {
                 />
               ))
             ) : (
-              <div className="placeholder-card">Loading live security summary…</div>
+              <div className="placeholder-card">Loading dashboard summary…</div>
             )}
           </section>
 
@@ -287,7 +287,7 @@ export default function HomePage() {
                   <div className="panel-label">Demo visualization</div>
                   <h3>Illustrative threat flow</h3>
                 </div>
-                <span className="chip">Updated {updated}</span>
+                <span className="chip">Sample response {updated}</span>
               </div>
 
               <div className="chart-area" aria-label="Threat trend chart">
@@ -302,16 +302,16 @@ export default function HomePage() {
             <div className="panel side-panel">
               <div className="panel-header compact-header">
                 <div>
-                  <div className="panel-label">AI Intelligence</div>
-                  <h3>Response Logic</h3>
+                  <div className="panel-label">Planned AI workflow</div>
+                  <h3>Response concepts</h3>
                 </div>
               </div>
 
               <ul className="checklist">
-                <li>Correlate suspicious identity events</li>
-                <li>Contain suspicious endpoint behavior</li>
-                <li>Prioritize critical asset exposure</li>
-                <li>Recommend policy adjustments</li>
+                <li>Proposed: correlate analyst-supplied identity events</li>
+                <li>Planned: prioritize verified asset relationships</li>
+                <li>Planned: explain evidence gaps</li>
+                <li>Planned: recommend human-reviewed actions</li>
               </ul>
             </div>
           </section>
@@ -320,8 +320,8 @@ export default function HomePage() {
             <div className="panel">
               <div className="panel-header compact-header">
                 <div>
-                  <div className="panel-label">Active Security Agents</div>
-                  <h3>Agent matrix</h3>
+                  <div className="panel-label">Demo agent concepts</div>
+                  <h3>Planned agent matrix</h3>
                 </div>
               </div>
 
@@ -344,8 +344,8 @@ export default function HomePage() {
             <div className="panel">
               <div className="panel-header compact-header">
                 <div>
-                  <div className="panel-label">Recent Security Activity</div>
-                  <h3>Event stream</h3>
+                  <div className="panel-label">Example activity (demo)</div>
+                  <h3>Sample event list</h3>
                 </div>
               </div>
 
