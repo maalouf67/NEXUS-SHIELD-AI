@@ -29,6 +29,7 @@ export interface IncidentAlert {
 export interface IncidentActivity {
   id: string;
   incidentId: string;
+  alertId: string | null;
   actorUserId: string | null;
   action: string;
   fromStatus: string | null;
@@ -110,6 +111,7 @@ function mapActivity(row: any): IncidentActivity {
   return {
     id: row.id,
     incidentId: row.incident_id,
+    alertId: row.alert_id ?? null,
     actorUserId: row.actor_user_id ?? null,
     action: row.action,
     fromStatus: row.from_status ?? null,
@@ -188,7 +190,7 @@ export class PostgresIncidentRepository implements IncidentRepository {
         [id]
       ),
       pool.query(
-        `SELECT id, incident_id, actor_user_id, action, from_status,
+        `SELECT id, incident_id, alert_id, actor_user_id, action, from_status,
                 to_status, note, created_at
          FROM incident_activity
          WHERE incident_id = $1
