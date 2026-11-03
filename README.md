@@ -90,6 +90,20 @@ Safety limits are enforced at the API boundary: up to 500 assets, 2,000 relation
 
 The response explicitly marks the operation as read-only, confirms that no external scan ran, and states that results are potential graph paths rather than proof of compromise or exploitability. Submitted graph data is not persisted by this endpoint.
 
+## Web sign-in and secure API proxy
+
+The Next.js web console now includes a sign-in screen at `/login`. The browser posts credentials to the same-origin Next.js route. The BFF sends them to the API server, then stores the short-lived JWT in an `HttpOnly`, `SameSite=Strict` cookie. The JWT is not returned to browser JavaScript or stored in local storage.
+
+The browser calls the same-origin `/api/nexus/*` proxy. The proxy forwards only allow-listed incidents, alerts, and threat-summary requests with the session bearer token. It applies an Origin check to state-changing requests and never accepts an arbitrary upstream URL from the browser.
+
+For local development, create `apps/web/.env.local` and set:
+
+```env
+NEXT_PUBLIC_API_BASE_URL="http://127.0.0.1:4000"
+```
+
+The BFF reads this value server-side as a fallback when `API_BASE_URL` is not set. For hosted environments, prefer a server-only `API_BASE_URL` value and keep secrets out of `NEXT_PUBLIC_*` variables. The JWT cookie expires after 15 minutes; sign-out clears the browser cookie. Because the API uses short-lived stateless access tokens, a signed-out token may remain cryptographically valid until its expiry, but the browser no longer retains it.
+
 ## Human user authentication and roles
 
 The API provides short-lived JWT bearer access tokens:
