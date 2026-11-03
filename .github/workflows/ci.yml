@@ -122,6 +122,9 @@ jobs:
       - name: Build Android debug APK
         working-directory: apps/android
         run: gradle --no-daemon :app:assembleDebug
+      - name: Run Android DNS packet codec unit tests
+        working-directory: apps/android
+        run: gradle --no-daemon :app:testDebugUnitTest
       - name: Upload development APK artifact
         uses: actions/upload-artifact@v4
         with:
