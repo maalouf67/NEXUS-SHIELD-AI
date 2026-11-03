@@ -201,6 +201,7 @@ jobs:
             fi
             sleep 2
           done
+          docker compose exec -T ai clamdscan --config-file=/etc/clamav/clamdscan.conf --ping=3:1 --no-summary
 
       - name: Verify Compose migrations and seed isolated test users
         env:

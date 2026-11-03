@@ -155,25 +155,21 @@ def scan_quarantined_file(
     quarantine_dir: str | Path,
     *,
     scanner_binary: str | None = None,
-    clamd_host: str | None = None,
-    clamd_port: int = 3310,
+    scanner_config_file: str | Path | None = None,
     max_file_bytes: int = DEFAULT_MAX_FILE_BYTES,
     timeout_seconds: int = DEFAULT_SCAN_TIMEOUT_SECONDS,
 ) -> dict[str, Any]:
     """
     Scan a pre-staged file with ClamAV clamdscan.
 
-    Local Unix-socket mode uses --fdpass. A configured remote TCP daemon uses
-    clamdscan's INSTREAM transport; callers must keep that TCP connection on a
-    trusted private network because ClamAV's TCP protocol is not encrypted.
+    A supplied client configuration selects the configured TCP daemon. For a
+    remote TCP daemon, clamdscan streams file contents using INSTREAM. Without
+    a client configuration, the local Unix-socket mode uses --fdpass.
     """
     if not SAMPLE_ID_PATTERN.fullmatch(sample_id):
         raise ScanInputError("sample_id must be a lowercase SHA-256 hex identifier")
     if max_file_bytes < 1 or timeout_seconds < 1:
         raise ScanInputError("scan limits must be positive integers")
-    if not 1 <= clamd_port <= 65535:
-        raise ScanInputError("ClamAV TCP port must be between 1 and 65535")
-
     root = _quarantine_root(quarantine_dir)
     candidate = root / sample_id
     if candidate.is_symlink():
@@ -196,21 +192,19 @@ def scan_quarantined_file(
         raise ScanInputError("sample identifier does not match the file SHA-256 digest")
 
     binary = scanner_binary or os.getenv("CLAMDSCAN_BIN", "clamdscan")
-    if clamd_host:
-        command = [
-            binary,
-            f"--host={clamd_host}",
-            f"--port={clamd_port}",
-            "--no-summary",
-            str(resolved_candidate),
-        ]
+    command = [binary]
+    if scanner_config_file is not None:
+        config_path = Path(scanner_config_file).expanduser()
+        if config_path.is_symlink() or not config_path.is_file():
+            raise ScannerUnavailable("ClamAV client configuration file is missing or invalid")
+        try:
+            config_path = config_path.resolve(strict=True)
+        except OSError as exc:
+            raise ScannerUnavailable("ClamAV client configuration file is unavailable") from exc
+        command.append(f"--config-file={config_path}")
     else:
-        command = [
-            binary,
-            "--fdpass",
-            "--no-summary",
-            str(resolved_candidate),
-        ]
+        command.append("--fdpass")
+    command.extend(["--no-summary", str(resolved_candidate)])
 
     try:
         completed = subprocess.run(

@@ -117,15 +117,9 @@ def _require_service_auth(authorization: str | None) -> None:
 
 def _scanner_options() -> dict:
     options = {"scanner_binary": os.getenv("CLAMDSCAN_BIN", "clamdscan")}
-    host = os.getenv("CLAMD_HOST", "").strip()
-    if host:
-        try:
-            port = int(os.getenv("CLAMD_PORT", "3310"))
-        except ValueError as exc:
-            raise HTTPException(status_code=503, detail={"code": "SCANNER_CONFIG_INVALID"}) from exc
-        if not 1 <= port <= 65535:
-            raise HTTPException(status_code=503, detail={"code": "SCANNER_CONFIG_INVALID"})
-        options.update({"clamd_host": host, "clamd_port": port})
+    config_file = os.getenv("CLAMDSCAN_CONFIG_FILE", "").strip()
+    if config_file:
+        options["scanner_config_file"] = config_file
     return options
 
 

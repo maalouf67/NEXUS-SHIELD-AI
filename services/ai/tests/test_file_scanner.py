@@ -48,13 +48,25 @@ class QuarantineScannerTests(unittest.TestCase):
         self.assertFalse(result["execution_performed"])
 
     @patch("app.security.file_scanner.subprocess.run")
-    def test_remote_clamd_uses_tcp_stream_mode_without_fdpass(self, run):
+    def test_remote_clamd_uses_client_config_and_stream_transport(self, run):
         run.return_value = CompletedProcess(args=[], returncode=0, stdout="", stderr="")
-        scan_quarantined_file(self.sample_id, self.root, clamd_host="clamav", clamd_port=3310)
+        config = self.root / "clamdscan.conf"
+        config.write_text("TCPSocket 3310\\nTCPAddr clamav\\n", encoding="utf-8")
+        scan_quarantined_file(self.sample_id, self.root, scanner_config_file=config)
         command = run.call_args.args[0]
-        self.assertIn("--host=clamav", command)
-        self.assertIn("--port=3310", command)
+        self.assertIn(f"--config-file={config.resolve()}", command)
         self.assertNotIn("--fdpass", command)
+        self.assertNotIn("--host=clamav", command)
+        self.assertNotIn("--port=3310", command)
+        self.assertIn("--no-summary", command)
+
+    def test_missing_client_config_fails_closed(self):
+        with self.assertRaises(ScannerUnavailable):
+            scan_quarantined_file(
+                self.sample_id,
+                self.root,
+                scanner_config_file=self.root / "missing-clamdscan.conf",
+            )
 
     @patch("app.security.file_scanner.subprocess.run", side_effect=FileNotFoundError)
     def test_missing_scanner_fails_closed(self, run):
