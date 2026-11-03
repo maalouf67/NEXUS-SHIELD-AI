@@ -133,7 +133,7 @@ jobs:
   clamav-integration:
     name: Real Docker, ClamAV and web upload integration
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 45
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -172,15 +172,16 @@ jobs:
             fi
             sleep 2
           done
-          for attempt in $(seq 1 180); do
+          for attempt in $(seq 1 360); do
             state="$(docker inspect --format '{{.State.Health.Status}}' nexus-shield-clamav 2>/dev/null || true)"
             if [ "$state" = "healthy" ]; then
               echo "ClamAV daemon is healthy."
               break
             fi
-            if [ "$attempt" -eq 180 ]; then
-              docker compose logs clamav ai
-              echo "ClamAV did not become healthy." >&2
+            if [ "$attempt" -eq 360 ]; then
+              docker compose logs --tail 200 clamav ai
+              docker inspect --format '{{json .State.Health}}' nexus-shield-clamav || true
+              echo "ClamAV did not become healthy within the 30-minute startup allowance." >&2
               exit 1
             fi
             sleep 5
@@ -303,4 +304,10 @@ jobs:
 
       - name: Stop test containers and remove test volumes
         if: always()
+        env:
+          POSTGRES_DB: nexus_ci
+          POSTGRES_USER: nexus_ci
+          POSTGRES_PASSWORD: nexus_ci_password
+          NEXUS_SERVICE_API_TOKEN: nexus-ci-only-service-token-please-never-reuse
+          OPENAI_API_KEY: ""
         run: docker compose down --volumes --remove-orphans

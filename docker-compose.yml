@@ -33,17 +33,21 @@ services:
     container_name: nexus-shield-clamav
     restart: unless-stopped
     mem_limit: 4g
+    environment:
+      CLAMD_STARTUP_TIMEOUT: "1800"
     expose:
       - "3310"
     volumes:
       - clamav_database:/var/lib/clamav
       - ./infra/clamav/clamd.conf:/etc/clamav/clamd.conf:ro
     healthcheck:
-      test: ["CMD-SHELL", "clamdscan --host=127.0.0.1 --port=3310 --no-summary /etc/hostname >/dev/null 2>&1"]
+      test: ["CMD-SHELL", "clamdscan --ping=3:1 --host=127.0.0.1 --port=3310 --no-summary >/dev/null 2>&1"]
       interval: 30s
       timeout: 15s
-      retries: 10
-      start_period: 180s
+      retries: 5
+      # ClamAV may need a long first startup to initialize/update signatures.
+      # Keep failures inside this grace period from marking the container unhealthy.
+      start_period: 25m
 
   ai:
     build:
