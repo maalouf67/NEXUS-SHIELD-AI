@@ -30,6 +30,9 @@ jobs:
       - name: Install locked dependencies
         run: npm ci
 
+      - name: Audit dependencies for high-severity advisories
+        run: npm audit --audit-level=high
+
       - name: Build web and API workspaces
         run: npm run build
 
