@@ -17,7 +17,7 @@ const envSchema = z.object({
   JWT_SECRET: z.string().min(32),
   SESSION_SECRET: z.string().min(32),
   NEXUS_SERVICE_API_TOKEN: optionalServiceToken,
-  ALLOWED_ORIGINS: z.string().min(1),
+  ALLOWED_ORIGINS: z.string().default(''),
   AI_BASE_URL: z.string().url(),
   DATABASE_URL: z.string().url(),
   DATABASE_SSL: z.enum(['true', 'false']).default('true'),
