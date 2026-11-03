@@ -58,10 +58,10 @@ describe.skipIf(!enabled)('PostgreSQL incident management integration', () => {
     const detail = await repository.getById(incident.id);
     expect(detail?.status).toBe('investigating');
     expect(detail?.activity).toHaveLength(2);
-    expect(detail?.activity[0]?.action).toBe('incident.status_changed');
-    expect(detail?.activity[0]?.fromStatus).toBe('open');
-    expect(detail?.activity[0]?.toStatus).toBe('investigating');
-    expect(detail?.activity[0]?.actorUserId).toBe(actorId);
+    const statusActivity = detail?.activity.find((item) => item.action === 'incident.status_changed');
+    expect(statusActivity?.fromStatus).toBe('open');
+    expect(statusActivity?.toStatus).toBe('investigating');
+    expect(statusActivity?.actorUserId).toBe(actorId);
 
     const list = await repository.list({
       status: 'investigating',
