@@ -4,6 +4,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 
 type UserRole = 'admin' | 'analyst' | 'viewer';
 type User = { id: string; email: string; role: UserRole };
+type ManagedUser = { id: string; email: string; role: UserRole; isActive: boolean; createdAt: string };
 
 type ThreatSummary = {
   is_demo: boolean;
@@ -77,6 +78,10 @@ export default function HomePage() {
   const [alertIncidentId, setAlertIncidentId] = useState('');
   const [alertType, setAlertType] = useState('');
   const [alertRisk, setAlertRisk] = useState('50');
+  const [managedUsers, setManagedUsers] = useState<ManagedUser[]>([]);
+  const [newUserEmail, setNewUserEmail] = useState('');
+  const [newUserPassword, setNewUserPassword] = useState('');
+  const [newUserRole, setNewUserRole] = useState<'analyst' | 'viewer'>('analyst');
 
   const canManage = user?.role === 'admin' || user?.role === 'analyst';
   const isAdmin = user?.role === 'admin';
@@ -142,12 +147,25 @@ export default function HomePage() {
       } else {
         setSummary(null);
       }
+
+      if (user?.role === 'admin') {
+        const usersResponse = await fetch('/api/nexus/users', { cache: 'no-store' });
+        if (usersResponse.status === 401) {
+          window.location.replace('/login');
+          return;
+        }
+        if (!usersResponse.ok) throw new Error('The user directory could not be loaded.');
+        const usersData = await usersResponse.json() as { users: ManagedUser[] };
+        setManagedUsers(usersData.users ?? []);
+      } else {
+        setManagedUsers([]);
+      }
     } catch (error) {
       setLoadError(error instanceof Error ? error.message : 'Unable to load the dashboard.');
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [user]);
 
   useEffect(() => {
     if (user) void loadDashboard();
@@ -215,6 +233,34 @@ export default function HomePage() {
       await loadDashboard();
     } catch (error) {
       setActionError(error instanceof Error ? error.message : 'Alert recording failed.');
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function createManagedUser(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setIsSaving(true);
+    setActionError('');
+
+    try {
+      const response = await fetch('/api/nexus/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: newUserEmail,
+          password: newUserPassword,
+          role: newUserRole
+        })
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(result?.message ?? result?.error ?? 'User creation failed.');
+
+      setNewUserEmail('');
+      setNewUserPassword('');
+      await loadDashboard();
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'User creation failed.');
     } finally {
       setIsSaving(false);
     }
@@ -427,6 +473,40 @@ export default function HomePage() {
             {alerts.length === 0 ? <div className="empty-state">{isLoading ? 'Loading alerts…' : 'No alerts have been recorded yet.'}</div> : null}
           </div>
         </section>
+
+        {isAdmin ? (
+          <section className="section-block" id="team">
+            <div className="section-heading">
+              <div><div className="eyebrow">ACCESS CONTROL</div><h2>Team access <span className="count-pill">{managedUsers.length}</span></h2></div>
+              <span className="section-subtitle">Administrator only · Public registration disabled</span>
+            </div>
+
+            <form className="inline-form" onSubmit={createManagedUser}>
+              <div className="form-field grow"><label htmlFor="new-user-email">New user email</label><input id="new-user-email" type="email" autoComplete="off" maxLength={254} value={newUserEmail} onChange={(event) => setNewUserEmail(event.target.value)} placeholder="analyst@company.com" required /></div>
+              <div className="form-field grow"><label htmlFor="new-user-password">Temporary password</label><input id="new-user-password" type="password" autoComplete="new-password" minLength={12} maxLength={128} value={newUserPassword} onChange={(event) => setNewUserPassword(event.target.value)} placeholder="At least 12 characters" required /></div>
+              <div className="form-field"><label htmlFor="new-user-role">Role</label><select id="new-user-role" value={newUserRole} onChange={(event) => setNewUserRole(event.target.value as 'analyst' | 'viewer')}><option value="analyst">Analyst</option><option value="viewer">Viewer</option></select></div>
+              <button className="primary-button" type="submit" disabled={isSaving}>Create account</button>
+            </form>
+
+            <div className="data-table-wrap">
+              <table className="data-table">
+                <thead><tr><th>Account</th><th>Role</th><th>Status</th><th>Created</th></tr></thead>
+                <tbody>
+                  {managedUsers.map((member) => (
+                    <tr key={member.id}>
+                      <td><strong>{member.email}</strong><small className="row-id">{member.id.slice(0, 8)}</small></td>
+                      <td><span className="role-pill">{member.role}</span></td>
+                      <td><span className={`status-pill ${member.isActive ? 'status-contained' : 'status-closed'}`}>{member.isActive ? 'active' : 'disabled'}</span></td>
+                      <td>{displayDate(member.createdAt)}</td>
+                    </tr>
+                  ))}
+                  {managedUsers.length === 0 ? <tr><td colSpan={4} className="empty-cell">No provisioned accounts found.</td></tr> : null}
+                </tbody>
+              </table>
+            </div>
+            <p className="muted-note">New accounts are limited to Analyst and Viewer. Administrator accounts are provisioned only through the one-time server-side bootstrap command.</p>
+          </section>
+        ) : null}
 
         <section className="section-block intelligence-block" id="intelligence">
           <div><div className="eyebrow">AI INTELLIGENCE</div><h2>Analyst decision support</h2><p>The AI analysis endpoint is available for explicitly submitted information, but this dashboard does not trigger paid AI requests automatically. No scan or containment action runs from this panel.</p></div>
