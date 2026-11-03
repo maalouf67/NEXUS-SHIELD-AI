@@ -51,6 +51,17 @@ class QuarantineScannerTests(unittest.TestCase):
         with self.assertRaises(ScanInputError):
             scan_quarantined_file("../outside", self.root)
 
+    def test_content_hash_must_match_quarantine_identifier(self):
+        claimed_id = hashlib.sha256(b"different content").hexdigest()
+        (self.root / claimed_id).write_bytes(self.sample_bytes)
+        with self.assertRaises(ScanInputError):
+            scan_quarantined_file(claimed_id, self.root)
+
+    def test_missing_quarantine_directory_fails_closed(self):
+        missing = self.root / "missing"
+        with self.assertRaises(ScannerUnavailable):
+            scan_quarantined_file(self.sample_id, missing)
+
     @patch("app.security.file_scanner.subprocess.run")
     def test_oversized_sample_is_rejected_before_scanner_call(self, run):
         with self.assertRaises(ScanInputError):
