@@ -9,7 +9,7 @@ NEXUS SHIELD AI is an actively developed cyber-defense platform foundation combi
 - The cost-incurring AI threat-analysis endpoint also requires the same server-side service token; the dashboard does not trigger AI requests automatically.
 - The threat summary and dashboard examples are demo data, not live security telemetry.
 - AI threat analysis evaluates information explicitly supplied to the API. It is not a system scan or incident confirmation.
-- API bearer authentication and admin/analyst/viewer role checks are implemented. The web dashboard includes an initial authenticated flow and team management. A normalized event ingestion endpoint is ready for trusted upstream sources, but provider-specific connectors, live source configuration, and automated response are not yet in place.
+- API bearer authentication and admin/analyst/viewer role checks are implemented. The web dashboard includes an initial authenticated flow, team management, and incident/alert/event review. A normalized event ingestion endpoint is ready for trusted upstream sources, but provider-specific connectors, live source configuration, and automated response are not yet in place.
 - A PostgreSQL-backed asset inventory API now supports authenticated, transactional upserts and read-only analysis of stored relationships.
 
 Do not describe sample data or planned capabilities as active protection.
