@@ -161,6 +161,22 @@ The schema is in `database/init/004_incident_management.sql`. Docker applies it 
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/init/004_incident_management.sql
 ```
 
+## Alert review API
+
+The authenticated alert API provides:
+
+- `GET /api/alerts` — list alerts with status, minimum risk score, and bounded pagination filters. Viewers can read.
+- `POST /api/incidents/:id/alerts` — admin and analyst roles can record an alert from information they submit. The request includes a type and an integer risk score from 0–100.
+- `PATCH /api/alerts/:id/status` — admin and analyst roles can acknowledge or resolve alerts through allowed transitions. Reopening a resolved alert is admin-only.
+
+Alert creation and status changes are recorded in the linked incident audit history within the same database transaction. These endpoints record analyst-supplied information; they do not collect telemetry, verify a threat, run a scan, or perform containment.
+
+The alert-to-audit link is added by `database/init/005_alert_audit_link.sql`. For an existing database, back it up and apply the migration once:
+
+```bash
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/init/005_alert_audit_link.sql
+```
+
 ## Checks
 
 The API package exposes:
