@@ -12,9 +12,16 @@ This is the first native Android companion module for the NEXUS SHIELD AI projec
 
 ## Important security boundaries
 
-This is an **on-demand file-scanning companion**, not a continuously running device-wide antivirus. It scans only a file explicitly selected by the user. It does not inspect other apps' private storage, all device files, running processes, or network traffic. No VPN service, DNS filter, network blocklist, or always-on protection is enabled in this version.
+The Android companion provides two separate, user-controlled functions:
 
-A later Android network-protection phase may use Android's user-approved `VpnService` and a foreground notification, with an independently tested DNS/network filtering engine. It must not claim visibility into encrypted DNS, app-private content, or traffic outside its coverage. An iOS companion requires a separate implementation and Apple's applicable Network Extension entitlements.
+- **On-demand file scanning:** the user explicitly selects a file and submits it to the authenticated NEXUS scanner.
+- **DNS-only protection preview:** after an in-app privacy disclosure and Android's VPN consent dialog, a foreground `VpnService` routes IPv4 UDP DNS requests addressed to its local resolver through a local TUN interface. It forwards those queries to Quad9 Secure DNS using DNS-over-TLS (`dns.quad9.net:853`). Quad9 documents its 9.9.9.9 service as threat-blocking and DNSSEC-validating.
+
+The DNS VPN is deliberately narrow. It does **not** route all device traffic through NEXUS, inspect HTTPS contents, inspect other apps' private files, or guarantee coverage of apps that use custom DNS, DNS-over-HTTPS, Android Private DNS, IPv6 DNS, or DNS-over-TCP. The first implementation parses IPv4/UDP DNS packets only. When Quad9 cannot be reached, the service returns DNS SERVFAIL and does not fall back to plaintext DNS.
+
+Before enabling it, the app tells the user that DNS query names are sent to Quad9. NEXUS stores only a request counter and service status, not the queried domain names. A persistent Android VPN notification remains visible while the service runs. The service is manually started/stopped and explicitly opts out of Android's Always-on VPN setting until device-level reliability and restart behavior have been validated.
+
+This is not a complete device-wide antivirus or a full-packet VPN. An iOS companion requires a separate implementation using Apple's applicable Network Extension APIs and entitlements; it is not implemented yet.
 
 ## Server addresses
 
@@ -34,4 +41,4 @@ Open `apps/android` in Android Studio with JDK 17 and Android SDK 36, or use Gra
 gradle --no-daemon :app:assembleDebug
 ```
 
-The debug APK is a development artifact only. It is not signed for Play Store distribution and has not been installed on a physical phone as part of repository CI.
+The debug APK is a development artifact only. It is not signed for Play Store distribution and has not been installed on a physical phone as part of repository CI. CI runs local IPv4/UDP DNS packet-codec unit tests; it does not prove real-device VPN routing, Quad9 reachability, Private DNS interaction, battery use, or coverage on every Android version.
