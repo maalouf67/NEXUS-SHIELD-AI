@@ -6,7 +6,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends clamav-daemon \
+    && apt-get install -y --no-install-recommends clamav-daemon clamdscan \
+    && command -v clamdscan \
     && rm -rf /var/lib/apt/lists/*
 
 COPY services/ai/requirements.txt ./requirements.txt
