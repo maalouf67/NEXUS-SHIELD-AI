@@ -7,12 +7,15 @@ import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
+import android.net.VpnService;
 import android.os.Bundle;
+import android.os.Build;
 import android.provider.OpenableColumns;
 import android.text.InputType;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.Button;
+import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
@@ -32,6 +35,8 @@ import java.util.concurrent.Executors;
 
 public final class MainActivity extends Activity {
     private static final int PICK_FILE_REQUEST = 1201;
+    private static final int VPN_PERMISSION_REQUEST = 1202;
+    private static final String VPN_PREFS = "nexus_dns_protection";
     private static final long MAX_FILE_BYTES = 100L * 1024L * 1024L;
 
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
@@ -46,6 +51,10 @@ public final class MainActivity extends Activity {
     private TextView selectedFileText;
     private TextView statusText;
     private TextView historyText;
+    private TextView dnsProtectionStatus;
+    private CheckBox dnsDisclosureCheck;
+    private Button startDnsButton;
+    private Button stopDnsButton;
 
     // Short-lived API JWT is deliberately kept in memory only in this first build.
     private String accessToken;
@@ -124,6 +133,45 @@ public final class MainActivity extends Activity {
         statusCard.addView(statusText);
 
         addGap(page, 14);
+        LinearLayout dnsCard = card(page);
+        addSectionTitle(dnsCard, "CONTINUOUS DNS THREAT FILTERING");
+        TextView dnsDescription = text(
+            "When enabled, Android sends DNS lookups addressed to the NEXUS local resolver through a user-approved VPN interface. NEXUS forwards those requests using encrypted DNS-over-TLS to Quad9 Secure DNS (9.9.9.9), which provides threat-domain blocking and DNSSEC validation.",
+            12, Color.rgb(186, 204, 224), false);
+        dnsDescription.setLineSpacing(dp(4), 1.0f);
+        dnsCard.addView(dnsDescription);
+        addGap(dnsCard, 8);
+        TextView dnsDisclosure = text(
+            "PRIVACY AND COVERAGE: Domain names in DNS requests are sent to Quad9 for resolution. NEXUS does not save domain names. This first version routes IPv4 DNS over UDP to its local resolver only. It does not inspect HTTPS content, other app-private files, non-DNS traffic, or traffic using custom DNS-over-HTTPS/private resolvers. Some apps or DNS modes may bypass this coverage. If the secure resolver is unavailable, requests receive SERVFAIL; there is no plaintext DNS fallback.",
+            11, Color.rgb(255, 199, 124), false);
+        dnsDisclosure.setPadding(dp(12), dp(12), dp(12), dp(12));
+        dnsDisclosure.setBackground(roundRect(Color.rgb(37, 31, 24), dp(10)));
+        dnsCard.addView(dnsDisclosure);
+        dnsDisclosureCheck = new CheckBox(this);
+        dnsDisclosureCheck.setText("I understand and agree to send DNS requests to Quad9 Secure DNS.");
+        dnsDisclosureCheck.setTextColor(Color.rgb(225, 235, 247));
+        dnsDisclosureCheck.setTextSize(12);
+        dnsDisclosureCheck.setButtonTintList(android.content.res.ColorStateList.valueOf(Color.rgb(90, 222, 239)));
+        dnsDisclosureCheck.setOnCheckedChangeListener((button, checked) -> {
+            if (startDnsButton != null) startDnsButton.setEnabled(checked && !isDnsProtectionActive());
+        });
+        dnsCard.addView(dnsDisclosureCheck);
+        startDnsButton = button("Start DNS threat protection");
+        dnsCard.addView(startDnsButton);
+        startDnsButton.setEnabled(false);
+        startDnsButton.setAlpha(0.45f);
+        startDnsButton.setOnClickListener(view -> requestDnsProtection());
+        stopDnsButton = button("Stop DNS protection");
+        stopDnsButton.setBackground(roundRect(Color.rgb(255, 183, 115), dp(9)));
+        dnsCard.addView(stopDnsButton);
+        stopDnsButton.setOnClickListener(view -> stopDnsProtection());
+        dnsProtectionStatus = text("DNS protection is off. No network traffic is being routed through NEXUS.", 12, Color.rgb(186, 204, 224), false);
+        dnsProtectionStatus.setPadding(0, dp(10), 0, 0);
+        dnsProtectionStatus.setLineSpacing(dp(4), 1.0f);
+        dnsCard.addView(dnsProtectionStatus);
+        refreshDnsProtectionStatus();
+
+        addGap(page, 14);
         LinearLayout historyCard = card(page);
         addSectionTitle(historyCard, "YOUR RECENT SCANS");
         historyText = text("Your account's saved scan history will appear here after sign-in.", 11, Color.rgb(157, 178, 201), false);
@@ -135,7 +183,7 @@ public final class MainActivity extends Activity {
 
         addGap(page, 18);
         TextView limitation = text(
-            "IMPORTANT: This initial Android build scans only files you explicitly choose. Continuous VPN/network filtering and background device-wide antivirus are not active. Android and iOS restrict access to other apps' private data. Do not treat this app as full-device antivirus.",
+            "IMPORTANT: File scanning is on-demand. DNS threat filtering is a separate, optional VPN feature with limited IPv4 UDP DNS coverage. It does not provide full-packet VPN tunneling, HTTPS inspection, app-private file scanning, or guaranteed protection for every app. iOS protection is not implemented.",
             11, Color.rgb(255, 199, 124), false);
         limitation.setPadding(dp(14), dp(14), dp(14), dp(14));
         limitation.setBackground(roundRect(Color.rgb(37, 31, 24), dp(12)));
@@ -212,6 +260,14 @@ public final class MainActivity extends Activity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == VPN_PERMISSION_REQUEST) {
+            if (resultCode == RESULT_OK && dnsDisclosureCheck != null && dnsDisclosureCheck.isChecked()) {
+                startDnsProtectionService();
+            } else {
+                setDnsProtectionStatus("VPN permission was not granted. DNS protection remains off.");
+            }
+            return;
+        }
         if (requestCode != PICK_FILE_REQUEST || resultCode != RESULT_OK || data == null || data.getData() == null) return;
         Uri uri = data.getData();
         long size = getFileSize(uri);
@@ -500,6 +556,83 @@ public final class MainActivity extends Activity {
         if (bytes < 1024) return bytes + " B";
         if (bytes < 1024 * 1024) return String.format(java.util.Locale.US, "%.1f KB", bytes / 1024.0);
         return String.format(java.util.Locale.US, "%.1f MB", bytes / (1024.0 * 1024.0));
+    }
+
+    private boolean isDnsProtectionActive() {
+        return getSharedPreferences(VPN_PREFS, MODE_PRIVATE).getBoolean("active", false);
+    }
+
+    private void requestDnsProtection() {
+        if (dnsDisclosureCheck == null || !dnsDisclosureCheck.isChecked()) {
+            setDnsProtectionStatus("Review and accept the DNS privacy disclosure before enabling protection.");
+            return;
+        }
+        Intent permissionIntent = VpnService.prepare(this);
+        if (permissionIntent != null) {
+            startActivityForResult(permissionIntent, VPN_PERMISSION_REQUEST);
+        } else {
+            startDnsProtectionService();
+        }
+    }
+
+    private void startDnsProtectionService() {
+        Intent intent = new Intent(this, DnsProtectionService.class).setAction(DnsProtectionService.ACTION_START);
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(intent);
+            else startService(intent);
+            setDnsProtectionStatus("Starting the DNS-only VPN interface and secure resolver…");
+        } catch (Exception error) {
+            setDnsProtectionStatus("Could not start DNS protection: " + message(error));
+        }
+    }
+
+    private void stopDnsProtection() {
+        Intent intent = new Intent(this, DnsProtectionService.class).setAction(DnsProtectionService.ACTION_STOP);
+        try {
+            startService(intent);
+            setDnsProtectionStatus("Stopping DNS protection…");
+        } catch (Exception error) {
+            setDnsProtectionStatus("Could not stop DNS protection: " + message(error));
+        }
+    }
+
+    private void refreshDnsProtectionStatus() {
+        if (dnsProtectionStatus == null || startDnsButton == null || stopDnsButton == null) return;
+        android.content.SharedPreferences prefs = getSharedPreferences(VPN_PREFS, MODE_PRIVATE);
+        boolean active = prefs.getBoolean("active", false);
+        long queries = prefs.getLong("query_count", 0L);
+        String error = prefs.getString("last_error", "");
+        if (active) {
+            setDnsProtectionStatus("DNS-only VPN active. " + queries + " DNS requests handled through encrypted Quad9 DNS-over-TLS. No domain names are stored by NEXUS.");
+        } else if (error != null && !error.isEmpty()) {
+            setDnsProtectionStatus("DNS protection is off. Last service status: " + error);
+        } else {
+            setDnsProtectionStatus("DNS protection is off. No network traffic is being routed through NEXUS.");
+        }
+        startDnsButton.setEnabled(!active && dnsDisclosureCheck != null && dnsDisclosureCheck.isChecked());
+        startDnsButton.setAlpha(startDnsButton.isEnabled() ? 1.0f : 0.45f);
+        stopDnsButton.setEnabled(active);
+        stopDnsButton.setAlpha(active ? 1.0f : 0.45f);
+    }
+
+    private void setDnsProtectionStatus(String status) {
+        if (dnsProtectionStatus != null) dnsProtectionStatus.setText(status);
+        refreshDnsProtectionButtons();
+    }
+
+    private void refreshDnsProtectionButtons() {
+        if (startDnsButton == null || stopDnsButton == null) return;
+        boolean active = isDnsProtectionActive();
+        startDnsButton.setEnabled(!active && dnsDisclosureCheck != null && dnsDisclosureCheck.isChecked());
+        startDnsButton.setAlpha(startDnsButton.isEnabled() ? 1.0f : 0.45f);
+        stopDnsButton.setEnabled(active);
+        stopDnsButton.setAlpha(active ? 1.0f : 0.45f);
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        refreshDnsProtectionStatus();
     }
 
     @Override
