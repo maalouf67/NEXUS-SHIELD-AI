@@ -94,7 +94,7 @@ The response explicitly marks the operation as read-only, confirms that no exter
 
 The Next.js web console now includes a sign-in screen at `/login`. The browser posts credentials to the same-origin Next.js route. The BFF sends them to the API server, then stores the short-lived JWT in an `HttpOnly`, `SameSite=Strict` cookie. The JWT is not returned to browser JavaScript or stored in local storage.
 
-The browser calls the same-origin `/api/nexus/*` proxy. The proxy forwards only allow-listed incidents, alerts, and threat-summary requests with the session bearer token. It applies an Origin check to state-changing requests and never accepts an arbitrary upstream URL from the browser.
+The browser calls the same-origin `/api/nexus/*` proxy. The proxy forwards only allow-listed incidents, alerts, and threat-summary requests with the session bearer token. It applies an Origin check to state-changing requests and never accepts an arbitrary upstream URL from the browser. The manual `POST /api/ai/threat-analysis` route first verifies the session and admin/analyst role, then calls the protected API with a server-only `NEXUS_SERVICE_API_TOKEN`. Configure the same strong service token in both the API and trusted Next.js server environments. The AI endpoint applies a limit of 10 requests per user per 15 minutes. The OpenAI key remains on the API server only.
 
 For local development, create `apps/web/.env.local` and set:
 
@@ -103,6 +103,14 @@ NEXT_PUBLIC_API_BASE_URL="http://127.0.0.1:4000"
 ```
 
 The BFF reads this value server-side as a fallback when `API_BASE_URL` is not set. The API's CORS allow-list is empty by default because browser requests use the same-origin BFF; leave `ALLOWED_ORIGINS` empty unless a separately authorized browser origin must call the API directly. For hosted environments, prefer a server-only `API_BASE_URL` value and keep secrets out of `NEXT_PUBLIC_*` variables. The JWT cookie expires after 15 minutes; sign-out clears the browser cookie. Because the API uses short-lived stateless access tokens, a signed-out token may remain cryptographically valid until its expiry, but the browser no longer retains it.
+
+## Manual AI threat analysis
+
+The web dashboard provides an explicit analyst-submitted AI analysis form. It sends only the target label, source label, optional signal type, and analyst-provided details. It does not scan a device, collect telemetry, or persist the request. Admin and analyst roles can use it; viewers cannot.
+
+The Next.js server verifies the user's JWT against `/api/auth/me` before forwarding the request to the protected API. The API applies a limit of 10 AI requests per authenticated user per 15 minutes. The endpoint returns a structured classification, model-assigned score, findings, recommendations, explanation, and a disclaimer. These outputs are model-generated assessments of the supplied information, not proof of a security incident.
+
+Configure `OPENAI_API_KEY` only in the API server environment. Configure the same `NEXUS_SERVICE_API_TOKEN` in the API and trusted Next.js server environments. Neither credential belongs in browser-visible `NEXT_PUBLIC_*` variables. The dashboard does not call the AI endpoint on page load.
 
 ## Human user authentication and roles
 
