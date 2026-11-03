@@ -13,7 +13,8 @@
     "lint": "npm run lint --workspace @nexus-shield/web && npm run lint --workspace @nexus-shield/api",
     "test": "npm run test --workspace @nexus-shield/api --if-present",
     "db:up": "docker compose up -d postgres",
-    "db:down": "docker compose down"
+    "db:down": "docker compose down",
+    "dev:web-api": "concurrently \"npm run dev --workspace @nexus-shield/web\" \"npm run dev --workspace @nexus-shield/api\""
   },
   "devDependencies": {
     "concurrently": "^9.0.1",

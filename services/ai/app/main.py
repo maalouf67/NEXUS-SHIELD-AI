@@ -12,12 +12,16 @@ from app.security.file_scanner import (
     ScannerUnavailable,
     ScannerTimeout,
     ScannerExecutionError,
+    UploadTooLarge,
+    DEFAULT_MAX_FILE_BYTES,
     scan_quarantined_file,
+    stage_uploaded_file,
 )
 
 import httpx
-from fastapi import FastAPI, HTTPException, Header
+from fastapi import FastAPI, HTTPException, Header, Request
 from pydantic import BaseModel, Field
+from starlette.datastructures import UploadFile as StarletteUploadFile
 
 
 logging.basicConfig(level=logging.INFO)
@@ -65,8 +69,7 @@ async def health():
     }
 
 
-@app.post("/scan-file")
-async def scan_file(request: ScanFileRequest, authorization: str | None = Header(default=None)):
+def _require_service_auth(authorization: str | None) -> None:
     expected_token = os.getenv("NEXUS_SERVICE_API_TOKEN", "")
     if len(expected_token) < 32:
         raise HTTPException(
@@ -79,19 +82,53 @@ async def scan_file(request: ScanFileRequest, authorization: str | None = Header
     if not provided_token or not hmac.compare_digest(provided_token, expected_token):
         raise HTTPException(status_code=401, detail={"code": "UNAUTHORIZED"})
 
+
+def _scanner_options() -> dict:
+    options = {"scanner_binary": os.getenv("CLAMDSCAN_BIN", "clamdscan")}
+    host = os.getenv("CLAMD_HOST", "").strip()
+    if host:
+        try:
+            port = int(os.getenv("CLAMD_PORT", "3310"))
+        except ValueError as exc:
+            raise HTTPException(status_code=503, detail={"code": "SCANNER_CONFIG_INVALID"}) from exc
+        if not 1 <= port <= 65535:
+            raise HTTPException(status_code=503, detail={"code": "SCANNER_CONFIG_INVALID"})
+        options.update({"clamd_host": host, "clamd_port": port})
+    return options
+
+
+def _quarantine_path() -> str:
     quarantine_dir = os.getenv("NEXUS_QUARANTINE_DIR", "")
     if not quarantine_dir:
         raise HTTPException(
             status_code=503,
             detail={"code": "QUARANTINE_NOT_CONFIGURED"}
         )
+    return quarantine_dir
+
+
+def _max_upload_bytes() -> int:
+    raw_limit = os.getenv("NEXUS_MAX_UPLOAD_BYTES", str(DEFAULT_MAX_FILE_BYTES))
+    try:
+        limit = int(raw_limit)
+    except ValueError as exc:
+        raise HTTPException(status_code=503, detail={"code": "UPLOAD_LIMIT_CONFIG_INVALID"}) from exc
+    if limit < 1 or limit > DEFAULT_MAX_FILE_BYTES:
+        raise HTTPException(status_code=503, detail={"code": "UPLOAD_LIMIT_CONFIG_INVALID"})
+    return limit
+
+
+@app.post("/scan-file")
+async def scan_file(request: ScanFileRequest, authorization: str | None = Header(default=None)):
+    _require_service_auth(authorization)
+    quarantine_dir = _quarantine_path()
 
     try:
         result = await run_in_threadpool(
             scan_quarantined_file,
             request.sample_id,
             quarantine_dir,
-            scanner_binary=os.getenv("CLAMDSCAN_BIN", "clamdscan"),
+            **_scanner_options(),
         )
         return {"status": "ok", "scan": result}
     except ScanInputError as exc:
@@ -99,12 +136,80 @@ async def scan_file(request: ScanFileRequest, authorization: str | None = Header
     except QuarantineFileNotFound:
         raise HTTPException(status_code=404, detail={"code": "SAMPLE_NOT_FOUND"})
     except ScannerUnavailable:
-        raise HTTPException(status_code=503, detail={"code": "SCANNER_UNAVAILABLE"})
+        raise HTTPException(status_code=503, detail={"code": "SCANNER_UNAVAILABLE", "sample_id": request.sample_id})
     except ScannerTimeout:
-        raise HTTPException(status_code=504, detail={"code": "SCAN_TIMEOUT"})
+        raise HTTPException(status_code=504, detail={"code": "SCAN_TIMEOUT", "sample_id": request.sample_id})
     except ScannerExecutionError:
-        raise HTTPException(status_code=502, detail={"code": "SCANNER_ERROR"})
+        raise HTTPException(status_code=502, detail={"code": "SCANNER_ERROR", "sample_id": request.sample_id})
 
+
+@app.post("/scan-upload")
+async def scan_upload(request: Request, authorization: str | None = Header(default=None)):
+    _require_service_auth(authorization)
+    quarantine_dir = _quarantine_path()
+    max_upload_bytes = _max_upload_bytes()
+
+    content_type = request.headers.get("content-type", "")
+    if not content_type.lower().startswith("multipart/form-data;") or "boundary=" not in content_type.lower():
+        raise HTTPException(status_code=415, detail={"code": "MULTIPART_REQUIRED"})
+
+    raw_length = request.headers.get("content-length")
+    if raw_length is None:
+        raise HTTPException(status_code=411, detail={"code": "CONTENT_LENGTH_REQUIRED"})
+    try:
+        content_length = int(raw_length)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail={"code": "INVALID_CONTENT_LENGTH"}) from exc
+    if content_length < 1:
+        raise HTTPException(status_code=400, detail={"code": "EMPTY_REQUEST"})
+    if content_length > max_upload_bytes + 64 * 1024:
+        raise HTTPException(status_code=413, detail={"code": "UPLOAD_TOO_LARGE"})
+
+    try:
+        form = await request.form(max_files=1, max_fields=0, max_part_size=64 * 1024)
+    except Exception:
+        raise HTTPException(status_code=400, detail={"code": "INVALID_MULTIPART"})
+    try:
+        if set(form.keys()) != {"file"} or len(form.getlist("file")) != 1:
+            raise HTTPException(status_code=400, detail={"code": "ONE_FILE_REQUIRED"})
+        upload = form.get("file")
+        if not isinstance(upload, StarletteUploadFile):
+            raise HTTPException(status_code=400, detail={"code": "INVALID_FILE_FIELD"})
+
+        try:
+            staged = await run_in_threadpool(
+                stage_uploaded_file,
+                upload.file,
+                quarantine_dir,
+                max_file_bytes=max_upload_bytes,
+            )
+        except UploadTooLarge:
+            raise HTTPException(status_code=413, detail={"code": "UPLOAD_TOO_LARGE"})
+        except ScanInputError as exc:
+            raise HTTPException(status_code=400, detail={"code": "INVALID_UPLOAD", "message": str(exc)})
+        except ScannerUnavailable:
+            raise HTTPException(status_code=503, detail={"code": "QUARANTINE_UNAVAILABLE"})
+
+        sample_id = staged["sample_id"]
+        try:
+            result = await run_in_threadpool(
+                scan_quarantined_file,
+                sample_id,
+                quarantine_dir,
+                max_file_bytes=max_upload_bytes,
+                **_scanner_options(),
+            )
+            return {"status": "ok", "scan": result}
+        except ScannerUnavailable:
+            raise HTTPException(status_code=503, detail={"code": "SCANNER_UNAVAILABLE", "sample_id": sample_id})
+        except ScannerTimeout:
+            raise HTTPException(status_code=504, detail={"code": "SCAN_TIMEOUT", "sample_id": sample_id})
+        except ScannerExecutionError:
+            raise HTTPException(status_code=502, detail={"code": "SCANNER_ERROR", "sample_id": sample_id})
+        except ScanInputError:
+            raise HTTPException(status_code=400, detail={"code": "INVALID_QUARANTINED_SAMPLE", "sample_id": sample_id})
+    finally:
+        await form.close()
 
 @app.post("/analyze")
 async def analyze(request: ThreatRequest):
