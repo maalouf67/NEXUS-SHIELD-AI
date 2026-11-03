@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.ref }}-${{ github.sha }}
   cancel-in-progress: true
 
 jobs:
@@ -116,9 +116,9 @@ jobs:
         with:
           gradle-version: "9.6.0"
       - name: Install Android SDK 36
-        run: |
-          yes | "\${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null
-          "\${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0"
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platforms;android-36 build-tools;36.0.0'
       - name: Build Android debug APK
         working-directory: apps/android
         run: gradle --no-daemon :app:assembleDebug
@@ -131,13 +131,28 @@ jobs:
           retention-days: 7
 
   clamav-integration:
-    name: Real Docker and ClamAV scan integration
+    name: Real Docker, ClamAV and web upload integration
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 35
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-      - name: Start ClamAV and NEXUS AI containers
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install Node.js dependencies
+        run: npm ci
+
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+
+      - name: Start PostgreSQL, ClamAV and NEXUS AI containers
         env:
           POSTGRES_DB: nexus_ci
           POSTGRES_USER: nexus_ci
@@ -145,7 +160,18 @@ jobs:
           NEXUS_SERVICE_API_TOKEN: nexus-ci-only-service-token-please-never-reuse
           OPENAI_API_KEY: ""
         run: |
-          docker compose up -d --build clamav ai
+          docker compose up -d --build postgres clamav ai
+          for attempt in $(seq 1 60); do
+            if pg_isready -h 127.0.0.1 -p 5432 -U nexus_ci -d nexus_ci >/dev/null 2>&1; then
+              echo "PostgreSQL is ready."
+              break
+            fi
+            if [ "$attempt" -eq 60 ]; then
+              docker compose logs postgres
+              exit 1
+            fi
+            sleep 2
+          done
           for attempt in $(seq 1 180); do
             state="$(docker inspect --format '{{.State.Health.Status}}' nexus-shield-clamav 2>/dev/null || true)"
             if [ "$state" = "healthy" ]; then
@@ -171,30 +197,110 @@ jobs:
             fi
             sleep 2
           done
-      - name: Scan a benign fixture with the real ClamAV daemon
+
+      - name: Verify Compose migrations and seed isolated test users
         env:
-          NEXUS_SERVICE_API_TOKEN: nexus-ci-only-service-token-please-never-reuse
-          NEXUS_CI_USER_ID: "00000000-0000-4000-8000-000000000001"
+          DATABASE_URL: postgresql://nexus_ci:nexus_ci_password@127.0.0.1:5432/nexus_ci
+          PGPASSWORD: nexus_ci_password
         run: |
-          printf '%s\n' 'NEXUS SHIELD AI benign ClamAV integration fixture.' > /tmp/nexus-clean.txt
+          for attempt in $(seq 1 60); do
+            if psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -Atqc "SELECT to_regclass('public.malware_scan_runs')" | grep -q malware_scan_runs; then
+              echo "PostgreSQL migrations completed."
+              break
+            fi
+            if [ "$attempt" -eq 60 ]; then
+              docker compose logs postgres
+              echo "Malware scan history migration was not applied." >&2
+              exit 1
+            fi
+            sleep 2
+          done
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
+          INSERT INTO users (id, email, role, password_hash, is_active)
+          VALUES
+            ('00000000-0000-4000-8000-000000000001', 'scan-admin@example.test', 'admin', NULL, TRUE),
+            ('00000000-0000-4000-8000-000000000002', 'scan-viewer@example.test', 'viewer', NULL, TRUE);
+          SQL
+
+      - name: Start the API and Next.js web console
+        env:
+          NODE_ENV: development
+          PORT: "4000"
+          HOST: "127.0.0.1"
+          DATABASE_URL: postgresql://nexus_ci:nexus_ci_password@127.0.0.1:5432/nexus_ci
+          DATABASE_SSL: "false"
+          JWT_SECRET: nexus-ci-only-jwt-secret-never-reuse-123456789
+          SESSION_SECRET: nexus-ci-only-session-secret-never-reuse-123456789
+          NEXUS_SERVICE_API_TOKEN: nexus-ci-only-service-token-please-never-reuse
+          AI_BASE_URL: http://127.0.0.1:8001
+          API_BASE_URL: http://127.0.0.1:4000
+          NEXT_TELEMETRY_DISABLED: "1"
+        run: |
+          npm run dev --workspace @nexus-shield/api > /tmp/nexus-api.log 2>&1 &
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent http://127.0.0.1:4000/health >/dev/null; then
+              echo "NEXUS API is ready."
+              break
+            fi
+            if [ "$attempt" -eq 60 ]; then
+              cat /tmp/nexus-api.log
+              exit 1
+            fi
+            sleep 2
+          done
+          npm run dev --workspace @nexus-shield/web > /tmp/nexus-web.log 2>&1 &
+          for attempt in $(seq 1 90); do
+            if curl --fail --silent http://127.0.0.1:3000/login >/dev/null; then
+              echo "Next.js web console is ready."
+              break
+            fi
+            if [ "$attempt" -eq 90 ]; then
+              cat /tmp/nexus-web.log
+              exit 1
+            fi
+            sleep 2
+          done
+
+      - name: Scan a benign file through the Next.js web upload gateway
+        env:
+          JWT_SECRET: nexus-ci-only-jwt-secret-never-reuse-123456789
+        run: |
+          TOKEN="$(node -e "const jwt=require('jsonwebtoken'); process.stdout.write(jwt.sign({email:'scan-admin@example.test',role:'admin'}, process.env.JWT_SECRET, {algorithm:'HS256',subject:'00000000-0000-4000-8000-000000000001',issuer:'nexus-shield-ai',audience:'nexus-shield-ai-api',expiresIn:'15m'}))")"
+          printf '%s\n' 'NEXUS SHIELD AI benign web gateway test fixture.' > /tmp/nexus-clean.txt
           curl --fail --silent --show-error \
-            -H "Authorization: Bearer $NEXUS_SERVICE_API_TOKEN" \
-            -H "X-NEXUS-USER-ID: $NEXUS_CI_USER_ID" \
+            -H "Cookie: nexus_access_token=$TOKEN" \
+            -H "Origin: http://127.0.0.1:3000" \
             -F "file=@/tmp/nexus-clean.txt;filename=benign.txt" \
-            http://127.0.0.1:8001/scan-upload > /tmp/nexus-clean-result.json
-          python -c "import json; d=json.load(open('/tmp/nexus-clean-result.json')); assert d['scan']['verdict'] == 'clean', d; print('Benign fixture: clean')"
-      - name: Detect the harmless EICAR antivirus test string
+            http://127.0.0.1:3000/api/security/scan > /tmp/nexus-clean-result.json
+          python -c "import json; d=json.load(open('/tmp/nexus-clean-result.json')); assert d['scan']['verdict'] == 'clean', d; assert d['history_persisted'] is True, d; print('Web gateway benign scan: clean; history saved')"
+
+      - name: Detect the harmless EICAR test string through the web gateway
         env:
-          NEXUS_SERVICE_API_TOKEN: nexus-ci-only-service-token-please-never-reuse
-          NEXUS_CI_USER_ID: "00000000-0000-4000-8000-000000000001"
+          JWT_SECRET: nexus-ci-only-jwt-secret-never-reuse-123456789
         run: |
+          TOKEN="$(node -e "const jwt=require('jsonwebtoken'); process.stdout.write(jwt.sign({email:'scan-admin@example.test',role:'admin'}, process.env.JWT_SECRET, {algorithm:'HS256',subject:'00000000-0000-4000-8000-000000000001',issuer:'nexus-shield-ai',audience:'nexus-shield-ai-api',expiresIn:'15m'}))")"
           printf '%s' 'X5O!P%@AP[4\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*' > /tmp/eicar.com
           curl --fail --silent --show-error \
-            -H "Authorization: Bearer $NEXUS_SERVICE_API_TOKEN" \
-            -H "X-NEXUS-USER-ID: $NEXUS_CI_USER_ID" \
+            -H "Cookie: nexus_access_token=$TOKEN" \
+            -H "Origin: http://127.0.0.1:3000" \
             -F "file=@/tmp/eicar.com;filename=eicar.com" \
-            http://127.0.0.1:8001/scan-upload > /tmp/nexus-eicar-result.json
-          python -c "import json; d=json.load(open('/tmp/nexus-eicar-result.json')); assert d['scan']['verdict'] == 'detected', d; print('EICAR test fixture: detected by ClamAV')"
+            http://127.0.0.1:3000/api/security/scan > /tmp/nexus-eicar-result.json
+          python -c "import json; d=json.load(open('/tmp/nexus-eicar-result.json')); assert d['scan']['verdict'] == 'detected', d; assert d['history_persisted'] is True, d; print('Web gateway EICAR scan: detected; history saved')"
+
+      - name: Verify owner-scoped scan history from the web gateway
+        env:
+          JWT_SECRET: nexus-ci-only-jwt-secret-never-reuse-123456789
+        run: |
+          ADMIN_TOKEN="$(node -e "const jwt=require('jsonwebtoken'); process.stdout.write(jwt.sign({email:'scan-admin@example.test',role:'admin'}, process.env.JWT_SECRET, {algorithm:'HS256',subject:'00000000-0000-4000-8000-000000000001',issuer:'nexus-shield-ai',audience:'nexus-shield-ai-api',expiresIn:'15m'}))")"
+          VIEWER_TOKEN="$(node -e "const jwt=require('jsonwebtoken'); process.stdout.write(jwt.sign({email:'scan-viewer@example.test',role:'viewer'}, process.env.JWT_SECRET, {algorithm:'HS256',subject:'00000000-0000-4000-8000-000000000002',issuer:'nexus-shield-ai',audience:'nexus-shield-ai-api',expiresIn:'15m'}))")"
+          curl --fail --silent --show-error \
+            -H "Cookie: nexus_access_token=$ADMIN_TOKEN" \
+            http://127.0.0.1:3000/api/security/scan?limit=10 > /tmp/nexus-admin-history.json
+          curl --fail --silent --show-error \
+            -H "Cookie: nexus_access_token=$VIEWER_TOKEN" \
+            http://127.0.0.1:3000/api/security/scan?limit=10 > /tmp/nexus-viewer-history.json
+          python -c "import json; a=json.load(open('/tmp/nexus-admin-history.json')); v=json.load(open('/tmp/nexus-viewer-history.json')); assert a['pagination']['total'] == 2, a; assert {x['verdict'] for x in a['scans']} == {'clean','detected'}, a; assert v['pagination']['total'] == 0, v; print('Owner isolation: admin sees two scans; another user sees none')"
+
       - name: Stop test containers and remove test volumes
         if: always()
         run: docker compose down --volumes --remove-orphans
