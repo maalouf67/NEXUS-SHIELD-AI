@@ -17,6 +17,24 @@ jobs:
   api-web:
     name: Node.js build and API tests
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: nexus_test
+          POSTGRES_PASSWORD: nexus_test_password
+          POSTGRES_DB: nexus_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U nexus_test -d nexus_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://nexus_test:nexus_test_password@127.0.0.1:5432/nexus_test
+      DATABASE_SSL: "false"
+      NEXUS_RUN_DB_INTEGRATION: "true"
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -32,6 +50,19 @@ jobs:
 
       - name: Audit dependencies for high-severity advisories
         run: npm audit --audit-level=high
+
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+
+      - name: Apply database migrations to temporary CI database
+        env:
+          PGPASSWORD: nexus_test_password
+        run: |
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/init/001_init.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/init/002_attack_path_inventory.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/init/003_user_auth.sql
 
       - name: Build web and API workspaces
         run: npm run build
