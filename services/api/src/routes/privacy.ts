@@ -35,8 +35,8 @@ privacyRouter.post('/privacy/scan', requirePrivacyConsent, async (req, res) => {
   try {
     const result = await privacyGuardService.evaluate(parsed.data);
     return res.status(200).json({
-      status: 'ok',
-      ...result
+      ...result,
+      status: 'ok'
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'PRIVACY_GUARD_FAILED';
