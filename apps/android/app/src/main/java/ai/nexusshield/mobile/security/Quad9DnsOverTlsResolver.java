@@ -37,9 +37,10 @@ public final class Quad9DnsOverTlsResolver {
             throw new IOException("Could not protect the upstream DNS socket from the local VPN.");
         }
 
-        transport.connect(new InetSocketAddress(RESOLVER_IP, TLS_PORT), CONNECT_TIMEOUT_MS);
-        try (SSLSocket tls = (SSLSocket) SSLSocketFactory.getDefault()
-                .createSocket(transport, TLS_HOSTNAME, TLS_PORT, true)) {
+        try {
+            transport.connect(new InetSocketAddress(RESOLVER_IP, TLS_PORT), CONNECT_TIMEOUT_MS);
+            SSLSocketFactory factory = (SSLSocketFactory) SSLSocketFactory.getDefault();
+            try (SSLSocket tls = (SSLSocket) factory.createSocket(transport, TLS_HOSTNAME, TLS_PORT, true)) {
             tls.setSoTimeout(READ_TIMEOUT_MS);
             SSLParameters parameters = tls.getSSLParameters();
             parameters.setEndpointIdentificationAlgorithm("HTTPS");
@@ -71,6 +72,7 @@ public final class Quad9DnsOverTlsResolver {
                 throw new IOException("Quad9 returned a mismatched DNS response.");
             }
             return response;
+            }
         } catch (IOException error) {
             try { transport.close(); } catch (IOException ignored) { }
             throw error;
