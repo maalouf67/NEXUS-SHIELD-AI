@@ -1,27 +1,32 @@
-version: '3.9'
 services:
   postgres:
     image: postgres:16-alpine
     container_name: nexus-shield-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_DB: nexus_shield_ai
-      POSTGRES_USER: nexus_user
-      POSTGRES_PASSWORD: change_me_securely
+      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB in the root .env file}
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in the root .env file}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in the root .env file}
     ports:
-      - '5432:5432'
+      - '127.0.0.1:5432:5432'
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./database/init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   adminer:
     image: adminer:latest
     container_name: nexus-shield-adminer
     restart: unless-stopped
     ports:
-      - '8080:8080'
+      - '127.0.0.1:8080:8080'
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
 
 volumes:
   postgres_data:
