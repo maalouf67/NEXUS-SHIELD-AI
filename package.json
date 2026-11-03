@@ -8,7 +8,7 @@
     "packages/shared"
   ],
   "scripts": {
-    "dev": "concurrently \"npm run dev --workspace @nexus-shield/web\" \"npm run dev --workspace @nexus-shield/api\" \"cd services/ai && uvicorn app.main:app --reload --host 0.0.0.0 --port 8001\"",
+    "dev": "concurrently \"npm run dev --workspace @nexus-shield/web\" \"npm run dev --workspace @nexus-shield/api\" \"cd services/ai && uvicorn app.main:app --reload --host 127.0.0.1 --port 8001\"",
     "build": "npm run build --workspace @nexus-shield/web && npm run build --workspace @nexus-shield/api",
     "lint": "npm run lint --workspace @nexus-shield/web && npm run lint --workspace @nexus-shield/api",
     "test": "npm run test --workspace @nexus-shield/api --if-present",
