@@ -1,9 +1,9 @@
 'use client';
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import { useSession } from '../hooks/use-session';
 
 type UserRole = 'admin' | 'analyst' | 'viewer';
-type User = { id: string; email: string; role: UserRole };
 type ManagedUser = { id: string; email: string; role: UserRole; isActive: boolean; createdAt: string };
 
 type ThreatSummary = {
@@ -91,8 +91,8 @@ function displayDate(value: string) {
 }
 
 export default function HomePage() {
-  const [user, setUser] = useState<User | null>(null);
-  const [checkingSession, setCheckingSession] = useState(true);
+  const { user, status: sessionStatus, error: sessionError } = useSession();
+  const checkingSession = sessionStatus === 'checking';
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [securityEvents, setSecurityEvents] = useState<SecurityEvent[]>([]);
@@ -126,33 +126,14 @@ export default function HomePage() {
   const isAdmin = user?.role === 'admin';
 
   useEffect(() => {
-    let active = true;
-
-    async function checkSession() {
-      try {
-        const response = await fetch('/api/auth/me', { cache: 'no-store' });
-        if (!response.ok) {
-          window.location.replace('/login');
-          return;
-        }
-        const result = await response.json();
-        if (active) {
-          setUser(result.user as User);
-          setCheckingSession(false);
-        }
-      } catch {
-        if (active) {
-          setLoadError('Could not verify your secure session.');
-          setCheckingSession(false);
-        }
-      }
+    if (sessionStatus === 'anonymous') {
+      window.location.replace('/login');
+    } else if (sessionStatus === 'unavailable') {
+      setLoadError(sessionError || 'Could not verify your secure session.');
     }
+  }, [sessionStatus, sessionError]);
 
-    void checkSession();
-    return () => {
-      active = false;
-    };
-  }, []);
+
 
   const loadDashboard = useCallback(async () => {
     setIsLoading(true);

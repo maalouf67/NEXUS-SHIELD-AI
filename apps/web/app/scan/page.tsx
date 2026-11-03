@@ -1,10 +1,12 @@
 'use client';
 
 import { FormEvent, useEffect, useState } from 'react';
+import { useSession } from '../../hooks/use-session';
+import { fetchScanHistory } from '../../services/nexus-api';
+import { MAX_FILE_BYTES, canSubmitFileScan } from '../../data/security';
+import { formatBytes, formatDate } from '../../utils/format';
+import { StatusBadge } from '../../components/ui/status-badge';
 
-const MAX_FILE_BYTES = 100 * 1024 * 1024;
-
-type User = { id: string; email: string; role: 'admin' | 'analyst' | 'viewer' };
 type ScanResult = {
   sample_id: string;
   sha256: string;
@@ -36,15 +38,10 @@ type ApiResponse = {
   scan?: ScanResult;
 };
 
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return bytes + ' B';
-  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-  return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
-}
 
 export default function MalwareScanPage() {
-  const [user, setUser] = useState<User | null>(null);
-  const [checkingSession, setCheckingSession] = useState(true);
+  const { user, status: sessionStatus, error: sessionError } = useSession();
+  const checkingSession = sessionStatus === 'checking';
   const [file, setFile] = useState<File | null>(null);
   const [scan, setScan] = useState<ScanResult | null>(null);
   const [pendingSampleId, setPendingSampleId] = useState('');
@@ -54,32 +51,18 @@ export default function MalwareScanPage() {
   const [historyError, setHistoryError] = useState('');
 
   useEffect(() => {
-    let active = true;
-    async function checkSession() {
-      try {
-        const response = await fetch('/api/auth/me', { cache: 'no-store' });
-        if (!response.ok) {
-          window.location.replace('/login');
-          return;
-        }
-        const payload = await response.json();
-        if (active) setUser(payload.user as User);
-      } catch {
-        if (active) setError('Your secure session could not be verified.');
-      } finally {
-        if (active) setCheckingSession(false);
-      }
+    if (sessionStatus === 'anonymous') {
+      window.location.replace('/login');
+    } else if (sessionStatus === 'unavailable') {
+      setError(sessionError || 'Your secure session could not be verified.');
     }
-    void checkSession();
-    return () => { active = false; };
-  }, []);
+  }, [sessionStatus, sessionError]);
+
+
 
   async function loadHistory() {
     try {
-      const response = await fetch('/api/security/scan?limit=10', { cache: 'no-store' });
-      if (!response.ok) throw new Error('Scan history is currently unavailable.');
-      const result = await response.json() as { scans?: ScanHistoryItem[] };
-      setHistory(result.scans ?? []);
+      setHistory(await fetchScanHistory(10));
       setHistoryError('');
     } catch (cause) {
       setHistoryError(cause instanceof Error ? cause.message : 'Scan history is currently unavailable.');
@@ -160,7 +143,7 @@ export default function MalwareScanPage() {
     }
   }
 
-  const canScan = user?.role === 'admin' || user?.role === 'analyst';
+  const canScan = canSubmitFileScan(user?.role);
 
   if (checkingSession) {
     return <main className="loading-screen"><div className="loading-mark">◈</div><p>Verifying secure session…</p></main>;
@@ -236,12 +219,10 @@ export default function MalwareScanPage() {
           {scan ? (
             <section className="scan-result" aria-live="polite">
               <div className="scan-result-heading">
-                <span className={scan.verdict === 'clean' ? 'scan-status-clean' : 'scan-status-detected'}>
-                  {scan.verdict === 'clean' ? 'NO SIGNATURE DETECTED' : 'THREAT DETECTED'}
-                </span>
+                <StatusBadge status={scan.verdict}>{scan.verdict === 'clean' ? 'NO SIGNATURE DETECTED' : 'THREAT DETECTED'}</StatusBadge>
                 <h2>{scan.verdict === 'clean' ? 'No known signature detected' : 'ClamAV detected a threat'}</h2>
               </div>
-              <p className="scan-muted">{scan.scanner} · {new Date(scan.scanned_at).toLocaleString()}</p>
+              <p className="scan-muted">{scan.scanner} · {formatDate(scan.scanned_at)}</p>
               <dl className="scan-result-meta">
                 <div><dt>Sample SHA-256</dt><dd>{scan.sha256}</dd></div>
                 <div><dt>File size</dt><dd>{formatBytes(scan.size_bytes)}</dd></div>
@@ -266,11 +247,11 @@ export default function MalwareScanPage() {
                 <thead><tr><th>Verdict</th><th>SHA-256 sample</th><th>File size</th><th>Recorded</th><th>File retention</th></tr></thead>
                 <tbody>{history.map((item) => (
                   <tr key={item.id}>
-                    <td><span className={item.verdict === 'clean' ? 'scan-status-clean' : item.verdict === 'detected' ? 'scan-status-detected' : 'scan-status-pending'}>{item.verdict.toUpperCase()}</span></td>
+                    <td><StatusBadge status={item.verdict === 'clean' ? 'clean' : item.verdict === 'detected' ? 'detected' : 'pending'}>{item.verdict.toUpperCase()}</StatusBadge></td>
                     <td><code>{item.sampleId.slice(0, 12)}…</code></td>
                     <td>{formatBytes(item.sizeBytes)}</td>
-                    <td>{new Date(item.createdAt).toLocaleString()}</td>
-                    <td>{item.storageDeletedAt ? 'Sample file deleted' : new Date(item.sampleExpiresAt).toLocaleString()}</td>
+                    <td>{formatDate(item.createdAt)}</td>
+                    <td>{item.storageDeletedAt ? 'Sample file deleted' : formatDate(item.sampleExpiresAt)}</td>
                   </tr>
                 ))}</tbody>
               </table>
