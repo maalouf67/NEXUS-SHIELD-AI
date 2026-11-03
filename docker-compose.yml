@@ -41,7 +41,7 @@ services:
       - clamav_database:/var/lib/clamav
       - ./infra/clamav/clamd.conf:/etc/clamav/clamd.conf:ro
     healthcheck:
-      test: ["CMD-SHELL", "clamdscan --ping=3:1 --host=127.0.0.1 --port=3310 --no-summary >/dev/null 2>&1"]
+      test: ["CMD-SHELL", "clamdscan --ping=3:1 --no-summary >/dev/null 2>&1"]
       interval: 30s
       timeout: 15s
       retries: 5
