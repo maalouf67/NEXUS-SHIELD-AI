@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { isSameOriginRequest } from 
 
 export const runtime = 'nodejs';
 
@@ -38,7 +39,7 @@ async function authenticateRequest(request: NextRequest, apiBase: URL, requireOr
   const bearer = /^Bearer\s+(.+)$/i.exec(authorization)?.[1]?.trim();
   const cookieToken = request.cookies.get(SESSION_COOKIE)?.value;
   const token = bearer || cookieToken;
-  if ((origin && origin !== request.nextUrl.origin) || (requireOriginForCookie && !origin && !bearer)) {
+  if ((origin && !isSameOriginRequest(request)) || (requireOriginForCookie && !origin && !bearer)) {
     return NextResponse.json({ error: 'INVALID_ORIGIN' }, { status: 403 });
   }
   if (!token) return NextResponse.json({ error: 'UNAUTHENTICATED' }, { status: 401 });
