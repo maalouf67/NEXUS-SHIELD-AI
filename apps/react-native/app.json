@@ -12,7 +12,12 @@
     "ios": {
       "bundleIdentifier": "ai.nexusshield.mobile",
       "deploymentTarget": "15.1",
-      "supportsTablet": true
+      "supportsTablet": true,
+      "entitlements": {
+        "com.apple.developer.networking.networkextension": [
+          "dns-settings"
+        ]
+      }
     },
     "android": {
       "package": "ai.nexusshield.mobile"
