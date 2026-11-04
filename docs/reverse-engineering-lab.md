@@ -30,7 +30,7 @@ docker compose -f docker-compose.yml -f docker-compose.reverse-engineering.yml -
 6. Stop the lab when not in use:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.reverse-engineering.yml --profile reverse-engineering down
+docker compose -f docker-compose.yml -f docker-compose.reverse-engineering.yml --profile reverse-engineering stop mobsf
 ```
 
 The MobSF data volume persists analysis data. Delete that volume only after confirming that no investigation evidence must be retained.
