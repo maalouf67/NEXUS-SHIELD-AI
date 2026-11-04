@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { runOrchestrator } from '../ai/orchestrator.js';
+import { pool } from '../db/pool.js';
+import { requireAuth } from '../auth/auth.middleware.js';
 import { requireServiceToken } from '../middleware/service-token.js';
 import { threatAnalysisRateLimiter } from '../middleware/ai-rate-limit.js';
 
@@ -12,16 +14,45 @@ const ThreatRequestSchema = z.object({
   details: z.string().max(5000).optional()
 });
 
-threatsRouter.get('/threats/summary', async (_req, res) => {
-  res.json({
-    status: 'ok',
-    is_demo: true,
-    data_source: 'sample',
-    summary: {
-      total_incidents: 17, critical: 4, mitigated: 12, ai_score: 92,
-      updated_at: new Date().toISOString()
-    }
-  });
+threatsRouter.get('/threats/summary', requireAuth, async (_req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT
+        (SELECT COUNT(*)::int FROM incidents) AS total_incidents,
+        (SELECT COUNT(*)::int FROM incidents WHERE status IN ('open', 'investigating', 'contained')) AS open_workflow,
+        (SELECT COUNT(*)::int FROM incidents WHERE severity = 'critical' AND status NOT IN ('resolved', 'closed')) AS critical,
+        (SELECT COUNT(*)::int FROM incidents WHERE status IN ('resolved', 'closed')) AS mitigated,
+        (SELECT COUNT(*)::int FROM alerts WHERE status = 'active') AS active_alerts,
+        (SELECT COUNT(*)::int FROM security_events WHERE review_status = 'new') AS new_security_events,
+        (SELECT COUNT(*)::int FROM security_events WHERE severity = 'critical' AND review_status = 'new') AS critical_security_events,
+        GREATEST(
+          (SELECT MAX(updated_at) FROM incidents),
+          (SELECT MAX(created_at) FROM alerts),
+          (SELECT MAX(received_at) FROM security_events)
+        ) AS updated_at
+    `);
+    const row = result.rows[0] ?? {};
+    return res.status(200).json({
+      status: 'ok',
+      is_demo: false,
+      data_source: 'postgresql',
+      summary: {
+        total_incidents: Number(row.total_incidents ?? 0),
+        open_workflow: Number(row.open_workflow ?? 0),
+        critical: Number(row.critical ?? 0),
+        mitigated: Number(row.mitigated ?? 0),
+        active_alerts: Number(row.active_alerts ?? 0),
+        new_security_events: Number(row.new_security_events ?? 0),
+        critical_security_events: Number(row.critical_security_events ?? 0),
+        updated_at: row.updated_at ? new Date(row.updated_at).toISOString() : null
+      }
+    });
+  } catch {
+    return res.status(503).json({
+      error: 'THREAT_SUMMARY_UNAVAILABLE',
+      message: 'Live threat summary is unavailable because the PostgreSQL data store could not be queried.'
+    });
+  }
 });
 
 threatsRouter.post('/threats/analyze', requireServiceToken, threatAnalysisRateLimiter, async (req, res) => {
