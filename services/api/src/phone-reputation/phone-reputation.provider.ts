@@ -184,7 +184,7 @@ function getSeonEndpoint(): URL {
   try { url = new URL(configured); }
   catch { throw new PhoneReputationProviderError("seon", "UPSTREAM_ERROR"); }
   if (url.protocol !== "https:" || !SEON_ALLOWED_HOSTS.has(url.hostname) ||
-      url.pathname !== SEON_PATH || url.search || url.hash || url.username || url.password) {
+      url.pathname !== SEON_PATH || url.port || url.search || url.hash || url.username || url.password) {
     throw new PhoneReputationProviderError("seon", "UPSTREAM_ERROR");
   }
   return url;
@@ -198,7 +198,7 @@ export class SeonPhoneReputationProvider implements PhoneReputationProvider {
     const apiKey = process.env.SEON_API_KEY?.trim();
     if (!apiKey) throw new PhoneReputationProviderError(this.provider, "NOT_CONFIGURED");
     const endpoint = getSeonEndpoint();
-    const digits = phoneE164.replace(/^\\+/, "");
+    const digits = phoneE164.replace(/^\+/, "");
     let response: Response;
     try {
       response = await this.fetcher(endpoint, {
