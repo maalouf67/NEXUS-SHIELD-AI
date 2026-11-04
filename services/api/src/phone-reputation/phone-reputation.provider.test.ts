@@ -47,16 +47,25 @@ afterEach(() => {
 });
 
 describe("IPQualityScore phone adapter", () => {
-  it("maps explicit spammer signal to malicious", async () => {
+  it("maps an explicit spammer report to suspicious, never malicious", async () => {
     process.env.IPQS_API_KEY = "fixture-key";
     const provider = new IpQualityScorePhoneReputationProvider(mockFetcher({
       success: true, valid: true, fraud_score: 92,
       spammer: true, risky: true, recent_abuse: true, country: "MA"
     }));
-    expect((await provider.lookup(PHONE)).verdict).toBe("malicious");
+    expect((await provider.lookup(PHONE)).verdict).toBe("suspicious");
   });
 
-  it("maps elevated score to suspicious", async () => {
+  it("keeps high fraud scores in the suspicious review category, not confirmed malicious", async () => {
+    process.env.IPQS_API_KEY = "fixture-key";
+    const provider = new IpQualityScorePhoneReputationProvider(mockFetcher({
+      success: true, valid: true, fraud_score: 92,
+      spammer: false, risky: true, recent_abuse: true
+    }));
+    expect((await provider.lookup(PHONE)).verdict).toBe("suspicious");
+  });
+
+  it("maps an elevated score to suspicious", async () => {
     process.env.IPQS_API_KEY = "fixture-key";
     const provider = new IpQualityScorePhoneReputationProvider(mockFetcher({
       success: true, valid: true, fraud_score: 76,
