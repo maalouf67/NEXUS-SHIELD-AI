@@ -39,7 +39,8 @@ healthRouter.get("/ready", readyRouteLimiter, requireAuth, async (_req, res) => 
     database,
     phone_provider_credentials: {
       ipqualityscore: Boolean(process.env.IPQS_API_KEY?.trim()),
-      seon: Boolean(process.env.SEON_API_KEY?.trim())
+      seon: Boolean(process.env.SEON_API_KEY?.trim()),
+      abuseipdb: Boolean(process.env.ABUSEIPDB_API_KEY?.trim())
     }
   };
   const ready = database === "ok";
