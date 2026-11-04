@@ -13,3 +13,7 @@ __pycache__/
 .venv/
 venv/
 .DS_Store
+
+# Local development secrets and analysis artifacts
+.secrets/
+.reverse-engineering/
