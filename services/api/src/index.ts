@@ -33,6 +33,7 @@ app.use(express.json({ limit: '1mb' }));
 app.use('/api', apiRateLimiter);
 
 app.use('/health', healthRouter);
+app.use('/api/health', healthRouter);
 app.use('/api', threatsRouter);
 app.use('/api', privacyRouter);
 app.use('/api', attackPathsRouter);
