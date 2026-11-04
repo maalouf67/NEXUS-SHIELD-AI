@@ -1,4 +1,5 @@
 'use client';
+import Link from 'next/link';
 
 import { useEffect, useState } from 'react';
 
@@ -44,7 +45,7 @@ export default function SettingsPage() {
 
   return (
     <main className="trust-center" dir={language === 'ar' ? 'rtl' : 'ltr'}>
-      <header className="trust-header"><a className="trust-brand" href="/">◈ NEXUS SHIELD AI</a><a href="/">{t.back}</a></header>
+      <header className="trust-header"><Link className="trust-brand" href="/">◈ NEXUS SHIELD AI</Link><Link href="/">{t.back}</Link></header>
       <section className="trust-hero"><div className="eyebrow">NEXUS · TRUST CENTER</div><h1>{t.title}</h1><p>{t.subtitle}</p></section>
       <section className="trust-card">
         <h2>{t.language}</h2>
@@ -60,7 +61,7 @@ export default function SettingsPage() {
         <p className="trust-muted">{t.note}</p><button className="primary-button" onClick={savePreferences}>{t.save}</button>
         {saved ? <p role="status" className="trust-saved">{t.saved}</p> : null}
       </section>
-      <section className="trust-card"><h2>{t.links}</h2><div className="trust-links"><a href="/license">{t.license} ↗</a><a href="/privacy">{t.policy} ↗</a><a href="/help">{t.help} ↗</a><a href="/contact">{t.contact} ↗</a></div></section>
+      <section className="trust-card"><h2>{t.links}</h2><div className="trust-links"><Link href="/license">{t.license} ↗</Link><Link href="/privacy">{t.policy} ↗</Link><Link href="/help">{t.help} ↗</Link><Link href="/contact">{t.contact} ↗</Link></div></section>
     </main>
   );
 }
