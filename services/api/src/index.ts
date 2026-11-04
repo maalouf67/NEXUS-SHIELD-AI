@@ -14,6 +14,7 @@ import { incidentsRouter } from './incidents/incidents.routes.js';
 import { alertsRouter } from './alerts/alerts.routes.js';
 import { securityEventsRouter } from './security-events/security-events.routes.js';
 import { malwareScanRouter } from './malware-scans/malware-scans.routes.js';
+import { phoneReputationRouter } from './phone-reputation/phone-reputation.routes.js';
 
 export const app = express();
 
@@ -42,6 +43,7 @@ app.use('/api', incidentsRouter);
 app.use('/api', alertsRouter);
 app.use('/api', securityEventsRouter);
 app.use('/api', malwareScanRouter);
+app.use('/api', phoneReputationRouter);
 
 app.get('/', (_req, res) => {
   res.json({
