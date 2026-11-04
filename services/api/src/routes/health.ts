@@ -1,8 +1,16 @@
 import { Router } from "express";
+import rateLimit from "express-rate-limit";
 import { checkDatabaseConnection } from "../db/pool.js";
 import { requireAuth } from "../auth/auth.middleware.js";
 
 export const healthRouter = Router();
+
+const readyRouteLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false
+});
 
 // Liveness only: confirms that the Express process can answer HTTP.
 healthRouter.get("/", (_req, res) => {
@@ -17,7 +25,7 @@ healthRouter.get("/", (_req, res) => {
 
 // Readiness: verifies the API can reach PostgreSQL. Provider flags report
 // credential configuration only; they are not live provider connectivity tests.
-healthRouter.get("/ready", requireAuth, async (_req, res) => {
+healthRouter.get("/ready", readyRouteLimiter, requireAuth, async (_req, res) => {
   res.setHeader("Cache-Control", "no-store");
   let database: "ok" | "unavailable" = "unavailable";
   try {
