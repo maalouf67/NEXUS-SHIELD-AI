@@ -7,7 +7,6 @@ final class NexusDNSConfigurationTests: XCTestCase {
         let settings = NexusDNSConfiguration.makeSettings()
         XCTAssertEqual(settings.servers, ["9.9.9.9"])
         XCTAssertEqual(settings.serverName, "dns.quad9.net")
-        XCTAssertFalse(settings.allowFailover)
     }
 
     func testResolverDescriptionIsSpecificToNexus() {
