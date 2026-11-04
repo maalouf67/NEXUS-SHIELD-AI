@@ -10,6 +10,8 @@ RUN apt-get update \
     && command -v clamdscan \
     && rm -rf /var/lib/apt/lists/*
 
+COPY infra/clamav/railway-clamdscan.conf /etc/clamav/clamdscan.conf
+
 COPY services/ai/requirements.txt ./requirements.txt
 RUN python -m pip install --no-cache-dir -r requirements.txt
 
