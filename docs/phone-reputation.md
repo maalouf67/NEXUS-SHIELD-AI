@@ -64,7 +64,7 @@ Current policies:
 - Phone reputation: 5 lookups per authenticated account per 15 minutes.
 - Phone reputation: 20 lookups per source IP per 15 minutes.
 
-The phone-specific account and IP limits work together to reduce abuse through account rotation. The shared counter table is created automatically by the API store if it is missing. For production, the API database role must be allowed to create this table/index on first startup, or the table should be provisioned by the database administrator before deployment. Expired counter rows are cleaned up opportunistically.
+The phone-specific account and IP limits work together to reduce abuse through account rotation. The shared counter table is defined in `database/init/008_api_rate_limit_counters.sql` and is also created automatically by the API store if it is missing. For production, apply the migration before deployment where possible; otherwise the API database role must be allowed to create this table/index on first startup. Expired counter rows are cleaned up opportunistically.
 
 These application quotas do not replace provider-level commercial quotas. SEON documents different request limits by plan; configure the application limits below the contracted provider allowance and monitor HTTP 429 responses. Provider rate limits are never treated as safe.
 
