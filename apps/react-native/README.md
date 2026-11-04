@@ -13,7 +13,7 @@ Set EXPO_PUBLIC_NEXUS_API_URL to the HTTPS origin of the NEXUS Express API at bu
 
 ## iOS DNS protection
 
-The local module at modules/nexus-dns uses Apple's NetworkExtension NEDNSSettingsManager and NEDNSOverTLSSettings APIs. It configures the system DNS resolver to use Quad9 at 9.9.9.9 with TLS server-name validation for dns.quad9.net and disables resolver failover.
+The local module at modules/nexus-dns uses Apple's NetworkExtension NEDNSSettingsManager and NEDNSOverTLSSettings APIs. It configures the system DNS resolver to use Quad9 at 9.9.9.9 with TLS server-name validation for dns.quad9.net. The iOS app also declares Apple's `dns-settings` Network Extension entitlement; that entitlement must be enabled for the App ID and included in the signed provisioning profile.
 
 The user must approve and enable the DNS configuration through the iOS system flow / Settings before it becomes active. NEXUS reports whether a configuration is saved and whether iOS reports it enabled. This is encrypted system DNS configuration, not a full-device packet tunnel and not HTTPS inspection. Apps that implement their own DNS-over-HTTPS, private resolvers, or encrypted application-level name resolution can use a different path.
 
