@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { checkDatabaseConnection } from "../db/pool.js";
+import { requireAuth } from "../auth/auth.middleware.js";
 
 export const healthRouter = Router();
 
@@ -16,7 +17,7 @@ healthRouter.get("/", (_req, res) => {
 
 // Readiness: verifies the API can reach PostgreSQL. Provider flags report
 // credential configuration only; they are not live provider connectivity tests.
-healthRouter.get("/ready", async (_req, res) => {
+healthRouter.get("/ready", requireAuth, async (_req, res) => {
   res.setHeader("Cache-Control", "no-store");
   let database: "ok" | "unavailable" = "unavailable";
   try {
