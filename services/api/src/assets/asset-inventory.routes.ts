@@ -1,6 +1,7 @@
 import { Router } from 'express';
 
 import { requireServiceToken } from '../middleware/service-token.js';
+import { requireAuth, requireRole } from '../auth/auth.middleware.js';
 import { analyzeAttackPaths } from '../attack-paths/engine.js';
 import {
   AssetInventoryImportRequestSchema,
@@ -16,7 +17,7 @@ export function createAssetInventoryRouter(
 ) {
   const router = Router();
 
-  router.get('/assets/inventory', requireServiceToken, async (_req, res) => {
+  router.get('/assets/inventory', requireAuth, requireRole('admin', 'analyst', 'viewer'), async (_req, res) => {
     try {
       const inventory = await store.getInventory();
       return res.status(200).json({
@@ -65,7 +66,7 @@ export function createAssetInventoryRouter(
     }
   });
 
-  router.post('/attack-paths/analyze-inventory', requireServiceToken, async (req, res) => {
+  router.post('/attack-paths/analyze-inventory', requireAuth, requireRole('admin', 'analyst', 'viewer'), async (req, res) => {
     const parsed = StoredAttackPathAnalysisOptionsSchema.safeParse(req.body ?? {});
 
     if (!parsed.success) {
@@ -89,6 +90,7 @@ export function createAssetInventoryRouter(
         read_only: true,
         data_persisted: false,
         external_scan_performed: false,
+        assets: inventory.assets.map(({ id, name, type }) => ({ id, name, type })),
         analysis,
         disclaimer:
           'Results are potential paths inferred from the stored asset relationships and evidence references. They are not proof of exploitability, compromise, or a completed security scan.'
