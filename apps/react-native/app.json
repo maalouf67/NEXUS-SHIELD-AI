@@ -11,7 +11,7 @@
     ],
     "ios": {
       "bundleIdentifier": "ai.nexusshield.mobile",
-      "deploymentTarget": "15.1",
+      "deploymentTarget": "16.4",
       "supportsTablet": true,
       "entitlements": {
         "com.apple.developer.networking.networkextension": [
