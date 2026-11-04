@@ -100,7 +100,7 @@ export class IpQualityScorePhoneReputationProvider implements PhoneReputationPro
   async lookup(phoneE164: string): Promise<PhoneProviderAssessment> {
     const apiKey = process.env.IPQS_API_KEY?.trim();
     if (!apiKey) throw new PhoneReputationProviderError(this.provider, "NOT_CONFIGURED");
-    const digits = phoneE164.replace(/^\\+/, "");
+    const digits = phoneE164.replace(/^\+/, "");
     const endpoint = new URL(
       "https://www.ipqualityscore.com/api/json/phone/" +
       encodeURIComponent(apiKey) + "/" + encodeURIComponent(digits)
