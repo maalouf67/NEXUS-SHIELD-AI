@@ -8,7 +8,6 @@ enum NexusDNSConfiguration {
     static func makeSettings() -> NEDNSOverTLSSettings {
         let settings = NEDNSOverTLSSettings(servers: [resolverAddress])
         settings.serverName = tlsServerName
-        settings.allowFailover = false
         return settings
     }
 }
