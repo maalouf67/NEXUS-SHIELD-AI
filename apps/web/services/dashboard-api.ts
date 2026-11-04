@@ -3,9 +3,33 @@ import { apiRequest } from '../api/client';
 export type UserRole = 'admin' | 'analyst' | 'viewer';
 export interface ManagedUser { id: string; email: string; role: UserRole; isActive: boolean; createdAt: string; }
 export interface ThreatSummary {
-  is_demo: boolean;
-  data_source: string;
-  summary: { total_incidents: number; critical: number; mitigated: number; ai_score: number; updated_at: string };
+  is_demo: false;
+  data_source: 'postgresql';
+  summary: {
+    total_incidents: number;
+    open_workflow: number;
+    critical: number;
+    mitigated: number;
+    active_alerts: number;
+    new_security_events: number;
+    critical_security_events: number;
+    updated_at: string | null;
+  };
+}
+export interface AttackPathAnalysisResponse {
+  status: 'ok';
+  analysis_mode: 'read_only_persisted_inventory';
+  data_source: 'postgresql';
+  read_only: true;
+  data_persisted: false;
+  external_scan_performed: false;
+  assets: Array<{ id: string; name: string; type: string }>;
+  analysis: {
+    paths: Array<{ path: string[]; relationshipIds: string[]; evidence: Array<{ id: string; source: string; status: string; recordedAt: string; note?: string }> }>;
+    warnings: Array<{ code: string; severity: 'info' | 'warning' | 'error'; message: string; assetId?: string; relationshipId?: string; evidenceId?: string }>;
+    summary: { assetsAnalyzed: number; relationshipsAnalyzed: number; maxDepth: number; maxPaths: number; startAssetId: string | null };
+  };
+  disclaimer: string;
 }
 export interface Incident {
   id: string; title: string; severity: 'low' | 'medium' | 'high' | 'critical';
@@ -74,6 +98,14 @@ export function createIncidentRecord(input: { title: string; severity: Incident[
 export function createAlertRecord(incidentId: string, input: { type: string; riskScore: number }) {
   return apiRequest<{ alert: Alert }>(`/api/nexus/incidents/${encodeURIComponent(incidentId)}/alerts`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input)
+  });
+}
+
+export function analyzeStoredAttackPaths() {
+  return apiRequest<AttackPathAnalysisResponse>('/api/nexus/attack-paths/analyze-inventory', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({})
   });
 }
 
