@@ -279,14 +279,15 @@ describe('Normalized security event API', () => {
     expect(JSON.stringify(ingested[0])).not.toMatch(/domain|dnsPayload|clientIp/i);
   });
 
-  it('rejects Android DNS telemetry from viewer accounts', async () => {
+  it('allows an authenticated viewer to report only their bounded DNS protection status', async () => {
     const response = await request(createTestApp(createRepository()))
       .post('/api/security-events/mobile')
       .set('Authorization', `Bearer ${token(VIEWER_ID, 'viewer')}`)
       .send({ eventId: EVENT_ID, eventType: 'dns.protection.started' });
 
-    expect(response.status).toBe(403);
-    expect(response.body.error).toBe('FORBIDDEN');
+    expect(response.status).toBe(202);
+    expect(response.body.telemetry_scope).toBe('status-only');
+    expect(response.body.domain_names_collected).toBe(false);
   });
 
   it('rejects any Android telemetry payload containing domain details', async () => {
