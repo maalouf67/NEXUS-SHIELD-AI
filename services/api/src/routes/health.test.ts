@@ -72,7 +72,9 @@ describe("API readiness", () => {
     expect(response.body.dependencies.database).toBe("ok");
     expect(response.body.dependencies.phone_provider_credentials).toEqual({
       ipqualityscore: true,
-      seon: true,
+      seon: true
+    });
+    expect(response.body.dependencies.ip_reputation_provider_credentials).toEqual({
       abuseipdb: true
     });
     expect(JSON.stringify(response.body)).not.toContain("configured-ipqs-secret");
