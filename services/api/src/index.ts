@@ -14,8 +14,16 @@ import { incidentsRouter } from './incidents/incidents.routes.js';
 import { alertsRouter } from './alerts/alerts.routes.js';
 import { securityEventsRouter } from './security-events/security-events.routes.js';
 import { malwareScanRouter } from './malware-scans/malware-scans.routes.js';
+import { phoneReputationRouter } from './phone-reputation/phone-reputation.routes.js';
 
 export const app = express();
+
+// Trust only the explicitly configured number of reverse-proxy hops.
+// Keep this at 0 for direct/local traffic. Never trust all forwarded headers.
+const trustProxyHops = Number(process.env.TRUST_PROXY_HOPS ?? '0');
+if (Number.isInteger(trustProxyHops) && trustProxyHops >= 0 && trustProxyHops <= 5) {
+  app.set('trust proxy', trustProxyHops);
+}
 
 const allowedOrigins = process.env.ALLOWED_ORIGINS
   ?.split(',')
@@ -32,6 +40,7 @@ app.use(express.json({ limit: '1mb' }));
 app.use('/api', apiRateLimiter);
 
 app.use('/health', healthRouter);
+app.use('/api/health', healthRouter);
 app.use('/api', threatsRouter);
 app.use('/api', privacyRouter);
 app.use('/api', attackPathsRouter);
@@ -42,6 +51,7 @@ app.use('/api', incidentsRouter);
 app.use('/api', alertsRouter);
 app.use('/api', securityEventsRouter);
 app.use('/api', malwareScanRouter);
+app.use('/api', phoneReputationRouter);
 
 app.get('/', (_req, res) => {
   res.json({
