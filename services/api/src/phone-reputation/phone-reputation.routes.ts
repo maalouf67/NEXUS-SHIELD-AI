@@ -7,7 +7,7 @@ import { PostgresRateLimitStore } from "../middleware/postgres-rate-limit-store.
 import { assessPhoneReputation, type PhoneReputationResponse } from "./phone-reputation.orchestrator.js";
 
 const RequestSchema = z.object({
-  phone: z.string().trim().regex(/^\\+[1-9]\\d{7,14}$/, "Use international E.164 format."),
+  phone: z.string().trim().regex(/^\+[1-9]\d{7,14}$/, "Use international E.164 format."),
   consent: z.literal(true)
 }).strict();
 
