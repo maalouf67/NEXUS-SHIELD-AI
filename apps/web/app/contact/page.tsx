@@ -1,7 +1,8 @@
+import Link from 'next/link';
 export default function ContactPage() {
   return (
     <main className="trust-center">
-      <header className="trust-header"><a className="trust-brand" href="/">◈ NEXUS SHIELD AI</a><a href="/settings">Settings & privacy</a></header>
+      <header className="trust-header"><Link className="trust-brand" href="/">◈ NEXUS SHIELD AI</Link><Link href="/settings">Settings & privacy</Link></header>
       <section className="trust-hero"><div className="eyebrow">SUPPORT · CONTACT</div><h1>Contact Us</h1><p>Support and security-reporting contact details for NEXUS SHIELD AI.</p></section>
       <section className="trust-card trust-prose">
         <h2>Support channel</h2><p>A verified support email or ticketing endpoint has not been configured. We intentionally do not display an invented contact address.</p>
