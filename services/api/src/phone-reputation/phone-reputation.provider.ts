@@ -127,7 +127,7 @@ export class IpQualityScorePhoneReputationProvider implements PhoneReputationPro
     try { payload = await response.json(); }
     catch { throw new PhoneReputationProviderError(this.provider, "UPSTREAM_ERROR"); }
     if (!isRecord(payload)) throw new PhoneReputationProviderError(this.provider, "UPSTREAM_ERROR");
-    if (payload.success !== true && payload.valid !== false) {
+    if (payload.success !== true) {
       throw new PhoneReputationProviderError(this.provider, "UPSTREAM_ERROR");
     }
 
