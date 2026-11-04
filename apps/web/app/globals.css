@@ -644,3 +644,42 @@ svg { display: block; width: 100%; height: 100%; fill: currentColor; }
   .scan-actions { align-items:stretch; flex-direction:column; }
   .scan-actions .primary-button,.scan-actions .secondary-button { width:100%; min-height:42px; }
 }
+
+
+/* Dual-provider phone reputation and server connectivity */
+.phone-connectivity {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 9px 16px;
+  margin: 14px 0;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(11, 23, 37, .82);
+  color: #aebed0;
+  font-size: 10px;
+}
+.phone-connectivity strong { color: #dce9f8; font-size: 11px; }
+.phone-connectivity small { grid-column: 1 / -1; color: var(--muted); line-height: 1.6; }
+.phone-consent {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(145,174,207,.13);
+  border-radius: 9px;
+  background: rgba(4,14,25,.38);
+  color: #b7c8dc;
+  font-size: 10px;
+  line-height: 1.65;
+}
+.phone-consent input { flex: 0 0 16px; width: 16px; height: 16px; margin: 1px 0 0; accent-color: var(--cyan); }
+.phone-provider-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.phone-provider-card { min-width: 0; }
+.phone-provider-card h2 { font-size: 16px; }
+.phone-provider-card .scan-result-meta { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.phone-provider-card p { color: #afc0d3; font-size: 10px; line-height: 1.65; }
+@media (max-width: 680px) {
+  .phone-provider-grid { grid-template-columns: 1fr; }
+  .phone-provider-card .scan-result-meta { grid-template-columns: 1fr; }
+}
