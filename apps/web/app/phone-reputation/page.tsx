@@ -63,10 +63,35 @@ export default function PhoneReputationPage() {
   const [result, setResult] = useState<Assessment | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [apiStatus, setApiStatus] = useState<'checking' | 'ready' | 'unavailable'>('checking');
+  const [providerConfiguration, setProviderConfiguration] = useState({ ipqualityscore: false, seon: false });
 
   useEffect(() => {
     if (status === 'anonymous') window.location.replace('/login');
   }, [status]);
+
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    setApiStatus('checking');
+    fetch('/api/nexus/health/ready', { cache: 'no-store' })
+      .then(async (response) => {
+        const payload = await response.json().catch(() => ({})) as {
+          ready?: boolean;
+          dependencies?: { phone_provider_credentials?: { ipqualityscore?: boolean; seon?: boolean } };
+        };
+        if (cancelled) return;
+        setProviderConfiguration({
+          ipqualityscore: payload.dependencies?.phone_provider_credentials?.ipqualityscore === true,
+          seon: payload.dependencies?.phone_provider_credentials?.seon === true
+        });
+        setApiStatus(response.ok && payload.ready === true ? 'ready' : 'unavailable');
+      })
+      .catch(() => {
+        if (!cancelled) setApiStatus('unavailable');
+      });
+    return () => { cancelled = true; };
+  }, [user?.id]);
 
   async function scan(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -114,6 +139,14 @@ export default function PhoneReputationPage() {
         <div className="eyebrow">NEXUS · PHONE INTELLIGENCE</div>
         <h1>Phone reputation scanner</h1>
         <p>Check an international phone number with the configured IPQualityScore and SEON services. These services provide risk and digital-footprint signals; they do not identify the person calling you.</p>
+      </section>
+
+      <section className="phone-connectivity" aria-live="polite">
+        <strong>Server connectivity</strong>
+        <span>Web → API → PostgreSQL: {apiStatus === 'checking' ? 'Checking…' : apiStatus === 'ready' ? 'Ready' : 'Unavailable'}</span>
+        <span>IPQualityScore credentials: {providerConfiguration.ipqualityscore ? 'Configured' : 'Not configured'}</span>
+        <span>SEON credentials: {providerConfiguration.seon ? 'Configured' : 'Not configured'}</span>
+        <small>Provider credential presence is not proof of live provider authentication. A real, consented lookup is required to verify each provider connection.</small>
       </section>
 
       <section className="scan-panel">
