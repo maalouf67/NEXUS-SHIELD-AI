@@ -139,7 +139,7 @@ export default function App() {
         return;
       }
       setDnsStatus(status.enabled ? "Enabled" : "Configured; user approval may be required in iOS Settings");
-      setNotice("iOS DNS-over-TLS configuration submitted. Confirm or enable the DNS profile when iOS asks.");
+      setNotice("DNS-over-TLS settings were saved. Open iOS Settings and enable the NEXUS DNS configuration before it becomes active.");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not configure iOS DNS protection.");
     } finally {
