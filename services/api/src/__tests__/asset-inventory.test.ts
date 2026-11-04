@@ -106,7 +106,7 @@ describe('Persistent asset inventory API', () => {
       .get('/api/assets/inventory');
 
     expect(response.status).toBe(401);
-    expect(response.body.error).toBe('UNAUTHORIZED');
+    expect(response.body.error).toBe('UNAUTHENTICATED');
   });
 
   it('returns the stored graph as database-sourced inventory', async () => {
@@ -185,7 +185,7 @@ describe('Persistent asset inventory API', () => {
 
     const response = await request(createTestApp(store))
       .get('/api/assets/inventory')
-      .set('Authorization', `Bearer ${serviceToken}`);
+      .set('Authorization', `Bearer ${userToken()}`);
 
     expect(response.status).toBe(503);
     expect(response.body.error).toBe('DATABASE_UNAVAILABLE');
