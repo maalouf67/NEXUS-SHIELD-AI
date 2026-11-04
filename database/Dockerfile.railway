@@ -1,3 +1,8 @@
 # Railway PostgreSQL image aligned with local Docker Compose (PostgreSQL 16).
 FROM postgres:16-alpine
 COPY database/init/ /docker-entrypoint-initdb.d/
+
+# Run non-root by default (Trivy DS-0002).
+# Railway volumes are mounted root-owned; on Railway, set RAILWAY_RUN_UID=0
+# so the official entrypoint can prepare PGDATA and then drop to postgres.
+USER postgres
