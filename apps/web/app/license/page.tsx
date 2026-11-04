@@ -1,7 +1,8 @@
+import Link from 'next/link';
 export default function ApplicationLicensePage() {
   return (
     <main className="trust-center">
-      <header className="trust-header"><a className="trust-brand" href="/">◈ NEXUS SHIELD AI</a><a href="/settings">Settings & privacy</a></header>
+      <header className="trust-header"><Link className="trust-brand" href="/">◈ NEXUS SHIELD AI</Link><Link href="/settings">Settings & privacy</Link></header>
       <section className="trust-hero"><div className="eyebrow">LEGAL · DRAFT FOR OWNER REVIEW</div><h1>Application License</h1><p>NEXUS SHIELD AI — proposed application-level license notice.</p></section>
       <article className="trust-card trust-prose">
         <h2>Proprietary application notice — proposed</h2><p>Unless a separate written agreement or an open-source license file states otherwise, the application name, branding, compiled application and owner-authored product materials are intended to be proprietary to their respective rights holders.</p>
