@@ -21,7 +21,7 @@ The Android implementation remains the existing native companion at apps/android
 
 ## Development
 
-Requirements: Node.js 22.13 or newer, Xcode 26 or newer for iOS simulator/device builds, CocoaPods, and the Android SDK/Android Studio for Android builds.
+Requirements: Node.js 22.13 or newer, Xcode 26 or newer for iOS simulator/device builds, CocoaPods, and the Android SDK/Android Studio for Android builds. The Expo SDK 58 app currently targets iOS 16.4 or newer, matching the minimum required by the installed native Expo modules.
 
 From this folder:
 
