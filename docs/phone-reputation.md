@@ -56,7 +56,7 @@ These are conservative application rules, not claims that either provider guaran
 
 ## Request limits and shared storage
 
-The API uses a PostgreSQL-backed custom store for `express-rate-limit`. It shares counters across API processes/replicas, hashes client identifiers before storage, and fails closed if the shared store is unavailable.
+The API uses a PostgreSQL-backed custom store for `express-rate-limit`. It shares counters across API processes/replicas, hashes client identifiers before storage, and fails closed if the shared store is unavailable. The source IP is taken from Express `req.ip`; behind a reverse proxy, set `TRUST_PROXY_HOPS` to the exact number of trusted proxy hops. Keep it at `0` for direct/local traffic. Never set Express `trust proxy` to `true` or trust client-supplied forwarded headers without a verified proxy chain.
 
 Current policies:
 
