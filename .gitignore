@@ -13,3 +13,9 @@ __pycache__/
 .venv/
 venv/
 .DS_Store
+
+# Generated native projects for the Expo React Native app
+apps/react-native/ios/
+apps/react-native/android/
+apps/react-native/.expo/
+apps/react-native/.swiftpm/
