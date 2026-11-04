@@ -37,6 +37,7 @@ const envSchema = z.object({
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
   PORT: z.coerce.number().int().min(1).max(65535).default(4000),
   HOST: z.string().default("127.0.0.1"),
+  TRUST_PROXY_HOPS: z.coerce.number().int().min(0).max(5).default(0),
   JWT_SECRET: z.string().min(32),
   SESSION_SECRET: z.string().min(32),
   NEXUS_SERVICE_API_TOKEN: optionalServiceToken,
