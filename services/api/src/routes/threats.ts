@@ -26,7 +26,7 @@ threatsRouter.get('/threats/summary', requireAuth, async (_req, res) => {
         (SELECT COUNT(*)::int FROM security_events WHERE review_status = 'new') AS new_security_events,
         (SELECT COUNT(*)::int FROM security_events WHERE severity = 'critical' AND review_status = 'new') AS critical_security_events,
         GREATEST(
-          (SELECT MAX(updated_at) FROM incidents),
+          (SELECT MAX(created_at) FROM incidents),
           (SELECT MAX(created_at) FROM alerts),
           (SELECT MAX(received_at) FROM security_events)
         ) AS updated_at
