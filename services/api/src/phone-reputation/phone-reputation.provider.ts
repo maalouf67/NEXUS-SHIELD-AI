@@ -84,8 +84,13 @@ function ipqsVerdict(data: JsonRecord): PhoneReputationVerdict {
   const risky = nullableBoolean(data.risky);
   const recentAbuse = nullableBoolean(data.recent_abuse);
   const score = nullableScore(data.fraud_score);
-  if (spammer === true) return "malicious";
-  if ((score !== null && score >= 75) || risky === true || recentAbuse === true) return "suspicious";
+
+  // IPQS defines "spammer" as recently reported for spam/harassing calls or texts.
+  // This is a strong suspicious signal, not proof of fraud or caller identity.
+  if (spammer === true) return "suspicious";
+  if ((score !== null && score >= 75) || risky === true || recentAbuse === true) {
+    return "suspicious";
+  }
   if (
     data.valid === true && score !== null && score < 75 &&
     spammer === false && risky === false && recentAbuse === false
@@ -144,7 +149,7 @@ export class IpQualityScorePhoneReputationProvider implements PhoneReputationPro
     return {
       provider: this.provider, status: "ok", verdict: ipqsVerdict(payload),
       request_id: nullableString(payload.request_id), signals,
-      message: "IPQualityScore reputation signals. These signals do not prove caller identity."
+      message: "IPQualityScore reputation signals. Spam reports are not proof of fraud or caller identity."
     };
   }
 }
