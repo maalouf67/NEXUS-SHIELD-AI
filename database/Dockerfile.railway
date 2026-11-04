@@ -1,0 +1,3 @@
+# Railway PostgreSQL image aligned with local Docker Compose (PostgreSQL 16).
+FROM postgres:16-alpine
+COPY database/init/ /docker-entrypoint-initdb.d/
