@@ -58,6 +58,7 @@ function display(value: string | number | boolean | null): string {
 
 export default function PhoneReputationPage() {
   const { user, status, error: sessionError } = useSession();
+  const userId = user?.id;
   const [phone, setPhone] = useState('+212');
   const [consent, setConsent] = useState(false);
   const [result, setResult] = useState<Assessment | null>(null);
@@ -71,7 +72,7 @@ export default function PhoneReputationPage() {
   }, [status]);
 
   useEffect(() => {
-    if (!user) return;
+    if (!userId) return;
     let cancelled = false;
     setApiStatus('checking');
     fetch('/api/nexus/health/ready', { cache: 'no-store' })
@@ -91,7 +92,7 @@ export default function PhoneReputationPage() {
         if (!cancelled) setApiStatus('unavailable');
       });
     return () => { cancelled = true; };
-  }, [user?.id]);
+  }, [userId]);
 
   async function scan(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
