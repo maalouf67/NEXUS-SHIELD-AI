@@ -14,6 +14,7 @@ let package = Package(
         .target(
             name: "NexusDNSCore",
             path: "modules/nexus-dns/ios",
+            exclude: ["NexusDNSModule.swift"],
             sources: ["NexusDNSConfiguration.swift"]
         ),
         .testTarget(
