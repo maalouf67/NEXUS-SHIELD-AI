@@ -64,7 +64,10 @@ const envSchema = z.object({
 });
 
 export function validateEnv() {
-  envSchema.parse(process.env);
+  const parsed = envSchema.parse(process.env);
+  if (parsed.OTEL_ENABLED === "true" && !parsed.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT) {
+    throw new Error("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT is required when OTEL_ENABLED=true.");
+  }
 }
 
 export function getEnv(name: string) {
