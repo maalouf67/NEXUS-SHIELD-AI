@@ -142,7 +142,7 @@ public final class MainActivity extends Activity {
         dnsCard.addView(dnsDescription);
         addGap(dnsCard, 8);
         TextView dnsDisclosure = text(
-            "PRIVACY AND COVERAGE: Domain names in DNS requests are sent to Quad9 for resolution. NEXUS does not save domain names. This first version routes IPv4 DNS over UDP to its local resolver only. It does not inspect HTTPS content, other app-private files, non-DNS traffic, or traffic using custom DNS-over-HTTPS/private resolvers. Some apps or DNS modes may bypass this coverage. If the secure resolver is unavailable, requests receive SERVFAIL; there is no plaintext DNS fallback.",
+            "PRIVACY AND COVERAGE: Domain names in DNS requests are sent to Quad9 for resolution. NEXUS does not save domain names. When you are signed in, NEXUS sends only DNS protection status codes (started, stopped, resolver unavailable, or queue saturated) to your API; it does not send domains, DNS payloads, or packet details. This first version routes IPv4 DNS over UDP to its local resolver only. It does not inspect HTTPS content, other app-private files, non-DNS traffic, or traffic using custom DNS-over-HTTPS/private resolvers. Some apps or DNS modes may bypass this coverage. If the secure resolver is unavailable, requests receive SERVFAIL; there is no plaintext DNS fallback.",
             11, Color.rgb(255, 199, 124), false);
         dnsDisclosure.setPadding(dp(12), dp(12), dp(12), dp(12));
         dnsDisclosure.setBackground(roundRect(Color.rgb(37, 31, 24), dp(10)));
@@ -575,8 +575,18 @@ public final class MainActivity extends Activity {
         }
     }
 
+    private void attachTelemetryCredentials(Intent intent) {
+        // This short-lived access token remains in memory and is passed only to
+        // this non-exported service. It is never persisted to disk.
+        if (apiBaseUrl != null && accessToken != null) {
+            intent.putExtra(DnsProtectionService.EXTRA_API_BASE_URL, apiBaseUrl);
+            intent.putExtra(DnsProtectionService.EXTRA_ACCESS_TOKEN, accessToken);
+        }
+    }
+
     private void startDnsProtectionService() {
         Intent intent = new Intent(this, DnsProtectionService.class).setAction(DnsProtectionService.ACTION_START);
+        attachTelemetryCredentials(intent);
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(intent);
             else startService(intent);
@@ -588,6 +598,7 @@ public final class MainActivity extends Activity {
 
     private void stopDnsProtection() {
         Intent intent = new Intent(this, DnsProtectionService.class).setAction(DnsProtectionService.ACTION_STOP);
+        attachTelemetryCredentials(intent);
         try {
             startService(intent);
             setDnsProtectionStatus("Stopping DNS protection…");
@@ -602,12 +613,16 @@ public final class MainActivity extends Activity {
         boolean active = prefs.getBoolean("active", false);
         long queries = prefs.getLong("query_count", 0L);
         String error = prefs.getString("last_error", "");
+        String telemetry = prefs.getString("last_telemetry_status", "");
         if (active) {
             setDnsProtectionStatus("DNS-only VPN active. " + queries + " DNS requests handled through encrypted Quad9 DNS-over-TLS. No domain names are stored by NEXUS.");
         } else if (error != null && !error.isEmpty()) {
             setDnsProtectionStatus("DNS protection is off. Last service status: " + error);
         } else {
             setDnsProtectionStatus("DNS protection is off. No network traffic is being routed through NEXUS.");
+        }
+        if (telemetry != null && !telemetry.isEmpty()) {
+            dnsProtectionStatus.append("\nNEXUS status telemetry: " + telemetry);
         }
         startDnsButton.setEnabled(!active && dnsDisclosureCheck != null && dnsDisclosureCheck.isChecked());
         startDnsButton.setAlpha(startDnsButton.isEnabled() ? 1.0f : 0.45f);
