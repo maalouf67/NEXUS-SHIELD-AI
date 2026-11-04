@@ -133,6 +133,25 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  mobile-security-governance:
+    name: MASVS / MASTG control register completeness
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Verify documented mobile control groups
+        shell: bash
+        run: |
+          set -euo pipefail
+          register="docs/mobile-security/MASVS_MASTG_CONTROL_REGISTER.md"
+          test -s "$register"
+          for group in STORAGE CRYPTO AUTH NETWORK PLATFORM CODE RESILIENCE PRIVACY; do
+            grep -q "MASVS-$group" "$register"
+          done
+          grep -q "NOT VERIFIED" "$register"
+          echo "MASVS/MASTG register is present and complete."
+          echo "This documentation gate is not a mobile security scan or compliance attestation."
+
   clamav-integration:
     name: Real Docker, ClamAV and web upload integration
     runs-on: ubuntu-latest
