@@ -4,13 +4,14 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { useSession } from '../hooks/use-session';
 
 import type {
-  Incident, Alert, SecurityEvent, ThreatSummary, ThreatAnalysisResult, ManagedUser
+  Incident, Alert, SecurityEvent, ThreatSummary, ThreatAnalysisResult, AttackPathAnalysisResponse, ManagedUser
 } from '../services/dashboard-api';
 import {
   fetchDashboardData,
   createIncidentRecord as apiCreateIncident,
   createAlertRecord as apiCreateAlert,
   analyzeThreat as apiAnalyzeThreat,
+  analyzeStoredAttackPaths as apiAnalyzeStoredAttackPaths,
   reviewSecurityEvent as apiReviewSecurityEvent,
   createManagedUser as apiCreateManagedUser,
   changeIncidentStatus as apiChangeIncidentStatus,
@@ -61,6 +62,9 @@ export default function HomePage() {
   const [analysisDetails, setAnalysisDetails] = useState('');
   const [aiAnalysis, setAiAnalysis] = useState<ThreatAnalysisResult | null>(null);
   const [aiError, setAiError] = useState('');
+  const [attackPathAnalysis, setAttackPathAnalysis] = useState<AttackPathAnalysisResponse | null>(null);
+  const [attackPathError, setAttackPathError] = useState('');
+  const [isAnalyzingAttackPaths, setIsAnalyzingAttackPaths] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
 
   const canManage = user?.role === 'admin' || user?.role === 'analyst';
@@ -111,12 +115,13 @@ export default function HomePage() {
     }
   }, [incidents, alertIncidentId]);
 
-  const metrics = useMemo(() => {
-    const open = incidents.filter((item) => ['open', 'investigating', 'contained'].includes(item.status)).length;
-    const critical = incidents.filter((item) => item.severity === 'critical').length;
-    const activeAlerts = alerts.filter((item) => item.status === 'active').length;
-    return { open, critical, activeAlerts };
-  }, [incidents, alerts]);
+  const metrics = useMemo(() => ({
+    open: summary?.summary.open_workflow ?? null,
+    critical: summary?.summary.critical ?? null,
+    activeAlerts: summary?.summary.active_alerts ?? null,
+    newSecurityEvents: summary?.summary.new_security_events ?? null,
+    mitigated: summary?.summary.mitigated ?? null
+  }), [summary]);
 
   async function createIncident(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -178,6 +183,20 @@ export default function HomePage() {
       setAiError(error instanceof Error ? error.message : 'AI analysis could not be completed.');
     } finally {
       setIsAnalyzing(false);
+    }
+  }
+
+  async function analyzeStoredAttackPaths() {
+    setAttackPathError('');
+    setAttackPathAnalysis(null);
+    setIsAnalyzingAttackPaths(true);
+    try {
+      const result = await apiAnalyzeStoredAttackPaths();
+      setAttackPathAnalysis(result);
+    } catch (error) {
+      setAttackPathError(error instanceof Error ? error.message : 'Stored asset inventory analysis failed.');
+    } finally {
+      setIsAnalyzingAttackPaths(false);
     }
   }
 
@@ -278,6 +297,7 @@ export default function HomePage() {
           <a className="side-nav-link" href="#alerts"><span>◎</span> Alerts</a>
           <a className="side-nav-link" href="#events"><span>⌖</span> Event intake</a>
           {isAdmin ? <a className="side-nav-link" href="#team"><span>♙</span> Team access</a> : null}
+          <a className="side-nav-link" href="#attack-paths"><span>⌁</span> Attack paths</a>
           <a className="side-nav-link" href="#intelligence"><span>✧</span> AI intelligence</a>
           {canManage ? <a className="side-nav-link" href="/scan"><span>⌕</span> Malware file scan</a> : null}
           {canManage ? <a className="side-nav-link" href="/ip-reputation"><span>◉</span> IP reputation</a> : null}
@@ -288,7 +308,7 @@ export default function HomePage() {
         <div className="sidebar-spacer" />
         <div className="sidebar-status">
           <span className="status-indicator" />
-          <div><strong>Development mode</strong><small>Live telemetry is not connected</small></div>
+          <div><strong>Database-backed workspace</strong><small>Events depend on configured sources</small></div>
         </div>
         <div className="profile-row">
           <div className="avatar">{user.email.slice(0, 1).toUpperCase()}</div>
@@ -311,21 +331,15 @@ export default function HomePage() {
           </div>
         </header>
 
-        {summary?.is_demo ? (
-          <div className="notice notice-warning">
-            <strong>DEMO THREAT DATA</strong>
-            <span>AI score and threat-summary values are sample data. They are not live detections or measured protection.</span>
-          </div>
-        ) : null}
         {loadError ? <div className="notice notice-error">{loadError}</div> : null}
         {actionError ? <div className="notice notice-error">{actionError}</div> : null}
 
         <section className="metrics-grid">
-          <article className="metric-card"><span className="metric-label">Open workflow</span><strong>{metrics.open}</strong><small>Open, investigating, or contained incidents</small></article>
-          <article className="metric-card"><span className="metric-label">Critical incidents</span><strong>{metrics.critical}</strong><small>From the latest {incidents.length} loaded records</small></article>
-          <article className="metric-card"><span className="metric-label">Active alerts</span><strong>{metrics.activeAlerts}</strong><small>From the latest {alerts.length} loaded records</small></article>
-          <article className="metric-card"><span className="metric-label">New security events</span><strong>{securityEvents.filter((item) => item.reviewStatus === 'new').length}</strong><small>Latest {securityEvents.length} of {securityEventTotal} received</small></article>
-          <article className="metric-card metric-demo"><span className="metric-label">Demo AI score</span><strong>{summary ? `${summary.summary.ai_score}/100` : '—'}</strong><small>Illustrative only · not a calibrated risk score</small></article>
+          <article className="metric-card"><span className="metric-label">Open workflow</span><strong>{metrics.open ?? '—'}</strong><small>Database aggregate · all recorded incidents</small></article>
+          <article className="metric-card"><span className="metric-label">Critical incidents</span><strong>{metrics.critical ?? '—'}</strong><small>Unresolved critical incidents in PostgreSQL</small></article>
+          <article className="metric-card"><span className="metric-label">Active alerts</span><strong>{metrics.activeAlerts ?? '—'}</strong><small>Alerts with active status</small></article>
+          <article className="metric-card"><span className="metric-label">New security events</span><strong>{metrics.newSecurityEvents ?? '—'}</strong><small>Events awaiting analyst review</small></article>
+          <article className="metric-card"><span className="metric-label">Mitigated incidents</span><strong>{metrics.mitigated ?? '—'}</strong><small>Resolved or closed incidents</small></article>
         </section>
 
         <section className="section-block" id="incidents">
@@ -484,6 +498,52 @@ export default function HomePage() {
             <p className="muted-note">New accounts are limited to Analyst and Viewer. Administrator accounts are provisioned only through the one-time server-side bootstrap command.</p>
           </section>
         ) : null}
+
+        <section className="section-block" id="attack-paths">
+          <div className="section-heading">
+            <div><div className="eyebrow">ATTACK PATH INTELLIGENCE</div><h2>Stored asset graph analysis</h2></div>
+            <span className="section-subtitle">Read-only · PostgreSQL inventory · No external scan</span>
+          </div>
+          <div className="ai-submit-row">
+            <span className="muted-note">Analyzes only assets, relationships, and evidence already stored in this workspace. It does not probe devices or networks.</span>
+            <button className="primary-button" type="button" onClick={() => void analyzeStoredAttackPaths()} disabled={isAnalyzingAttackPaths}>
+              {isAnalyzingAttackPaths ? 'Analyzing stored graph…' : 'Analyze stored asset graph'}
+            </button>
+          </div>
+          {attackPathError ? <div className="notice notice-error" role="alert">{attackPathError}</div> : null}
+          {attackPathAnalysis ? (
+            <div className="ai-analysis-result">
+              <div className="ai-result-header">
+                <div>
+                  <div className="eyebrow">DATABASE-SOURCED ANALYSIS</div>
+                  <h3>{attackPathAnalysis.analysis.paths.length} potential path(s) identified</h3>
+                  <p>{attackPathAnalysis.analysis.summary.assetsAnalyzed} assets · {attackPathAnalysis.analysis.summary.relationshipsAnalyzed} relationships · PostgreSQL</p>
+                </div>
+                <div className="ai-score"><strong>{attackPathAnalysis.analysis.warnings.length}</strong><span>validation warnings</span></div>
+              </div>
+              {attackPathAnalysis.analysis.summary.assetsAnalyzed === 0 ? (
+                <p className="muted-note">No assets are registered in the stored inventory yet. No attack-path conclusion can be produced until real assets and relationships are added.</p>
+              ) : attackPathAnalysis.analysis.paths.length > 0 ? (
+                <div className="ai-result-grid">
+                  {attackPathAnalysis.analysis.paths.map((item, index) => {
+                    const labels = new Map(attackPathAnalysis.assets.map((asset) => [asset.id, asset.name]));
+                    return <div key={item.path.join('>') + ':' + item.relationshipIds.join(',')}>
+                      <h4>Potential path {index + 1}</h4>
+                      <p>{item.path.map((assetId) => labels.get(assetId) ?? assetId).join(' → ')}</p>
+                      <small className="muted-note">Asset IDs: {item.path.join(' → ')}</small>
+                    </div>;
+                  })}
+                </div>
+              ) : (
+                <p className="muted-note">No path was returned by the current graph analysis for the stored relationships and configured analysis limits.</p>
+              )}
+              {attackPathAnalysis.analysis.warnings.length > 0 ? (
+                <div><h4>Inventory validation warnings</h4><ul>{attackPathAnalysis.analysis.warnings.slice(0, 8).map((warning, index) => <li key={warning.code + ':' + index}>{warning.message}</li>)}</ul></div>
+              ) : null}
+              <p className="muted-note">{attackPathAnalysis.disclaimer}</p>
+            </div>
+          ) : null}
+        </section>
 
         <section className="section-block" id="intelligence">
           <div className="section-heading">
