@@ -6,7 +6,7 @@ import { requireAuth, requireRole } from "../auth/auth.middleware.js";
 import { assessPhoneReputation } from "./phone-reputation.orchestrator.js";
 
 const RequestSchema = z.object({
-  phone: z.string().trim().regex(/^\\+[1-9]\\d{7,14}$/, "Use international E.164 format."),
+  phone: z.string().trim().regex(/^\+[1-9]\d{7,14}$/, "Use international E.164 format."),
   consent: z.literal(true)
 }).strict();
 
