@@ -69,7 +69,6 @@ export function createSecurityEventsRouter(
   router.post(
     '/security-events/mobile',
     requireAuth,
-    requireRole('admin', 'analyst'),
     async (req, res) => {
       const parsed = z.object({
         eventId: z.string().uuid(),
