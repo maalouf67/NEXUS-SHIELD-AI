@@ -1,4 +1,5 @@
 'use client';
+import Link from 'next/link';
 
 import { FormEvent, useEffect, useState } from 'react';
 import { useSession } from '../../hooks/use-session';
@@ -68,8 +69,8 @@ export default function PhoneReputationPage() {
   }
 
   if (status === 'checking') return <main className="loading-screen"><p>Verifying secure session…</p></main>;
-  if (!user) return <main className="loading-screen"><p role="alert">{sessionError || 'Sign in to continue.'}</p><a href="/login">Sign in</a></main>;
-  if (user.role === 'viewer') return <main className="scan-shell"><a href="/">← Back to dashboard</a><section className="scan-panel"><h1>Analyst access required</h1><p className="scan-muted">Only Admin and Analyst roles can submit phone reputation checks.</p></section></main>;
+  if (!user) return <main className="loading-screen"><p role="alert">{sessionError || 'Sign in to continue.'}</p><Link href="/login">Sign in</Link></main>;
+  if (user.role === 'viewer') return <main className="scan-shell"><Link href="/">← Back to dashboard</Link><section className="scan-panel"><h1>Analyst access required</h1><p className="scan-muted">Only Admin and Analyst roles can submit phone reputation checks.</p></section></main>;
 
   const verdictClass = result?.verdict === 'malicious'
     ? 'scan-status-detected'
@@ -80,8 +81,8 @@ export default function PhoneReputationPage() {
   return (
     <main className="scan-shell">
       <header className="scan-header">
-        <a className="trust-brand" href="/">◈ NEXUS SHIELD AI</a>
-        <a href="/">← Back to dashboard</a>
+        <Link className="trust-brand" href="/">◈ NEXUS SHIELD AI</Link>
+        <Link href="/">← Back to dashboard</Link>
       </header>
       <section className="scan-hero">
         <div className="eyebrow">NEXUS · PHONE INTELLIGENCE</div>
