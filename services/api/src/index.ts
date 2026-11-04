@@ -16,6 +16,7 @@ import { securityEventsRouter } from './security-events/security-events.routes.j
 import { malwareScanRouter } from './malware-scans/malware-scans.routes.js';
 import { phoneReputationRouter } from './phone-reputation/phone-reputation.routes.js';
 import { ipReputationRouter } from './ip-reputation/ip-reputation.routes.js';
+import { otelTracingMiddleware } from './observability/otel-tracing.middleware.js';
 
 export const app = express();
 
@@ -32,6 +33,7 @@ const allowedOrigins = process.env.ALLOWED_ORIGINS
   .filter(Boolean) ?? [];
 
 app.use(helmet());
+app.use(otelTracingMiddleware);
 app.use(
   cors({
     origin: allowedOrigins.length > 0 ? allowedOrigins : false
