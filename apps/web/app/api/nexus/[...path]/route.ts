@@ -80,7 +80,7 @@ async function proxy(request: NextRequest, context: RouteContext) {
       body,
       cache: 'no-store',
       redirect: 'manual',
-      signal: AbortSignal.timeout(15000)
+      signal: AbortSignal.timeout(20000)
     });
 
     const responseBody = await upstream.arrayBuffer();
