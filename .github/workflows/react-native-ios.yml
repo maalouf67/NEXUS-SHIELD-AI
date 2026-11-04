@@ -37,6 +37,38 @@ jobs:
         working-directory: apps/react-native
         run: npx expo export --platform ios --output-dir /tmp/nexus-expo-ios-export
 
+  react-native-android:
+    name: React Native Android debug build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.13"
+      - name: Install React Native app dependencies
+        working-directory: apps/react-native
+        run: npm install --no-package-lock --no-audit --no-fund
+      - name: Type-check React Native app
+        working-directory: apps/react-native
+        run: npm run typecheck
+      - name: Export Android JavaScript bundle
+        working-directory: apps/react-native
+        run: npx expo export --platform android --output-dir /tmp/nexus-expo-android-export
+      - name: Generate native Android project
+        working-directory: apps/react-native
+        run: npx expo prebuild --platform android --no-install
+      - name: Build Android debug APK
+        working-directory: apps/react-native/android
+        run: ./gradlew --no-daemon assembleDebug
+
   ios-native:
     name: Swift DNS module and iOS simulator build
     runs-on: macos-26
