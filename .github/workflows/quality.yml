@@ -1,0 +1,30 @@
+name: NEXUS SHIELD AI - Lint and Shared Contracts
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    name: ESLint, TypeScript and shared contracts
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Run workspace lint checks
+        run: npm run lint
+      - name: Build shared TypeScript contracts
+        run: npm run build --workspace @nexus-shield/shared

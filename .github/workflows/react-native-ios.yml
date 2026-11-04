@@ -1,0 +1,73 @@
+name: NEXUS SHIELD AI - React Native and iOS Native Checks
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "apps/react-native/**"
+      - ".github/workflows/react-native-ios.yml"
+  pull_request:
+    branches: ["main"]
+    paths:
+      - "apps/react-native/**"
+      - ".github/workflows/react-native-ios.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  react-native:
+    name: React Native TypeScript and iOS bundle
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.13"
+      - name: Install React Native app dependencies
+        working-directory: apps/react-native
+        run: npm install --no-package-lock --no-audit --no-fund
+      - name: Type-check React Native app
+        working-directory: apps/react-native
+        run: npm run typecheck
+      - name: Bundle iOS JavaScript
+        working-directory: apps/react-native
+        run: npx expo export --platform ios --output-dir /tmp/nexus-expo-ios-export
+
+  ios-native:
+    name: Swift DNS module and iOS simulator build
+    runs-on: macos-26
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.13"
+      - name: Verify Xcode toolchain
+        run: xcodebuild -version
+      - name: Run Swift NetworkExtension configuration tests
+        run: swift test --package-path apps/react-native
+      - name: Install React Native app dependencies
+        working-directory: apps/react-native
+        run: npm install --no-package-lock --no-audit --no-fund
+      - name: Generate native iOS project
+        working-directory: apps/react-native
+        run: npx expo prebuild --platform ios --no-install
+      - name: Install CocoaPods
+        working-directory: apps/react-native/ios
+        run: pod install
+      - name: Build iOS simulator target without signing
+        working-directory: apps/react-native
+        shell: bash
+        run: |
+          WORKSPACE="$(find ios -maxdepth 1 -name '*.xcworkspace' -print -quit)"
+          if [ -z "$WORKSPACE" ]; then
+            echo "Expo did not generate an Xcode workspace." >&2
+            exit 1
+          fi
+          SCHEME="$(xcodebuild -list -json -workspace "$WORKSPACE" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d["workspace"]["schemes"][0])')"
+          xcodebuild -workspace "$WORKSPACE" -scheme "$SCHEME" -sdk iphonesimulator -configuration Debug CODE_SIGNING_ALLOWED=NO build
