@@ -88,8 +88,9 @@ public final class DnsProtectionService extends VpnService {
 
         String action = intent == null ? ACTION_START : intent.getAction();
         if (ACTION_STOP.equals(action)) {
+            boolean wasRunning = running.get();
             stopTunnel();
-            reportStatusEvent("dns.protection.stopped");
+            if (wasRunning) reportStatusEvent("dns.protection.stopped");
             stopForeground(STOP_FOREGROUND_REMOVE);
             stopSelf();
             return START_NOT_STICKY;
