@@ -1,4 +1,5 @@
 import { Router } from "express";
+import type { RequestHandler } from "express";
 import { rateLimit } from "express-rate-limit";
 import { z } from "zod";
 
@@ -59,32 +60,49 @@ const providerDailyLimit = rateLimit({
   }
 });
 
+type ValidatedIpRequest = { publicIp: string };
+
+const validateIpRequest: RequestHandler = (req, res, next) => {
+  const parsed = RequestSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({
+      error: "INVALID_IP_REPUTATION_REQUEST",
+      message: "Enter a public IPv4 or IPv6 address and confirm consent to send it to AbuseIPDB."
+    });
+  }
+
+  const publicIp = normalizePublicIp(parsed.data.ip);
+  if (!publicIp) {
+    return res.status(400).json({
+      error: "PUBLIC_IP_REQUIRED",
+      message: "Only globally routable public IPv4 or IPv6 addresses can be checked."
+    });
+  }
+
+  if (!process.env.ABUSEIPDB_API_KEY?.trim()) {
+    return res.status(503).json({
+      error: "IP_REPUTATION_PROVIDER_UNAVAILABLE",
+      provider_status: "not_configured",
+      message: "AbuseIPDB is not configured on the API server. No request was sent."
+    });
+  }
+
+  res.locals.ipReputationRequest = { publicIp } satisfies ValidatedIpRequest;
+  return next();
+};
+
 export const ipReputationRouter = Router();
 
 ipReputationRouter.post(
   "/ip-reputation/check",
   requireAuth,
   requireRole("admin", "analyst"),
+  validateIpRequest,
   accountLimit,
   sourceIpLimit,
   providerDailyLimit,
-  async (req, res) => {
-    const parsed = RequestSchema.safeParse(req.body);
-    if (!parsed.success) {
-      return res.status(400).json({
-        error: "INVALID_IP_REPUTATION_REQUEST",
-        message: "Enter a public IPv4 or IPv6 address and confirm consent to send it to AbuseIPDB."
-      });
-    }
-
-    const publicIp = normalizePublicIp(parsed.data.ip);
-    if (!publicIp) {
-      return res.status(400).json({
-        error: "PUBLIC_IP_REQUIRED",
-        message: "Only globally routable public IPv4 or IPv6 addresses can be checked."
-      });
-    }
-
+  async (_req, res) => {
+    const { publicIp } = res.locals.ipReputationRequest as ValidatedIpRequest;
     res.setHeader("Cache-Control", "no-store");
     res.setHeader("Pragma", "no-cache");
 
