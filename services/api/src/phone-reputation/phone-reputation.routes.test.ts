@@ -31,9 +31,9 @@ const fixture: PhoneReputationResponse = {
   disclaimer: "Test fixture only."
 };
 
-function token(role: "admin" | "analyst" | "viewer") {
+function token(role: "admin" | "analyst" | "viewer", subject = USER_ID) {
   return jwt.sign({ email: role + "@example.test", role }, SECRET, {
-    algorithm: "HS256", subject: USER_ID, issuer: "nexus-shield-ai",
+    algorithm: "HS256", subject, issuer: "nexus-shield-ai",
     audience: "nexus-shield-ai-api", expiresIn: "15m"
   });
 }
@@ -100,5 +100,27 @@ describe("Phone reputation API boundary", () => {
     expect(response.body.verdict).toBe("unknown");
     expect(response.body.coverage).toBe("none");
     expect(assessor).toHaveBeenCalledWith(PHONE);
+  });
+
+  it("allows five lookups per account and blocks the sixth within 15 minutes", async () => {
+    process.env.JWT_SECRET = SECRET;
+    const subject = "550e8400-e29b-41d4-a716-446655440099";
+    const assessor = vi.fn(async () => fixture);
+    const app = appFor(assessor);
+    const authorization = "Bearer " + token("analyst", subject);
+
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const response = await request(app).post("/api/phone-reputation/check")
+        .set("Authorization", authorization)
+        .send({ phone: PHONE, consent: true });
+      expect(response.status).toBe(200);
+    }
+
+    const blocked = await request(app).post("/api/phone-reputation/check")
+      .set("Authorization", authorization)
+      .send({ phone: PHONE, consent: true });
+    expect(blocked.status).toBe(429);
+    expect(blocked.body.error).toBe("PHONE_REPUTATION_ACCOUNT_RATE_LIMITED");
+    expect(assessor).toHaveBeenCalledTimes(5);
   });
 });
