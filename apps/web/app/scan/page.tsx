@@ -1,4 +1,5 @@
 'use client';
+import Link from 'next/link';
 
 import { FormEvent, useEffect, useState } from 'react';
 import { useSession } from '../../hooks/use-session';
@@ -150,14 +151,14 @@ export default function MalwareScanPage() {
   }
 
   if (sessionStatus === 'unavailable') {
-    return <main className="loading-screen"><p role="alert">{sessionError || 'Your secure session could not be verified.'}</p><a href="/login">Return to sign in</a></main>;
+    return <main className="loading-screen"><p role="alert">{sessionError || 'Your secure session could not be verified.'}</p><Link href="/login">Return to sign in</Link></main>;
   }
 
   return (
     <main className="scan-shell">
       <header className="scan-header">
-        <a className="trust-brand" href="/">◈ NEXUS SHIELD AI</a>
-        <a href="/">← Back to dashboard</a>
+        <Link className="trust-brand" href="/">◈ NEXUS SHIELD AI</Link>
+        <Link href="/">← Back to dashboard</Link>
       </header>
 
       <section className="scan-hero">
@@ -202,7 +203,7 @@ export default function MalwareScanPage() {
                 <button className="primary-button" type="submit" disabled={!file || isScanning || !canScan}>
                   {isScanning ? 'Scanning securely…' : 'Start file scan'}
                 </button>
-                <a className="secondary-button" href="/help">Read scan guidance</a>
+                <Link className="secondary-button" href="/help">Read scan guidance</Link>
               </div>
             </form>
           </section>

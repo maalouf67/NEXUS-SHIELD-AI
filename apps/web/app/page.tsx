@@ -1,4 +1,5 @@
 'use client';
+import Link from 'next/link';
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { useSession } from '../hooks/use-session';
@@ -247,7 +248,7 @@ export default function HomePage() {
       <main className="loading-screen">
         <div className="loading-mark"><ShieldMark /></div>
         <p>{loadError || 'Redirecting to secure sign-in…'}</p>
-        <a className="primary-button" href="/login">Open sign in</a>
+        <Link className="primary-button" href="/login">Open sign in</Link>
       </main>
     );
   }
@@ -266,10 +267,10 @@ export default function HomePage() {
   return (
     <main className="app-shell">
       <aside className="sidebar">
-        <a className="brand" href="/" aria-label="NEXUS SHIELD AI home">
+        <Link className="brand" href="/" aria-label="NEXUS SHIELD AI home">
           <span className="brand-mark"><ShieldMark /></span>
           <span><strong>NEXUS SHIELD AI</strong><small>SECURITY OPERATIONS</small></span>
-        </a>
+        </Link>
 
         <div className="sidebar-label">WORKSPACE</div>
         <nav className="side-nav">
@@ -279,9 +280,10 @@ export default function HomePage() {
           <a className="side-nav-link" href="#events"><span>⌖</span> Event intake</a>
           {isAdmin ? <a className="side-nav-link" href="#team"><span>♙</span> Team access</a> : null}
           <a className="side-nav-link" href="#intelligence"><span>✧</span> AI intelligence</a>
-          {canManage ? <a className="side-nav-link" href="/scan"><span>⌕</span> Malware file scan</a> : null}
-          <a className="side-nav-link" href="/settings"><span>⚙</span> Settings & privacy</a>
-          <a className="side-nav-link" href="/help"><span>?</span> Help center</a>
+          {canManage ? <Link className="side-nav-link" href="/scan"><span>⌕</span> Malware file scan</Link> : null}
+          {canManage ? <Link className="side-nav-link" href="/phone-reputation"><span>☎</span> Phone reputation</Link> : null}
+          <Link className="side-nav-link" href="/settings"><span>⚙</span> Settings & privacy</Link>
+          <Link className="side-nav-link" href="/help"><span>?</span> Help center</Link>
         </nav>
 
         <div className="sidebar-spacer" />
@@ -528,7 +530,7 @@ export default function HomePage() {
           <span>NEXUS SHIELD AI · Development build</span>
           <span>No live telemetry connected · No automated response enabled</span>
           <nav aria-label="Application information">
-            <a href="/license">License</a> · <a href="/settings">Language & privacy</a> · <a href="/help">Help</a> · <a href="/contact">Contact</a> · <a href="/privacy">Privacy policy (draft)</a>
+            <Link href="/license">License</Link> · <Link href="/settings">Language & privacy</Link> · <Link href="/help">Help</Link> · <Link href="/contact">Contact</Link> · <Link href="/privacy">Privacy policy (draft)</Link>
           </nav>
         </footer>
       </section>

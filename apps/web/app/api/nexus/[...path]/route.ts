@@ -7,7 +7,8 @@ const ALLOWED_ROOTS = new Set([
   'alerts',
   'threats',
   'users',
-  'security-events'
+  'security-events',
+  'phone-reputation'
 ]);
 const MAX_BODY_BYTES = 1024 * 1024;
 

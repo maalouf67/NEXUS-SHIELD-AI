@@ -1,7 +1,8 @@
+import Link from 'next/link';
 export default function PrivacyPolicyPage() {
   return (
     <main className="trust-center">
-      <header className="trust-header"><a className="trust-brand" href="/">◈ NEXUS SHIELD AI</a><a href="/settings">Settings & privacy</a></header>
+      <header className="trust-header"><Link className="trust-brand" href="/">◈ NEXUS SHIELD AI</Link><Link href="/settings">Settings & privacy</Link></header>
       <section className="trust-hero"><div className="eyebrow">LEGAL · DRAFT FOR OWNER REVIEW</div><h1>Privacy Policy</h1><p>Draft policy for NEXUS SHIELD AI. It must be reviewed and finalized by the owner and qualified legal counsel before production.</p></section>
       <article className="trust-card trust-prose">
         <h2>1. Information processed</h2><p>The application may process account identifiers, authentication/security audit records, assets, incident information and security-event data submitted by authorized users or connected sources. Do not submit passwords, API keys or unrelated sensitive personal information.</p>

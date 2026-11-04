@@ -1,0 +1,132 @@
+'use client';
+import Link from 'next/link';
+
+import { FormEvent, useEffect, useState } from 'react';
+import { useSession } from '../../hooks/use-session';
+
+type Verdict = 'malicious' | 'suspicious' | 'safe' | 'unknown';
+type ScanResult = {
+  provider: 'ipqualityscore';
+  verdict: Verdict;
+  scanned_phone: string;
+  fraud_score: number | null;
+  number_valid: boolean | null;
+  recent_abuse: boolean | null;
+  risky: boolean | null;
+  spammer: boolean | null;
+  active: boolean | null;
+  region?: string | null;
+  carrier?: string | null;
+  phone_type?: string | null;
+  location?: string | null;
+  country?: string | null;
+  provider_request_id?: string | null;
+  message: string;
+};
+type ApiError = { error?: string; message?: string };
+
+const verdictCopy: Record<Verdict, { title: string; detail: string }> = {
+  malicious: { title: 'Provider flagged this number as spam', detail: 'IPQualityScore returned an explicit spammer signal. Treat this as a strong warning, not proof of caller identity.' },
+  suspicious: { title: 'Elevated risk indicators', detail: 'The provider returned a raised fraud score or abuse indicator. Verify the caller independently before responding.' },
+  safe: { title: 'No risk indicators reported', detail: 'The provider returned valid, low-risk signals. This is not a guarantee that the caller is legitimate.' },
+  unknown: { title: 'Insufficient reputation data', detail: 'The provider did not return enough complete signals for a reliable verdict. Treat this number as unverified.' }
+};
+
+export default function PhoneReputationPage() {
+  const { user, status, error: sessionError } = useSession();
+  const [phone, setPhone] = useState('+212');
+  const [result, setResult] = useState<ScanResult | null>(null);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (status === 'anonymous') window.location.replace('/login');
+  }, [status]);
+
+  async function scan(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError('');
+    setResult(null);
+    setBusy(true);
+    try {
+      const response = await fetch('/api/nexus/phone-reputation/check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: phone.trim() }),
+        cache: 'no-store'
+      });
+      const payload = await response.json() as Partial<ScanResult> & ApiError;
+      if (!response.ok) throw new Error(payload.message || payload.error || 'The check could not be completed.');
+      if (!payload.provider || !['malicious', 'suspicious', 'safe', 'unknown'].includes(String(payload.verdict))) {
+        throw new Error('The provider returned an unsupported result. No verdict was accepted.');
+      }
+      setResult(payload as ScanResult);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'The check could not be completed.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (status === 'checking') return <main className="loading-screen"><p>Verifying secure session…</p></main>;
+  if (!user) return <main className="loading-screen"><p role="alert">{sessionError || 'Sign in to continue.'}</p><Link href="/login">Sign in</Link></main>;
+  if (user.role === 'viewer') return <main className="scan-shell"><Link href="/">← Back to dashboard</Link><section className="scan-panel"><h1>Analyst access required</h1><p className="scan-muted">Only Admin and Analyst roles can submit phone reputation checks.</p></section></main>;
+
+  const verdictClass = result?.verdict === 'malicious'
+    ? 'scan-status-detected'
+    : result?.verdict === 'suspicious' || result?.verdict === 'unknown'
+      ? 'scan-status-pending'
+      : 'scan-status-clean';
+
+  return (
+    <main className="scan-shell">
+      <header className="scan-header">
+        <Link className="trust-brand" href="/">◈ NEXUS SHIELD AI</Link>
+        <Link href="/">← Back to dashboard</Link>
+      </header>
+      <section className="scan-hero">
+        <div className="eyebrow">NEXUS · PHONE INTELLIGENCE</div>
+        <h1>Phone reputation scanner</h1>
+        <p>Check an international number against the configured IPQualityScore phone risk service. The result is a reputation signal; it does not identify the person calling you.</p>
+      </section>
+      <section className="scan-panel">
+        <div className="scan-panel-heading">
+          <div><span className="eyebrow">LIVE PROVIDER LOOKUP</span><h2>Enter an international number</h2></div>
+          <span className="scan-limit">E.164 FORMAT</span>
+        </div>
+        <form className="scan-upload-form" onSubmit={scan}>
+          <label className="form-field">
+            <span>Phone number</span>
+            <input value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="+2126XXXXXXXX" autoComplete="tel" inputMode="tel" required pattern="\\+[1-9][0-9]{7,14}" title="Use international E.164 format, e.g. +212612345678." />
+          </label>
+          <p className="scan-muted">Example for Morocco: +212612345678. The number is sent to the configured provider only after you submit. The application does not save the submitted number.</p>
+          <div className="scan-actions"><button className="primary-button" type="submit" disabled={busy || !phone.trim()}>{busy ? 'Checking…' : 'Check phone reputation'}</button></div>
+        </form>
+      </section>
+      {error ? <div className="notice notice-error" role="alert">{error}</div> : null}
+      {result ? (
+        <section className="scan-result" aria-live="polite">
+          <div className="scan-result-heading"><span className={verdictClass}>{result.verdict.toUpperCase()}</span><h2>{verdictCopy[result.verdict].title}</h2></div>
+          <p>{verdictCopy[result.verdict].detail}</p>
+          <dl className="scan-result-meta">
+            <div><dt>Scanned number</dt><dd>{result.scanned_phone}</dd></div>
+            <div><dt>Provider</dt><dd>IPQualityScore</dd></div>
+            <div><dt>Fraud score</dt><dd>{result.fraud_score === null ? 'Not supplied' : result.fraud_score + ' / 100'}</dd></div>
+            {result.country ? <div><dt>Country</dt><dd>{result.country}</dd></div> : null}
+            {result.region ? <div><dt>Region</dt><dd>{result.region}</dd></div> : null}
+            {result.carrier ? <div><dt>Carrier</dt><dd>{result.carrier}</dd></div> : null}
+            {result.phone_type ? <div><dt>Phone type</dt><dd>{result.phone_type}</dd></div> : null}
+            {result.location ? <div><dt>Location</dt><dd>{result.location}</dd></div> : null}
+            <div><dt>Recent abuse</dt><dd>{result.recent_abuse === null ? 'Not supplied' : result.recent_abuse ? 'Reported' : 'Not reported'}</dd></div>
+            <div><dt>Line active</dt><dd>{result.active === null ? 'Not supplied' : result.active ? 'Active' : 'Inactive'}</dd></div>
+          </dl>
+          <p className="scan-disclaimer">{result.message} Even a low-risk result cannot guarantee that a caller is legitimate.</p>
+        </section>
+      ) : null}
+      <section className="scan-safety-note">
+        <strong>Provider and coverage notice</strong>
+        <p>Live checks require the IPQS_API_KEY secret on the API server. A valid API response does not guarantee that every Moroccan carrier or every spam complaint is represented in the provider dataset. Missing or incomplete intelligence is displayed as UNKNOWN, never as SAFE.</p>
+      </section>
+    </main>
+  );
+}
