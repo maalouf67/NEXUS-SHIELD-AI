@@ -46,6 +46,10 @@ Do not assume that the Middle East endpoint is correct for every account. Confir
 
 These are conservative application rules, not claims that either provider guarantees caller legitimacy or caller identity.
 
+## Shared provider quota
+
+SEON documents a shared license-level limit of two requests per second for trial keys and 20 requests per second after the trial period. The application also applies a per-account five-lookups-per-15-minutes limit. That per-account limit alone is not a distributed license quota: before exposing the feature to multiple API replicas or a large user base, configure a shared rate-limit store or equivalent centralized quota control aligned with the SEON plan. HTTP 429 responses are surfaced as rate-limited provider results and never as safe.
+
 ## Privacy and operations
 
 - The page requires explicit consent before submitting a number to configured services.
