@@ -73,7 +73,7 @@ These application quotas do not replace provider-level commercial quotas. SEON d
 - The page requires explicit consent before submitting a number to configured services.
 - The Express API never persists the submitted number or raw provider response.
 - Responses use `Cache-Control: no-store`.
-- Rate-limit keys are SHA-256 hashes; raw account IDs and source IPs are not stored in the counter table.
+- Rate-limit keys are keyed HMAC-SHA-256 digests using `RATE_LIMIT_HASH_SECRET` (or `SESSION_SECRET` as a fallback); raw account IDs and source IPs are not stored in the counter table.
 - Never log phone numbers, provider payloads, API keys, or credential-bearing URLs.
 - Keep `IPQS_API_KEY` and `SEON_API_KEY` in the server-side secret manager of the environment hosting the Express API. Do not place them in `NEXT_PUBLIC_*`, `EXPO_PUBLIC_*`, browser storage, app bundles, or GitHub source files.
 - If one provider is not configured, the API reports the provider status and the overall result cannot be safe.
