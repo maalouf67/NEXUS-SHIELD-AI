@@ -18,6 +18,13 @@ import { phoneReputationRouter } from './phone-reputation/phone-reputation.route
 
 export const app = express();
 
+// Trust only the explicitly configured number of reverse-proxy hops.
+// Keep this at 0 for direct/local traffic. Never trust all forwarded headers.
+const trustProxyHops = Number(process.env.TRUST_PROXY_HOPS ?? '0');
+if (Number.isInteger(trustProxyHops) && trustProxyHops >= 0 && trustProxyHops <= 5) {
+  app.set('trust proxy', trustProxyHops);
+}
+
 const allowedOrigins = process.env.ALLOWED_ORIGINS
   ?.split(',')
   .map((origin) => origin.trim())
