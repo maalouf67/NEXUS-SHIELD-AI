@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHmac } from "node:crypto";
 
 import type { ClientRateLimitInfo, IncrementResponse, Options, Store } from "express-rate-limit";
 
@@ -12,7 +12,7 @@ type CounterRow = {
 /**
  * Shared rate-limit counters for all API instances.
  *
- * Identifiers are SHA-256 hashed before they are written to PostgreSQL.
+ * Identifiers are keyed-HMAC-SHA-256 hashed before they are written to PostgreSQL.
  * Each limiter uses a separate scope so API, phone-account and phone-IP
  * quotas cannot collide.
  */
@@ -34,7 +34,11 @@ export class PostgresRateLimitStore implements Store {
   }
 
   private hashKey(key: string): string {
-    return createHash("sha256").update(key).digest("hex");
+    const secret = process.env.RATE_LIMIT_HASH_SECRET?.trim() || process.env.SESSION_SECRET?.trim();
+    if (!secret || secret.length < 32) {
+      throw new Error("A 32-character rate-limit HMAC secret or SESSION_SECRET is required.");
+    }
+    return createHmac("sha256", secret).update(key).digest("hex");
   }
 
   private ensureSchema(): Promise<void> {
