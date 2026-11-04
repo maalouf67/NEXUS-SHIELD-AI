@@ -25,7 +25,7 @@ const optionalSeonPhoneApiUrl = z.preprocess(
       const url = new URL(value);
       return url.protocol === "https:" &&
         seonHosts.has(url.hostname) &&
-        url.pathname === "/SeonRestService/phone-api/v2" &&
+        url.pathname === "/SeonRestService/phone-api/v2" && !url.port &&
         !url.search && !url.hash && !url.username && !url.password;
     } catch {
       return false;
