@@ -14,7 +14,8 @@ const SECRET = "nexus-health-test-secret-at-least-thirty-two-characters";
 const ORIGINAL = {
   jwt: process.env.JWT_SECRET,
   ipqs: process.env.IPQS_API_KEY,
-  seon: process.env.SEON_API_KEY
+  seon: process.env.SEON_API_KEY,
+  abuseipdb: process.env.ABUSEIPDB_API_KEY
 };
 
 function token() {
@@ -36,6 +37,7 @@ beforeEach(() => {
   process.env.JWT_SECRET = SECRET;
   delete process.env.IPQS_API_KEY;
   delete process.env.SEON_API_KEY;
+  delete process.env.ABUSEIPDB_API_KEY;
   vi.mocked(checkDatabaseConnection).mockReset();
 });
 afterEach(() => {
@@ -45,6 +47,8 @@ afterEach(() => {
   else process.env.IPQS_API_KEY = ORIGINAL.ipqs;
   if (ORIGINAL.seon === undefined) delete process.env.SEON_API_KEY;
   else process.env.SEON_API_KEY = ORIGINAL.seon;
+  if (ORIGINAL.abuseipdb === undefined) delete process.env.ABUSEIPDB_API_KEY;
+  else process.env.ABUSEIPDB_API_KEY = ORIGINAL.abuseipdb;
 });
 
 describe("API readiness", () => {
@@ -57,6 +61,7 @@ describe("API readiness", () => {
   it("checks PostgreSQL and reports provider key presence without exposing secrets", async () => {
     process.env.IPQS_API_KEY = "configured-ipqs-secret";
     process.env.SEON_API_KEY = "configured-seon-secret";
+    process.env.ABUSEIPDB_API_KEY = "configured-abuseipdb-secret";
     vi.mocked(checkDatabaseConnection).mockResolvedValue({ connected_at: new Date() } as never);
 
     const response = await request(appForHealth()).get("/health/ready")
@@ -67,10 +72,12 @@ describe("API readiness", () => {
     expect(response.body.dependencies.database).toBe("ok");
     expect(response.body.dependencies.phone_provider_credentials).toEqual({
       ipqualityscore: true,
-      seon: true
+      seon: true,
+      abuseipdb: true
     });
     expect(JSON.stringify(response.body)).not.toContain("configured-ipqs-secret");
     expect(JSON.stringify(response.body)).not.toContain("configured-seon-secret");
+    expect(JSON.stringify(response.body)).not.toContain("configured-abuseipdb-secret");
   });
 
   it("returns 503 when PostgreSQL cannot be reached", async () => {
