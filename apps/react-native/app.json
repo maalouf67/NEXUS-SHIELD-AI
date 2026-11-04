@@ -1,0 +1,21 @@
+{
+  "expo": {
+    "name": "NEXUS Shield AI",
+    "slug": "nexus-shield-ai-mobile",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "nexusshield",
+    "userInterfaceStyle": "dark",
+    "plugins": [
+      "expo-secure-store"
+    ],
+    "ios": {
+      "bundleIdentifier": "ai.nexusshield.mobile",
+      "deploymentTarget": "15.1",
+      "supportsTablet": true
+    },
+    "android": {
+      "package": "ai.nexusshield.mobile"
+    }
+  }
+}
