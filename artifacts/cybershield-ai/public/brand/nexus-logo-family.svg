@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="760" viewBox="0 0 1200 760">
+  <defs>
+    <linearGradient id="line" x1="0" x2="1"><stop stop-color="#48d9e8"/><stop offset="1" stop-color="#c6fa42"/></linearGradient>
+    <g id="mark">
+      <path d="M50 6 86 20v27c0 22-14 38-36 48C28 85 14 69 14 47V20L50 6Z" fill="none" stroke="url(#line)" stroke-width="3.2" stroke-linejoin="round"/>
+      <path d="M32 65V35l36 30V35" fill="none" stroke="#c6fa42" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M32 50h36" fill="none" stroke="#48d9e8" stroke-width="1.7" opacity=".75"/>
+      <circle cx="32" cy="35" r="4.2" fill="#c6fa42"/><circle cx="32" cy="65" r="4.2" fill="#c6fa42"/><circle cx="50" cy="50" r="4.2" fill="#48d9e8"/><circle cx="68" cy="35" r="4.2" fill="#c6fa42"/><circle cx="68" cy="65" r="4.2" fill="#c6fa42"/>
+    </g>
+  </defs>
+  <rect width="1200" height="760" fill="#070908"/>
+  <text x="72" y="68" fill="#eef5f1" font-family="Arial,sans-serif" font-size="14" font-weight="700" letter-spacing="3">NEXUS SHIELD AI · IDENTITY SYSTEM</text>
+  <text x="72" y="98" fill="#738078" font-family="monospace" font-size="10" letter-spacing="1.6">SHIELD STRUCTURE / NEURAL NODES / N-FORM</text>
+  <rect x="60" y="132" width="1080" height="262" rx="16" fill="#0d1310" stroke="#24312b"/>
+  <text x="91" y="171" fill="#829087" font-family="monospace" font-size="10" letter-spacing="2">01 / FULL LOGO · DARK BACKGROUND</text>
+  <use href="#mark" x="90" y="200" width="112" height="112"/>
+  <text x="235" y="270" fill="#eef5f1" font-family="Arial,sans-serif" font-size="52" font-weight="700" letter-spacing="7">NEXUS</text>
+  <text x="239" y="316" fill="#a5b1ab" font-family="monospace" font-size="20" font-weight="600" letter-spacing="7">SHIELD AI</text>
+  <text x="900" y="179" fill="#829087" font-family="monospace" font-size="9" letter-spacing="1.5">02 / SYMBOL ONLY</text>
+  <use href="#mark" x="952" y="204" width="120" height="120"/>
+  <rect x="60" y="418" width="520" height="270" rx="16" fill="#f1f4ef" stroke="#d8e0d9"/>
+  <text x="90" y="458" fill="#68746c" font-family="monospace" font-size="10" letter-spacing="2">03 / LIGHT BACKGROUND</text>
+  <path d="M153 505 187 518v25c0 20-13 36-34 45-21-9-34-25-34-45v-25l34-13Z" fill="none" stroke="#009caf" stroke-width="3" stroke-linejoin="round"/>
+  <path d="M136 561v-28l34 28v-28" fill="none" stroke="#688611" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M136 547h34" fill="none" stroke="#009caf" stroke-width="1.7" opacity=".75"/>
+  <circle cx="136" cy="533" r="4" fill="#688611"/><circle cx="136" cy="561" r="4" fill="#688611"/><circle cx="153" cy="547" r="4" fill="#009caf"/><circle cx="170" cy="533" r="4" fill="#688611"/><circle cx="170" cy="561" r="4" fill="#688611"/>
+  <text x="217" y="555" fill="#101411" font-family="Arial,sans-serif" font-size="38" font-weight="700" letter-spacing="5">NEXUS</text>
+  <text x="220" y="588" fill="#49534d" font-family="monospace" font-size="15" font-weight="600" letter-spacing="5">SHIELD AI</text>
+  <text x="90" y="650" fill="#68746c" font-family="monospace" font-size="9" letter-spacing="1">COLOR PAIR: CYBER LIME + ELECTRIC CYAN</text>
+  <rect x="600" y="418" width="540" height="270" rx="16" fill="#f1f4ef" stroke="#d8e0d9"/>
+  <text x="630" y="458" fill="#68746c" font-family="monospace" font-size="10" letter-spacing="2">04 / MONOCHROME · PRINT SAFE</text>
+  <path d="M693 505 727 518v25c0 20-13 36-34 45-21-9-34-25-34-45v-25l34-13Z" fill="none" stroke="#111715" stroke-width="3" stroke-linejoin="round"/>
+  <path d="M676 561v-28l34 28v-28" fill="none" stroke="#111715" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M676 547h34" fill="none" stroke="#111715" stroke-width="1.7" opacity=".7"/>
+  <circle cx="676" cy="533" r="4" fill="#111715"/><circle cx="676" cy="561" r="4" fill="#111715"/><circle cx="693" cy="547" r="4" fill="#111715"/><circle cx="710" cy="533" r="4" fill="#111715"/><circle cx="710" cy="561" r="4" fill="#111715"/>
+  <text x="757" y="555" fill="#111715" font-family="Arial,sans-serif" font-size="38" font-weight="700" letter-spacing="5">NEXUS</text>
+  <text x="760" y="588" fill="#111715" font-family="monospace" font-size="15" font-weight="600" letter-spacing="5">SHIELD AI</text>
+  <text x="630" y="650" fill="#68746c" font-family="monospace" font-size="9" letter-spacing="1">SINGLE INK / GRAYSCALE REPRODUCTION</text>
+</svg>

@@ -1,0 +1,138 @@
+
+13. ROADMAP
+العنوان:
+رؤية مستقبلية
+Subtitle:
+الطريق إلى الدفاع الذاتي
+Phase 01
+Autonomous Threat Analysis
+شبكة أساسية من الوكلاء مع أحكام قابلة للتفسير.
+Phase 02
+SOC Integration
+تكامل مع منصات SIEM مثل Splunk وMicrosoft Sentinel وGoogle Chronicle.
+Phase 03
+Automated Containment
+استجابة مرتبطة بالسياسات وعزل المضيف عند السماح بذلك.
+Phase 04
+Enterprise Deployment
+On-Premise Private Cloud Multi-Tenant
+Phase 05
+Global Threat Intelligence Network
+تعلم وتحسين مستمر قائم على بيانات موثوقة ومصرح باستخدامها.
+
+───
+
+14. FINAL CTA
+قسم نهائي سينمائي:
+تأمين المستقبل باستخدام
+ وكلاء الذكاء الاصطناعي المستقلين
+النص:
+"يُظهر CyberShield AI كيف يمكن للأنظمة متعددة الوكلاء تحويل عمليات الأمن السيبراني من خلال التفكير التعاوني والتحقيق والاستجابة."
+Buttons:
+Explore Architecture
+View Agent Workflow
+
+───
+
+15. FOOTER
+CyberShield AI
+Hack Agent AIX 2026 · Track 2
+Agentic AI · Multi-Agent Systems
+Autonomous Cyber Defense · SOC Automation
+Threat Intelligence · Incident Response
+© 2026 CyberShield AI
+
+───
+
+16. أهم متطلبات UX
+اجعل الموقع:
+• Responsive بالكامل
+• Mobile First
+• سريع جدًا
+• Accessible
+• SEO-friendly
+• RTL للعربية
+• يدعم الإنجليزية والعربية
+• Language switcher واضح
+• Navigation ثابتة أثناء Scroll
+• Smooth scrolling
+• Scroll reveal animations
+• Hover animations
+• Interactive architecture
+• Interactive agent cards
+• Interactive workflow
+• Live SOC console simulation
+• Command-center visual language
+
+───
+
+17. Navigation
+Navbar:
+CyberShield AI
+Architecture
+ Agents
+ Workflow
+ Capabilities
+ Technology
+ Roadmap
+يمين الشاشة:
+EN / AR
+Launch Platform
+على الهاتف: استخدم Hamburger Menu احترافي.
+
+───
+
+18. التصميم البرمجي
+استخدم Components منظمة وقابلة لإعادة الاستخدام.
+مثال:
+components/
+• Navbar
+• Hero
+• Metrics
+• Problem
+• Architecture
+• AgentCard
+• AgentsGrid
+• Workflow
+• CollaborationConsole
+• Capabilities
+• TechStack
+• Impact
+• Roadmap
+• CTA
+• Footer
+اجعل جميع بيانات Agents وMetrics وRoadmap في ملفات بيانات منفصلة بدل تكرارها داخل Components.
+
+───
+
+19. IMPORTANT — PRODUCT TRUTH
+CyberShield AI هو مشروع Cybersecurity حقيقي قيد التطوير.
+لا تقم بتزييف:
+• نتائج فحص
+• Threat Intelligence
+• Malware Detection
+• API responses
+• Security scores
+• سرعة التحقيق
+• نسبة النجاح
+• تقارير أمنية
+إذا كانت الوظيفة غير متصلة Backend حقيقي، اعرضها بوضوح على أنها: Demo / Simulation / Preview
+ولا تقل إن النظام يحمي الجهاز فعليًا إلا عندما تكون وظيفة الحماية منفذة ومختبرة.
+
+───
+
+20. FINAL QUALITY
+لا أريد Landing Page تقليدية.
+أريد تجربة تجعل الزائر يشعر أنه دخل إلى:
+AI Cyber Defense Command Center
+يجب أن يكون التصميم مناسبًا لعرض مشروع في Hackathon أو أمام مستثمر أو شركة Cybersecurity.
+الأولوية:
+1. Professional UI
+2. Cybersecurity credibility
+3. Clear multi-agent architecture
+4. Interactive visualization
+5. Excellent mobile experience
+6. Performance
+7. Accessibility
+8. Truthful product claims
+ابدأ أولًا بفحص المشروع الحالي إن كان موجودًا، وحافظ على الأجزاء الجيدة الموجودة، ثم نفذ التصميم تدريجيًا بدل حذف المشروع بالكامل دون فحص.

@@ -1,26 +1,22 @@
 {
-  "name": "nexus-shield-ai",
-  "private": true,
-  "version": "0.1.0",
-  "workspaces": [
-    "apps/web",
-    "services/api",
-    "packages/shared"
-  ],
+  "name": "workspace",
+  "version": "0.0.0",
+  "license": "MIT",
   "scripts": {
-    "dev": "concurrently \"npm run dev --workspace @nexus-shield/web\" \"npm run dev --workspace @nexus-shield/api\" \"cd services/ai && uvicorn app.main:app --reload --host 127.0.0.1 --port 8001\"",
-    "build": "npm run build --workspace @nexus-shield/web && npm run build --workspace @nexus-shield/api",
-    "lint": "npm run lint --workspace @nexus-shield/web && npm run lint --workspace @nexus-shield/api",
-    "test": "npm run test --workspace @nexus-shield/api --if-present",
-    "db:up": "docker compose up -d postgres",
-    "db:down": "docker compose down",
-    "dev:web-api": "concurrently \"npm run dev --workspace @nexus-shield/web\" \"npm run dev --workspace @nexus-shield/api\""
+    "preinstall": "sh -c 'rm -f package-lock.json yarn.lock; case \"$npm_config_user_agent\" in pnpm/*) ;; *) echo \"Use pnpm instead\" >&2; exit 1 ;; esac'",
+    "build": "pnpm run typecheck && pnpm -r --if-present run build",
+    "typecheck:libs": "tsc --build",
+    "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck"
+  },
+  "private": true,
+  "dependencies": {
+    "@ai-sdk/openai": "^4.0.102",
+    "@replit/connectors-sdk": "^0.4.3",
+    "ai": "^7.0.153",
+    "openai": "^7.45.0"
   },
   "devDependencies": {
-    "concurrently": "^9.0.1",
-    "postcss": "^8.5.32"
-  },
-  "overrides": {
-    "postcss": "$postcss"
+    "prettier": "^3.9.6",
+    "typescript": "~5.9.3"
   }
 }

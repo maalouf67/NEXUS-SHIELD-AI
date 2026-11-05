@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="160" viewBox="0 0 720 160">
+  <path d="M76 12 132 34v41c0 34-22 59-56 74C42 134 20 109 20 75V34l56-22Z" fill="none" stroke="#111715" stroke-width="5" stroke-linejoin="round"/>
+  <path d="M48 103V47l56 56V47" fill="none" stroke="#111715" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M48 75h56" fill="none" stroke="#111715" stroke-width="2.4" opacity=".6"/>
+  <circle cx="48" cy="47" r="6" fill="#111715"/><circle cx="48" cy="103" r="6" fill="#111715"/><circle cx="76" cy="75" r="6" fill="#111715"/><circle cx="104" cy="47" r="6" fill="#111715"/><circle cx="104" cy="103" r="6" fill="#111715"/>
+  <text x="164" y="83" fill="#111715" font-family="Arial,sans-serif" font-size="54" font-weight="700" letter-spacing="7">NEXUS</text>
+  <text x="167" y="121" fill="#111715" font-family="monospace" font-size="21" font-weight="600" letter-spacing="7">SHIELD AI</text>
+</svg>

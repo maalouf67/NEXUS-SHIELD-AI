@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "NEXUS SHIELD AI"
+description = "A bilingual Arabic-English enterprise cyber defense concept site for NEXUS SHIELD AI. Presents a seven-agent defense network, simulation-only SOC console and threat-intelligence visuals, planned technology integrations, and unverified performance metrics clearly marked as demo or target."
+version = "1.0.0"
+id = "artifacts/cybershield-ai"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 20903
+
+[services.development]
+run = "pnpm --filter @workspace/cybershield-ai run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/cybershield-ai", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/cybershield-ai/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "20903"
+BASE_PATH = "/"
