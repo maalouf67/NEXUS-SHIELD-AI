@@ -85,7 +85,7 @@ jobs:
           chmod 0755 "$RUNNER_TEMP/gosu"
           version="$("$RUNNER_TEMP/gosu" --version)"
           echo "$version"
-          echo "$version" | grep -F "gosu version: 1.19 (go1.24.6"
+          echo "$version" | grep -F "1.19 (go1.24.6"
           "$RUNNER_TEMP/gosu" nobody true
 
       - name: Check upstream gosu source for reachable Go vulnerabilities
