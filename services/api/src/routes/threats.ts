@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { runOrchestrator } from '../ai/orchestrator.js';
 import { requireServiceToken } from '../middleware/service-token.js';
 import { threatAnalysisRateLimiter } from '../middleware/ai-rate-limit.js';
+import { requireAuth, requireRole } from '../auth/auth.middleware.js';
+import { pool } from '../db/pool.js';
 
 export const threatsRouter = Router();
 const ThreatRequestSchema = z.object({
@@ -12,16 +14,43 @@ const ThreatRequestSchema = z.object({
   details: z.string().max(5000).optional()
 });
 
-threatsRouter.get('/threats/summary', async (_req, res) => {
-  res.json({
-    status: 'ok',
-    is_demo: true,
-    data_source: 'sample',
-    summary: {
-      total_incidents: 17, critical: 4, mitigated: 12, ai_score: 92,
-      updated_at: new Date().toISOString()
-    }
-  });
+threatsRouter.get('/threats/summary', requireAuth, requireRole('admin', 'analyst', 'viewer'), async (_req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT
+         COUNT(*)::int AS total_incidents,
+         COUNT(*) FILTER (
+           WHERE severity = 'critical' AND status NOT IN ('resolved', 'closed')
+         )::int AS critical,
+         COUNT(*) FILTER (
+           WHERE status IN ('contained', 'resolved', 'closed')
+         )::int AS mitigated,
+         COALESCE(MAX(updated_at), MAX(created_at), NOW()) AS updated_at
+       FROM incidents`
+    );
+    const row = result.rows[0] ?? {};
+    const updatedAt = row.updated_at instanceof Date
+      ? row.updated_at.toISOString()
+      : new Date(row.updated_at ?? Date.now()).toISOString();
+
+    return res.status(200).json({
+      status: 'ok',
+      is_demo: false,
+      data_source: 'postgresql',
+      summary: {
+        total_incidents: Number(row.total_incidents ?? 0),
+        critical: Number(row.critical ?? 0),
+        mitigated: Number(row.mitigated ?? 0),
+        ai_score: null,
+        updated_at: updatedAt
+      }
+    });
+  } catch {
+    return res.status(503).json({
+      error: 'THREAT_SUMMARY_UNAVAILABLE',
+      message: 'Threat summary could not be loaded from PostgreSQL.'
+    });
+  }
 });
 
 threatsRouter.post('/threats/analyze', requireServiceToken, threatAnalysisRateLimiter, async (req, res) => {
