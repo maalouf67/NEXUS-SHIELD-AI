@@ -118,4 +118,29 @@ describe('API anomaly containment', () => {
     expect(contained.status).toBe(429);
   });
 
+
+  it('counts malformed and oversized JSON before route handling', async () => {
+    const store = new MemoryCounterStore(60_000);
+    const app = express();
+
+    app.use('/api', createApiAnomalyGuard({
+      windowMs: 60_000,
+      threshold: 2,
+      store
+    }));
+    app.use(express.json({ limit: '16b' }));
+    app.post('/api/body', (_request, response) => response.status(200).json({ status: 'ok' }));
+
+    const malformed = await request(app).post('/api/body')
+      .set('Content-Type', 'application/json')
+      .send('{"broken":');
+    const oversized = await request(app).post('/api/body')
+      .send({ payload: 'x'.repeat(100) });
+    const contained = await request(app).post('/api/body').send({ ok: true });
+
+    expect(malformed.status).toBe(400);
+    expect(oversized.status).toBe(413);
+    expect(contained.status).toBe(429);
+  });
+
 });
