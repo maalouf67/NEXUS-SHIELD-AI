@@ -18,8 +18,8 @@ Do not describe sample data or planned capabilities as active protection.
 
 - Frontend: Next.js web/admin console
 - API: Node.js, TypeScript, Express, and Zod
-- AI engine: Python + FastAPI and the OpenAI Responses API
-- AI application layer: typed threat-analysis agent
+- AI threat-analysis layer: TypeScript AI SDK orchestrator/provider inside the Express API; OpenAI access uses the server-side `OPENAI_API_KEY`
+- Malware scanning service: Python + FastAPI, authenticated service-to-service requests, private quarantine and ClamAV integration
 - Data: PostgreSQL
 - Security baseline: Helmet, CORS allow-list, request validation, API rate limiting, environment validation, and protected service-to-service route access
 
