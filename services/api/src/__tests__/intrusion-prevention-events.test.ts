@@ -88,7 +88,7 @@ describe('privacy-preserving protection events', () => {
     const sourceIp = '198.51.100.27';
 
     recordProtectionEvent(requestFrom(sourceIp), eventOptions);
-    vi.spyOn(Date, 'now').mockReturnValue(1_800_000_600_000);
+    vi.mocked(Date.now).mockReturnValue(1_800_000_600_000);
     recordProtectionEvent(requestFrom(sourceIp), eventOptions);
 
     const first = ingestBatch.mock.calls[0]?.[0][0];
