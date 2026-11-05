@@ -59,8 +59,11 @@ jobs:
       - name: Apply database migrations with the application migration runner
         run: npm run db:migrate
 
-      - name: Verify PostgreSQL connectivity and migrated schema
+      - name: Verify migration idempotency, PostgreSQL connectivity and schema
         run: |
+          second_run="$(npm run db:migrate 2>&1)"
+          echo "$second_run"
+          echo "$second_run" | grep -F "0 applied, 8 already current, 8 total"
           npm run db:check
           table="$(psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -Atqc "SELECT to_regclass('public.api_rate_limit_counters')")"
           test "$table" = "api_rate_limit_counters"
