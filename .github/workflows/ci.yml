@@ -56,24 +56,17 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y postgresql-client
 
-      - name: Apply database migrations to temporary CI database
-        env:
-          PGPASSWORD: nexus_test_password
-        run: |
-          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/init/001_init.sql
-          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/init/002_attack_path_inventory.sql
-          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/init/003_user_auth.sql
-          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/init/004_incident_management.sql
-          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/init/005_alert_audit_link.sql
-          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/init/006_security_event_ingestion.sql
-          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/init/007_malware_scan_history.sql
-          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/init/008_api_rate_limit_counters.sql
+      - name: Apply database migrations with the application migration runner
+        run: npm run db:migrate
 
-      - name: Verify the API rate-limit counter migration
+      - name: Verify PostgreSQL connectivity and migrated schema
         run: |
+          npm run db:check
           table="$(psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -Atqc "SELECT to_regclass('public.api_rate_limit_counters')")"
           test "$table" = "api_rate_limit_counters"
-          echo "API rate-limit counter table is present in the CI database."
+          migration_count="$(psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -Atqc "SELECT COUNT(*) FROM nexus_schema_migrations")"
+          test "$migration_count" = "8"
+          echo "PostgreSQL connection verified and all 8 numbered migrations are recorded."
 
       - name: Build web and API workspaces
         run: npm run build
