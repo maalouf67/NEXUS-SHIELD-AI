@@ -69,6 +69,12 @@ jobs:
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/init/007_malware_scan_history.sql
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/init/008_api_rate_limit_counters.sql
 
+      - name: Verify the API rate-limit counter migration
+        run: |
+          table="$(psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -Atqc "SELECT to_regclass('public.api_rate_limit_counters')")"
+          test "$table" = "api_rate_limit_counters"
+          echo "API rate-limit counter table is present in the CI database."
+
       - name: Build web and API workspaces
         run: npm run build
 
