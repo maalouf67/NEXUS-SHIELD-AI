@@ -1,21 +1,15 @@
+# Build the pinned gosu 1.20 source using a patched Go toolchain.
+FROM golang:1.27.3-alpine AS gosu-build
+WORKDIR /src/gosu
+COPY database/gosu-src/ ./
+RUN go build -trimpath -ldflags="-s -w" -o /out/gosu .
+
 # Railway PostgreSQL image aligned with local Docker Compose (PostgreSQL 16).
 FROM postgres:16-alpine
-
-# Replace the base image's older gosu binary with the official signed 1.20
-# release, which includes github.com/moby/sys/user v0.4.1 (CVE-2026-61801 fix).
-ARG GOSU_VERSION=1.20
+# Override the base image's older gosu binary with the source-built patched version.
+COPY --from=gosu-build /out/gosu /usr/local/bin/gosu
 RUN set -eux; \
-    apk add --no-cache ca-certificates dpkg gnupg wget; \
-    dpkgArch="$(dpkg --print-architecture | awk -F- '{print $NF}')"; \
-    wget -O /usr/local/bin/gosu "https://github.com/tianon/gosu/releases/download/${GOSU_VERSION}/gosu-${dpkgArch}"; \
-    wget -O /usr/local/bin/gosu.asc "https://github.com/tianon/gosu/releases/download/${GOSU_VERSION}/gosu-${dpkgArch}.asc"; \
-    export GNUPGHOME="$(mktemp -d)"; \
-    gpg --batch --keyserver hkps://keys.openpgp.org --recv-keys B42F6819007F00F88E364FD4036A9C25BF357DD4; \
-    gpg --batch --verify /usr/local/bin/gosu.asc /usr/local/bin/gosu; \
-    gpgconf --kill all; \
-    rm -rf "$GNUPGHOME" /usr/local/bin/gosu.asc; \
-    apk del --no-network dpkg gnupg wget; \
-    chmod +x /usr/local/bin/gosu; \
+    chmod 0755 /usr/local/bin/gosu; \
     gosu --version; \
     gosu nobody true
 

@@ -43,6 +43,37 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Checkout the pinned upstream gosu source
+        uses: actions/checkout@v4
+        with:
+          repository: tianon/gosu
+          ref: 29b939aa5bd4dc588af765b8248f6e39150d2565
+          path: gosu-upstream
+          persist-credentials: false
+
+      - name: Verify vendored gosu source matches pinned upstream
+        run: |
+          set -euo pipefail
+          for file in main.go setup-user.go version.go go.mod go.sum LICENSE; do
+            cmp "database/gosu-src/$file" "gosu-upstream/$file"
+          done
+
+      - name: Set up Go for upstream vulnerability analysis
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.27.3"
+          cache: false
+
+      - name: Install pinned govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
+
+      - name: Check upstream gosu source for reachable Go vulnerabilities
+        working-directory: gosu-upstream
+        run: |
+          set -euo pipefail
+          export PATH="$(go env GOPATH)/bin:$PATH"
+          bash ./govulncheck-with-excludes.sh ./...
+
       - name: Build the Railway PostgreSQL image
         run: docker build --pull -f database/Dockerfile.railway -t nexus-postgres:ci .
 
@@ -51,7 +82,7 @@ jobs:
           set -euo pipefail
           version="$(docker run --rm --user 0 --entrypoint /usr/local/bin/gosu nexus-postgres:ci --version)"
           echo "$version"
-          echo "$version" | grep -F "1.20"
+          echo "$version" | grep -F "1.20 (go1.27.3"
           switched_uid="$(docker run --rm --user 0 --entrypoint /usr/local/bin/gosu nexus-postgres:ci nobody id -u)"
           test "$switched_uid" != "0"
 
