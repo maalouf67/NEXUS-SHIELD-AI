@@ -18,23 +18,100 @@ concurrency:
 
 jobs:
   trivy-security-scan:
-    name: Trivy Security Scan
+    name: Trivy filesystem, dependency and secret scan
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Scan filesystem for vulnerabilities and misconfigurations
+      - name: Scan repository for vulnerabilities, misconfigurations and secrets
         uses: aquasecurity/trivy-action@v0.36.0
         with:
+          version: v0.76.1
           scan-type: fs
           scan-ref: .
-          scanners: vuln,misconfig
+          scanners: vuln,misconfig,secret
           severity: HIGH,CRITICAL
-          ignore-unfixed: true
+          ignore-unfixed: "false"
           exit-code: "1"
-          format: table
+          format: json
+          output: trivy-filesystem-results.json
+
+      - name: Upload filesystem scan report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-filesystem-report
+          path: trivy-filesystem-results.json
+          if-no-files-found: warn
+          retention-days: 30
+
+  container-image-scan:
+    name: Trivy runtime container image scans
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build the production PostgreSQL and AI images
+        run: |
+          docker build --pull -f database/Dockerfile.railway -t nexus-postgres:ci .
+          docker build --pull -f services/ai/Dockerfile -t nexus-ai:ci .
+
+      - name: Pull the configured ClamAV runtime image
+        run: docker pull clamav/clamav:1.5.4
+
+      - name: Scan PostgreSQL runtime image
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          version: v0.76.1
+          scan-type: image
+          image-ref: nexus-postgres:ci
+          scanners: vuln,misconfig,secret
+          severity: HIGH,CRITICAL
+          ignore-unfixed: "false"
+          exit-code: "1"
+          format: json
+          output: trivy-postgres-image-results.json
+
+      - name: Scan AI service runtime image
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          version: v0.76.1
+          scan-type: image
+          image-ref: nexus-ai:ci
+          scanners: vuln,misconfig,secret
+          severity: HIGH,CRITICAL
+          ignore-unfixed: "false"
+          exit-code: "1"
+          format: json
+          output: trivy-ai-image-results.json
+
+      - name: Scan ClamAV runtime image
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          version: v0.76.1
+          scan-type: image
+          image-ref: clamav/clamav:1.5.4
+          scanners: vuln,misconfig,secret
+          severity: HIGH,CRITICAL
+          ignore-unfixed: "false"
+          exit-code: "1"
+          format: json
+          output: trivy-clamav-image-results.json
+
+      - name: Upload container image scan reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-container-image-reports
+          path: |
+            trivy-postgres-image-results.json
+            trivy-ai-image-results.json
+            trivy-clamav-image-results.json
+          if-no-files-found: warn
+          retention-days: 30
 
   dependency-review:
     name: Dependency Review
