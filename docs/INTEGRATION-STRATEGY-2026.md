@@ -1,202 +1,76 @@
-# NEXUS SHIELD AI — Integration Strategy & Feature Delivery Plan (2026)
 
-**Review date:** 2026-11-05  
-**Repository baseline:** `main` at `8ffd06d48f7e4519225ae4d6ccea9290eb906c6c`  
-**Status:** Research and implementation plan. This document does not claim that any new external service has been installed, configured, tested, or deployed.
 
-## 1. Operating rules
+## 9. Engineering toolchain — approved roles and guardrails
 
-1. Preserve the existing monorepo and reuse its current services before adding dependencies or services.
-2. Work on feature branches and submit pull requests. Do not push feature work directly to `main`.
-3. Do not delete, rename, or move existing files as part of this plan.
-4. Treat external provider output and all AI output as untrusted data. Validate it against schemas and preserve provenance.
-5. Default all AI agents to read-only analysis. Human approval is required before blocking, quarantining, deleting, disabling an account, revoking a session, or changing production configuration.
-6. Never send a user's uploaded file, private event payload, social-account data, or personal identifier to an external intelligence provider without a separate, informed consent flow.
-7. A source file, successful unit test, or successful CI run is not proof of production operation. Every capability must have an explicit evidence level.
+The tools below complement the existing GitHub repository and CI. They are not interchangeable, and no tool is considered connected merely because it is listed here.
 
-## 2. Current repository baseline observed
+### Jira + GitHub — work tracking and traceability
 
-The repository already contains useful foundations; avoid duplicating them:
+- Use Jira as the product backlog only after the owner's Atlassian workspace is connected and the project key/permissions are confirmed.
+- Link Jira issues to GitHub branches, commits, pull requests and build/deployment status. Put the Jira key in branch names and PR titles when an issue exists (example: `NEXUS-123/feat/threat-feed-adapter`).
+- Each issue must include: user outcome, scope, non-goals, security/privacy impact, acceptance criteria, test evidence and rollback note.
+- Keep GitHub as the source of truth for code, reviews and CI. Jira tracks intent and delivery; it must not be used to mark a feature complete without merged code and test evidence.
+- Until Jira is connected, keep the existing GitHub PR/issue workflow. Do not create a second backlog by copying tasks into another service.
 
-| Area | Existing evidence in repository | Gap to resolve |
-|---|---|---|
-| Web and API | Next.js web application, Express API, typed API helpers and route tests | Verify browser → web proxy → API → database flows and failure handling |
-| AI | `services/api/src/ai`, AI SDK 7, OpenAI provider adapter, threat-analysis agent and orchestrator | Only OpenAI is registered at runtime; six specialist agents and production failover are not complete |
-| Identity | JWT, bcrypt, Admin/Analyst/Viewer roles and user routes | Session revocation, tenant boundaries, MFA and authorization coverage need verification |
-| SOC | Incidents, alerts, security events, asset inventory and attack-path engine | Event correlation, real-time updates and tenant scoping need proof |
-| File inspection | ClamAV adapter, malware-scan routes and isolated upload/quarantine design | Verify live scanner readiness, signature freshness, retention and failure paths |
-| Network | Android DNS-over-TLS / Quad9 code | DNS-only scope; device consent, lifecycle, telemetry and real-device testing remain necessary |
-| Reputation | AbuseIPDB IP reputation and phone-reputation components | Check live credentials, provider terms, quotas and production connectivity |
-| Observability | Opt-in OpenTelemetry HTTP tracing | Add safe metrics/logs and database/provider spans without recording secrets or sensitive payloads |
-| Security CI | Trivy and GitHub Actions workflows | Fix current Trivy result; add/verify SAST, secret scanning, SBOM and release provenance |
-| Billing/social | No verified complete subscription or social-account integration | Do not advertise or charge for these capabilities yet |
+### Aikido Security — developer and supply-chain security
 
-### Open repository blockers
+- Evaluate Aikido's repository scanning for SCA, SAST, secrets, licenses, IaC and malware findings. Review and triage findings before enabling blocking policies.
+- Add IDE scanning to the developer loop (VS Code, Cursor or another supported IDE) so generated and hand-written changes are reviewed before a PR.
+- Add Aikido GitHub Actions / PR gating only after an Aikido workspace is connected, the plan entitlement is confirmed, and a pilot produces stable check names and low-noise results.
+- Keep Trivy and existing GitHub checks during the pilot. Do not remove a working scanner or suppress findings simply to obtain a green build.
+- Start with report-only on a feature branch; then block only verified Critical/High issues in reachable production paths after documented false-positive review and a tested exception process.
+- Never paste API tokens into source, prompts, Jira comments, screenshots or mobile builds. Use the server/CI secret store and least-privilege access.
 
-- `main` is currently reported by GitHub as unprotected. It has no required status checks configured.
-- PR #18 proposes a non-root PostgreSQL image. It remains open and targets `main`. Its description warns that the existing Railway volume may require `RAILWAY_RUN_UID=0` before deployment; do not deploy until runtime compatibility is verified.
-- PR #19 adds database-backed threat counts, read-only inventory/attack-path endpoints and status-only Android DNS telemetry. It currently targets `fix/trivy-postgres-nonroot`, not `main`. Its description states that inventory is workspace-global and does not yet provide tenant isolation. Rebase/retarget only after PR #18 is reviewed and its base is stable.
-- The Security Checks run on `main` failed in the Trivy filesystem/configuration scan. The Dependabot `minimatch` job also failed; its cause still needs log-level diagnosis.
+### React Native + Expo — shared mobile delivery
 
-## 3. Recommended external tools and intelligence sources
+- Reuse the existing `apps/react-native` Expo application from PR #14 as the candidate shared Android/iOS UI. Do not generate a second React Native app.
+- Preserve the existing native Android companion and its Android `VpnService` until an Expo/Kotlin native module has feature parity, real-device tests, lifecycle/reconnect tests and an explicit migration decision.
+- Keep the iOS DNS Settings implementation scoped to Apple's user-approved DNS configuration. Do not describe it as a full-device VPN or HTTPS inspection.
+- Use Expo's New Architecture, TypeScript, secure storage and EAS/CI build tooling. Run type-check, Expo dependency diagnostics, Android build, iOS simulator build and Swift tests on every mobile change.
+- Require signed build artifacts and device evidence before claiming Android/iPhone protection is operational. Simulator or JavaScript bundle success is not real-device validation.
+- PR #14 is currently a draft, not merge-ready: at the 2026-11-05 review its head was 31 commits ahead and 11 behind `main`, with a 50-file diff and a merge base at an older commit. Its five recorded workflow runs passed at the reviewed head, but that does not resolve branch divergence or review risk. Split or rebase the work in small, independently reviewed changes.
+- PR #14 currently implements phone reputation using IPQualityScore. It is not a Malwarebytes integration. Keep the feature disabled/unavailable until the intended provider's exact product, official endpoint, authentication, data policy, supported regions (including +212), quota and response schema are confirmed.
 
-These are candidates, not installed integrations. Validate commercial-use rights, data handling, quotas, latency and availability before enabling any feed.
+### Bolt.new — visual prototyping, not a second source tree
 
-| Capability | Candidate | Why it fits | Integration decision |
+- Use Bolt.new to prototype UX flows, responsive layouts and component concepts against a dedicated feature branch.
+- Connect only the intended GitHub repository and branch. Disable unnecessary connector actions; do not enable broad write permissions by default.
+- Never let Bolt auto-push to `main`, replace backend services, invent API data or create a parallel production project. Export proposed changes through a PR and compare the diff against the existing Next.js / React Native structure.
+- Keep the existing NEXUS API, authentication, database and authorization logic authoritative. Bolt-generated mock data must remain visibly labelled as mock.
+
+### AI-native IDEs — controlled coding agents
+
+- Use one primary coding agent per task (for example GitHub Copilot or Cursor) and keep the task bounded to one issue/branch. Use a second agent for independent review, not simultaneous edits to the same files.
+- Require agents to inspect the current repository and tests before editing; prohibit broad rewrites, mass file moves, dependency upgrades and direct pushes to `main`.
+- Give agents only the minimum connector and repository permissions required. Do not expose production secrets, customer data, signing keys or private threat samples in prompts or context.
+- Every AI-generated change must have a human-reviewed diff, relevant tests, security scan and PR. Agent claims are not evidence; command output and CI artifacts are evidence.
+- For phone-first work, prefer browser-based tools (GitHub and Bolt) rather than forcing unsupported desktop IDE binaries into Termux. Use local IDEs only when their platform and project toolchain are supported.
+
+### Zapier — optional notifications and business workflow automation
+
+- Restrict Zapier to non-critical notifications and ticket/workflow routing (for example, create a Jira triage ticket after a NEXUS incident is persisted and verified).
+- Do not put Zapier in the security decision path: it must never decide that a device is safe, block traffic, quarantine a file, revoke a session or change account permissions.
+- Send only a minimal allowlisted event envelope: event ID, event type, severity, creation time, opaque incident reference and a link back to the authenticated NEXUS console. Do not send raw URLs/domains, packet/DNS payloads, IP addresses, file contents, phone numbers, user emails, access tokens or credentials.
+- Keep the Catch Hook URL in a server-side secret store. Never commit it or place it in client/mobile configuration. Treat it as a credential.
+- Use a durable internal outbox, stable event IDs, idempotent processing, bounded retries with exponential backoff and dead-letter visibility. A webhook HTTP 200 is not proof that a downstream action completed; reconcile important Jira tickets against their source incident.
+- Confirm the Zapier plan supports the required webhook triggers and check current per-user/per-Zap limits before enabling the workflow. If Zapier is unavailable or delayed, NEXUS incident persistence and SOC operation must continue unaffected.
+
+## 10. Integration readiness — account and release gates
+
+| Tool | Intended NEXUS use | Current state at review | Required before activation |
 |---|---|---|---|
-| Endpoint / SOC telemetry | [Wazuh](https://documentation.wazuh.com/current/getting-started/components/index.html) | Open-source SIEM/XDR foundations: endpoint agents, log analysis, malware/intrusion detection, file-integrity monitoring and vulnerability detection | Integrate selected alerts/events through an adapter if NEXUS needs external endpoint telemetry; do not self-host the full stack until operational capacity is assessed |
-| Threat-intelligence management | [OpenCTI](https://docs.opencti.io/latest/usage/import/getting-started/) | Connectors, enrichment, streams and TAXII/STIX 2.1 import/export support | Future central intelligence layer if feed volume and graph correlation justify operating it |
-| Threat-intelligence sharing | [MISP](https://www.misp-project.org/features/) | REST/OpenAPI, PyMISP, workflows, enrichment modules, STIX formats and ZMQ/Kafka streaming | Alternative to OpenCTI for sharing and analyst workflows; choose one first rather than deploying both immediately |
-| Malware-distribution URLs | [URLhaus](https://urlhaus.abuse.ch/api/) | API and downloadable malware-URL datasets; can complement file and DNS signals | Good first feed candidate. Requires an Auth-Key; commercial/for-profit use may require the enhanced commercial service |
-| Phishing URLs | [OpenPhish](https://openphish.com/phishing_feeds.html) | Community feed is available with limited fields and a 12-hour refresh; premium feeds advertise five-minute updates and richer metadata | Start with community feed only after reviewing its terms; do not promise five-minute freshness on the free feed |
-| Phishing lookups | [PhishTank](https://www.phishtank.org/developer_info.php) | API and downloadable databases for URL lookups; database downloads are updated hourly | Secondary signal; follow the required User-Agent, application-key and rate-limit rules |
-| Multi-engine enrichment | [VirusTotal API](https://docs.virustotal.com/docs/api-overview) | Useful for licensed enrichment and investigation context | Do not use the free Public API in a commercial NEXUS product: VirusTotal states it is non-commercial only and limited to 4 requests/minute and 500/day. Evaluate a paid/private agreement only if justified. Do not upload private samples without explicit consent |
-| IP reputation | [AbuseIPDB](https://www.abuseipdb.com/api) | IP abuse confidence and reports | Reuse the existing adapter; verify key, quotas and live response before labeling it production-connected |
-| DNS threat blocking | [Quad9](https://docs.quad9.net/services/) | DNS-over-TLS/HTTPS threat-blocking resolver | Reuse the existing Android path; describe it as DNS protection, not full traffic inspection or antivirus |
-| File malware inspection | [ClamAV](https://docs.clamav.net/) | Signature-based file scanning with daemon protocol | Reuse the existing isolated scanner. ClamAV explicitly is not a complete endpoint-security suite; monitor signature age, daemon health and scan timeouts |
-| Supply-chain / IaC | [Trivy](https://github.com/aquasecurity/trivy) | Scans containers, filesystems, Git repos, dependencies, IaC, secrets and SBOM-related targets | Keep the existing CI scanner and fix its current blocker first |
-| Code security | [GitHub CodeQL](https://docs.github.com/en/code-security/how-tos/find-and-fix-code-vulnerabilities/configure-code-scanning/configure-code-scanning) and [Semgrep](https://semgrep.dev/products/semgrep-appsec-platform/) | Static code analysis for supported languages; Semgrep also offers secret and supply-chain capabilities | Select one primary SAST path initially; avoid duplicated alerts and unreviewed workflow replacement |
-| Observability | [OpenTelemetry](https://opentelemetry.io/docs/) | Vendor-neutral traces, metrics and logs across TypeScript/Python services | Extend the existing opt-in setup with redaction, correlation IDs and provider/DB spans; never log tokens, raw URLs with secrets or file contents |
-| Mobile integrity | [Google Play Integrity](https://developer.android.com/google/play/integrity/overview) and [Apple App Attest](https://developer.apple.com/documentation/DeviceCheck/establishing-your-app-s-integrity) | Server-verifiable signals for genuine app instances and sensitive requests | Later hardening for account/premium actions; use tiered risk decisions, nonce/request-hash checks and graceful compatibility handling |
-| Application security baseline | [OWASP ASVS 5.0](https://asvs.owasp.org/), [OWASP API Security Top 10](https://api-security.owasp.org/), [OWASP LLM Top 10](https://genai.owasp.org/llm-top-10/) | Testable requirements for application, API and AI-specific security risks | Convert relevant controls into test cases and release gates; do not claim certification |
-| Mobile security baseline | [OWASP MASVS](https://mas.owasp.org/MASVS/) and [MASTG](https://mas.owasp.org/MASTG/) | Mobile app security control and testing guidance | Continue using the repository's mobile control register and attach evidence to each tested build |
-| Payments | [Stripe availability](https://stripe.com/global) / [Paddle supported countries](https://www.paddle.com/help/start/account-verification/which-countries-are-supported-by-paddle) | Recurring billing, webhook-driven entitlement changes and merchant compliance | Stripe's current supported-country list does not include Morocco. Paddle is a candidate to evaluate, but seller onboarding, KYC, payout method and legal suitability must be verified before choosing it. No payment provider is approved or configured by this plan |
+| Jira / Atlassian | Backlog, epics, acceptance criteria and issue-to-PR traceability | Not connected in this workflow | Owner connects the Atlassian app and confirms workspace/project permissions |
+| Aikido Security | Repository, IDE and PR security findings | Researched; no workspace connected | Owner connects repository, confirms plan and reviews data-processing settings |
+| Bolt.new | UI/UX prototypes on feature branches | Not connected to this repository | Owner connects GitHub with least-privilege permissions and selects a non-main branch |
+| React Native / Expo | Shared mobile UI and iOS foundation | Draft PR #14 exists; five recorded checks passed at its reviewed head, but branch is 11 commits behind main | Rebase/split, validate provider contract, Android/iOS builds, entitlements and real devices |
+| AI-native IDE | Bounded implementation and independent code review | GitHub workflow available; local IDE choice not standardized | Select one primary agent and apply repo instructions/permission boundaries |
+| Zapier | Redacted incident notifications and Jira routing | Not connected; no webhook URL configured | Owner creates a dedicated Zap, stores its URL server-side and tests redaction, retries and reconciliation |
 
-## 4. Proposed NEXUS 6+1 agent design
+**Activation policy:** account connections, OAuth grants, paid plans, API keys, deployment credentials, app-signing credentials and webhook URLs must be supplied or approved by the owner in their official account settings. No secret belongs in this repository. A tool integration is “active” only after an authenticated test, least-privilege review, failure-mode test and documented owner approval.
 
-Keep the current TypeScript API and AI SDK integration as the starting point. Do not introduce a second agent runtime or a broad rewrite before measuring the current orchestrator.
+## 11. Review evidence added on 2026-11-05
 
-**Six bounded specialist agents:**
-
-1. **URL & Phishing Agent** — normalizes URLs, checks URLhaus/OpenPhish/PhishTank and existing reputation signals, explains evidence and freshness.
-2. **File & Malware Agent** — orchestrates the existing ClamAV scan path, records hash/signature metadata and reports scanner errors distinctly from clean results.
-3. **Network & IP Agent** — analyzes IP reputation, DNS protection status and network indicators using approved sources.
-4. **Identity & Account Agent** — reviews account/session security signals and consented social-account integration status; never requests or stores social passwords.
-5. **Application & Cloud Agent** — triages authorized web/API/cloud security findings and maps them to relevant controls.
-6. **SOC & Incident Agent** — deduplicates and correlates normalized events, summarizes incidents and proposes response steps without executing them.
-
-**+1 NEXUS Orchestrator** — validates the task, chooses only agents with implemented capabilities, enforces budgets/timeouts, merges evidence, records provenance and returns a typed result. It must not invent telemetry or silently treat missing providers as a clean result.
-
-Each agent should expose a versioned input/output schema containing:
-- `status`: `completed`, `partial`, `unavailable`, `error` or `not_checked`
-- `evidence[]`: source, indicator type/value (redacted where needed), observed time, fetched time and source reference
-- `verdict`: finding and severity, explicitly separated from hypotheses
-- `confidence`: calibrated/qualified confidence, never presented as certainty
-- `recommendations[]`: advisory actions and required permission/approval
-- `limitations[]`: unavailable feeds, quota limits, stale data and unverified runtime dependencies
-
-**Agent safety boundary:** no unrestricted shell, SQL, browser navigation, arbitrary URL fetching or production write access. Tool access is allowlisted and scoped server-side. Require a human confirmation for containment, blocking, quarantine, account/session changes and destructive operations. Treat web pages, threat feeds, files and model outputs as untrusted content to defend against prompt injection and unsafe output handling.
-
-## 5. Feature-specific integration design
-
-### Global Threat Map
-- Build from verified threat indicators and their source timestamps, not synthetic dashboard counts.
-- Normalize indicators to an internal schema and preserve source, confidence, first-seen, last-seen and expiry.
-- Geolocate threat infrastructure only at an appropriately coarse level. Do not expose a customer's precise IP/location or imply that an IP's geolocation identifies a person.
-- Show source coverage, feed freshness and unknown location explicitly.
-
-### SOC Center
-- Normalize event envelopes across API, scanner, DNS and intelligence feeds.
-- Add stable event IDs, deduplication keys, event time vs ingestion time, tenant/workspace scope and audit references.
-- Add correlation rules before using AI summaries. AI can prioritize and explain; only evidence-backed rules may confirm a detection.
-- Introduce streaming only after persisted event ordering, reconnection and backpressure have tests.
-
-### URL and fraud scanner
-- Start with feed lookups and safe normalization; do not fetch arbitrary user-supplied URLs from the API process.
-- If content retrieval is later needed, use a separate isolated fetcher with strict egress policy. Block loopback, private, link-local and cloud-metadata ranges; re-check DNS and every redirect to mitigate SSRF and DNS rebinding.
-- Separate `malicious`, `suspicious`, `not_listed` and `unknown`. A URL absent from a feed is not proven safe.
-- Never silently submit checked URLs or files to third parties; disclose the destination and purpose first.
-
-### Digital Security Twin
-- Reuse current asset inventory and attack-path engine.
-- Model assets, identities, services, exposures and relationships with source and observation time.
-- Render a read-only graph first; distinguish observed edges from inferred paths.
-- Do not label a graph simulation as a live attack or claim automatic remediation.
-
-### Social-account protection
-- Use official OAuth/API integrations and the minimum read-only scopes that solve a documented user problem.
-- Store revocable tokens server-side with encryption and access audit; never collect platform passwords or scrape private content.
-- Show exactly which provider, scopes, permissions, checks and last-sync time are active.
-
-### Accounts and Premium
-- Complete tenant/workspace isolation before offering organization-wide SOC data.
-- Enforce entitlements server-side on every premium API route; the UI is not an authorization control.
-- Process signed payment webhooks idempotently; derive entitlement state from verified provider events, not browser redirects.
-- Add renewal, grace period, cancellation, refund, chargeback and failed-payment tests before charging users.
-
-## 6. Delivery sequence and acceptance gates
-
-### P0 — Repository and release safety
-- Review PR #18 including Dockerfile diff, Railway volume compatibility and complete CI results.
-- Fix the Trivy failure and diagnose the Dependabot `minimatch` failure from job logs.
-- Review PR #19's diff and tests; resolve the tenant-isolation gap before exposing multi-user inventory.
-- Add a GitHub ruleset for `main`: pull-request-only changes, required passing checks, no force-push or deletion. Configure the exact check names only after verifying stable CI job names; avoid a review-count rule that would make a solo-maintained repository impossible to merge.
-- Do not change Railway service variables, volumes or deployments as part of this stage.
-
-### P1 — Reliability and connectivity
-- Add explicit readiness checks for API, PostgreSQL, AI provider and ClamAV; distinguish readiness from liveness.
-- Test request IDs, timeouts, retry caps, circuit breaking, database pool exhaustion, provider rate limits and safe failure behavior.
-- Extend OpenTelemetry with redaction and low-cardinality metrics.
-- Add end-to-end contract tests across web proxy → API → database/AI service.
-
-### P2 — Threat-intelligence foundation
-- Define one normalized indicator schema and provider adapter contract.
-- Add URLhaus and one phishing source as opt-in adapters after confirming terms/keys.
-- Add caching, expiry, rate limits, provenance, feed freshness and provider-unavailable behavior.
-- Test with fixtures first; live tests must be explicit and separately gated.
-
-### P3 — Agent foundation
-- Implement one specialist at a time using the existing AI SDK and Zod schemas.
-- Add evaluation cases for prompt injection, untrusted tool output, data leakage, invalid structured output, timeout, budget exhaustion and false positives.
-- Implement human approval gates and audit events before adding any write-capable tool.
-- Add the remaining agents only when their underlying data source and tests exist.
-
-### P4 — SOC, map and Twin
-- Complete normalized event persistence, correlation and tenant checks.
-- Replace all fabricated counts with database-backed or feed-backed results.
-- Add map layers and Twin graph only when their source metadata and freshness are visible.
-
-### P5 — Identity, mobile and billing
-- Complete tenant-aware auth/session lifecycle and MFA plan.
-- Validate Android DNS behavior on real devices; keep its scope explicit.
-- Assess Play Integrity and App Attest after app signing/distribution prerequisites are satisfied.
-- Integrate social OAuth and Premium payment only after provider eligibility, privacy notices and server-side tests.
-
-### P6 — Production verification
-A feature can be labeled production-ready only after successful CI, integration tests, deployment verification, real-provider health checks, observability, privacy review and an explicit release approval. Keep all unverified capabilities marked as such.
-
-## 7. Minimum release evidence
-
-- TypeScript build/lint/unit tests and Python validation pass.
-- API contract and disposable-PostgreSQL integration tests pass.
-- Trivy, SAST, dependency and secret scans pass without unexplained high/critical findings.
-- SBOM generated and retained; release artifact provenance/signing reviewed.
-- Role, tenant-isolation, session-revocation and rate-limit tests pass.
-- Scanner-unavailable, provider-timeout, stale-feed, duplicate-event and invalid-webhook cases pass.
-- Mobile tests run on identified devices/OS versions and artifacts; CI debug build alone is not device validation.
-- Production environment and external integrations are verified separately from local/CI evidence.
-
-## 8. Official reference links
-
-- Wazuh components: https://documentation.wazuh.com/current/getting-started/components/index.html
-- OpenCTI connectors and STIX 2.1: https://docs.opencti.io/7.260522.0/deployment/connectors/
-- MISP features: https://misp-project.org/features/
-- URLhaus API: https://urlhaus.abuse.ch/api/
-- OpenPhish feeds and terms: https://openphish.com/phishing_feeds.html
-- PhishTank developer information: https://www.phishtank.org/developer_info.php
-- VirusTotal Public vs Private API: https://docs.virustotal.com/docs/difference-public-private
-- Quad9 services: https://docs.quad9.net/services/
-- ClamAV documentation: https://docs.clamav.net/
-- Trivy: https://trivy.dev/
-- OpenTelemetry: https://opentelemetry.io/docs/
-- OWASP ASVS 5.0: https://asvs.org/
-- OWASP API Security Top 10: https://api-security.owasp.org/
-- OWASP LLM Top 10: https://genai.owasp.org/llm-top-10/
-- Android Play Integrity: https://developer.android.com/google/play/integrity/overview
-- Apple App Attest: https://developer.apple.com/documentation/DeviceCheck/establishing-your-app-s-integrity
-- GitHub rulesets: https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/about-rulesets
-- Stripe availability: https://stripe.com/global
-- Paddle seller availability: https://www.paddle.com/help/start/account-verification/which-countries-are-supported-by-paddle
-
----
-**Change policy:** This document adds a plan only. It does not install dependencies, create provider accounts, add credentials, change repository protections, alter production services, modify database schemas, or deploy the product.
+- PR #18: Build/Test and Trivy Security Checks passed on the reviewed head. It remains unmerged because its Railway volume/runtime compatibility note still needs an explicit deployment decision.
+- PR #19: still targets `fix/trivy-postgres-nonroot`; its own description identifies workspace-global inventory without tenant ownership. Do not merge it into a multi-tenant product until isolation is implemented and tested.
+- PR #22: API Build/Test passed. Trivy failed on the existing `database/Dockerfile.railway` DS-0002 HIGH finding from `main`; the new readiness test file did not cause that finding. Re-run security CI after the non-root image fix is safely incorporated.
+- PR #14: its recorded Build/Test, Security, lint/shared-contract, Python and React Native/iOS workflow runs passed at head `c235342207857ddbf5b729e737e32d772602351f`. The branch nevertheless diverges from current `main` and remains a draft; no merge or device validation is claimed.
