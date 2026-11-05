@@ -170,4 +170,43 @@ describe('API anomaly containment', () => {
       .not.toBe(ipKeyGenerator('::ffff:198.51.100.2'));
   });
 
+
+  it('contains path enumeration across the full HTTP listener, not only /api routes', async () => {
+    const store = new MemoryCounterStore(60_000);
+    const app = express();
+
+    app.use(createApiAnomalyGuard({
+      windowMs: 60_000,
+      threshold: 2,
+      store
+    }));
+    app.get('/known', (_request, response) => response.status(200).json({ status: 'ok' }));
+
+    const firstProbe = await request(app).get('/random-path-one');
+    const secondProbe = await request(app).get('/random-path-two');
+    const contained = await request(app).get('/known');
+
+    expect(firstProbe.status).toBe(404);
+    expect(secondProbe.status).toBe(404);
+    expect(contained.status).toBe(429);
+  });
+
+  it('preserves both root and API liveness paths during containment', async () => {
+    const store = new MemoryCounterStore(60_000);
+    const app = express();
+
+    app.use(createApiAnomalyGuard({
+      windowMs: 60_000,
+      threshold: 1,
+      store
+    }));
+    app.get('/missing', (_request, response) => response.status(404).json({ error: 'NOT_FOUND' }));
+    app.get('/health', (_request, response) => response.status(200).json({ ok: true }));
+    app.get('/api/health', (_request, response) => response.status(200).json({ ok: true }));
+
+    expect((await request(app).get('/missing')).status).toBe(404);
+    expect((await request(app).get('/health')).status).toBe(200);
+    expect((await request(app).get('/api/health')).status).toBe(200);
+  });
+
 });
