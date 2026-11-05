@@ -325,7 +325,7 @@ export default function HomePage() {
           <article className="metric-card"><span className="metric-label">Critical incidents</span><strong>{metrics.critical}</strong><small>From the latest {incidents.length} loaded records</small></article>
           <article className="metric-card"><span className="metric-label">Active alerts</span><strong>{metrics.activeAlerts}</strong><small>From the latest {alerts.length} loaded records</small></article>
           <article className="metric-card"><span className="metric-label">New security events</span><strong>{securityEvents.filter((item) => item.reviewStatus === 'new').length}</strong><small>Latest {securityEvents.length} of {securityEventTotal} received</small></article>
-          <article className="metric-card metric-demo"><span className="metric-label">Demo AI score</span><strong>{summary ? `${summary.summary.ai_score}/100` : '—'}</strong><small>Illustrative only · not a calibrated risk score</small></article>
+          <article className="metric-card"><span className="metric-label">AI score</span><strong>{summary?.summary.ai_score == null ? 'Not scored' : `${summary.summary.ai_score}/100`}</strong><small>No calibrated operational score is configured.</small></article>
         </section>
 
         <section className="section-block" id="incidents">
