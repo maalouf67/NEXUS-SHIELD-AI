@@ -36,6 +36,77 @@ jobs:
           exit-code: "1"
           format: table
 
+  postgres-runtime-image:
+    name: PostgreSQL runtime image, gosu and root-owned volume validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build the Railway PostgreSQL image
+        run: docker build --pull -f database/Dockerfile.railway -t nexus-postgres:ci .
+
+      - name: Verify gosu version and PostgreSQL startup on a root-owned volume
+        run: |
+          set -euo pipefail
+          version="$(docker run --rm --user 0 --entrypoint /usr/local/bin/gosu nexus-postgres:ci --version)"
+          echo "$version"
+          echo "$version" | grep -F "1.20"
+          switched_uid="$(docker run --rm --user 0 --entrypoint /usr/local/bin/gosu nexus-postgres:ci nobody id -u)"
+          test "$switched_uid" != "0"
+
+          volume="nexus-pgdata-root-owned"
+          container="nexus-pg-root-volume-check"
+          docker volume create "$volume"
+          cleanup() {
+            docker rm -f "$container" >/dev/null 2>&1 || true
+            docker volume rm "$volume" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          docker run --detach --name "$container" --user 0 \
+            --env POSTGRES_USER=nexus_ci \
+            --env POSTGRES_PASSWORD=nexus-ci-only-password \
+            --env POSTGRES_DB=nexus_ci \
+            --volume "$volume:/var/lib/postgresql/data" \
+            nexus-postgres:ci
+          ready=false
+          for attempt in $(seq 1 60); do
+            if docker exec "$container" pg_isready -U nexus_ci -d nexus_ci >/dev/null 2>&1; then
+              ready=true
+              break
+            fi
+            sleep 2
+          done
+          test "$ready" = true
+          database_user="$(docker exec "$container" psql -U nexus_ci -d nexus_ci -Atqc "SELECT current_user")"
+          test "$database_user" = "nexus_ci"
+          expected_uid="$(docker exec "$container" id -u postgres)"
+          process_uid="$(docker exec "$container" awk '/^Uid:/ { print $2 }' /proc/1/status)"
+          test "$process_uid" = "$expected_uid"
+          echo "Root-owned volume initialized; PostgreSQL PID 1 runs as postgres UID $process_uid."
+
+      - name: Scan PostgreSQL runtime image with Trivy
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          version: v0.76.1
+          scan-type: image
+          image-ref: nexus-postgres:ci
+          scanners: vuln,misconfig,secret
+          severity: HIGH,CRITICAL
+          ignore-unfixed: "false"
+          exit-code: "1"
+          format: json
+          output: trivy-postgres-image-results.json
+
+      - name: Upload PostgreSQL runtime image report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-postgres-runtime-report
+          path: trivy-postgres-image-results.json
+          if-no-files-found: warn
+          retention-days: 30
+
   dependency-review:
     name: Dependency Review
     if: github.event_name == 'pull_request'
