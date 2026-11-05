@@ -205,7 +205,7 @@ def scan_quarantined_file(
         connection = socket.create_connection((host, port), timeout=timeout_seconds)
         try:
             connection.settimeout(timeout_seconds)
-            connection.sendall(b"zINSTREAM\\0")
+            connection.sendall(b"zINSTREAM\0")
             with resolved_candidate.open("rb") as sample:
                 for chunk in iter(lambda: sample.read(UPLOAD_CHUNK_BYTES), b""):
                     connection.sendall(struct.pack("!I", len(chunk)))
@@ -214,7 +214,7 @@ def scan_quarantined_file(
 
             # Clamd terminates its NUL-delimited INSTREAM response with OK,
             # FOUND or ERROR. Bound the response to avoid untrusted growth.
-            while b"\\0" not in response:
+            while b"\0" not in response:
                 chunk = connection.recv(1024)
                 if not chunk:
                     break
@@ -230,9 +230,9 @@ def scan_quarantined_file(
     except OSError as exc:
         raise ScannerUnavailable("ClamAV daemon could not be reached") from exc
 
-    if b"\\0" not in response:
+    if b"\0" not in response:
         raise ScannerExecutionError("ClamAV closed the stream without a verdict")
-    message = bytes(response).split(b"\\0", 1)[0].decode("utf-8", errors="replace").strip()
+    message = bytes(response).split(b"\0", 1)[0].decode("utf-8", errors="replace").strip()
     if message.endswith(" OK"):
         verdict = "clean"
     elif message.endswith(" FOUND"):
