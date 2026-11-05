@@ -10,12 +10,13 @@ Protect NEXUS-owned infrastructure: the public HTTP listener, API routes, authen
 
 1. **Global API request throttling:** the existing API limiter protects `/api` with a 100-request / 15-minute per-source-IP quota. Outside test mode it uses the PostgreSQL-backed shared store, so limits are shared across API instances. Store failures fail closed.
 2. **Login abuse prevention:** the login route has a dedicated 10-request / 15-minute source-IP limiter. Successful 2xx logins are excluded from the failed-attempt quota; failed and malformed requests count. Outside test mode, counters use the PostgreSQL store under a separate `auth-login-ip` scope.
-3. **Suspicious-response detection and temporary HTTP-listener containment:** the guard observes completed HTTP responses across the Express listener with status 400, 401, 403, 404, 405 or 413, including root-path and non-API route probing. It is mounted before JSON parsing so malformed and oversized bodies are included. After 40 such responses from one source network inside a 10-minute window, it emits a deduplicated medium-severity `nexus-ips` event and temporarily returns HTTP 429 for that source until the counter window expires. Successful responses are not counted.
+3. **Suspicious-response detection and temporary HTTP-listener containment:** the guard observes completed HTTP responses across the Express listener with status 400, 401, 403, 404, 405 or 413, including root-path and non-API route probing. It is mounted before JSON parsing so malformed and oversized bodies are included. After 40 such responses from one source network inside a 10-minute window, it commits a deduplicated medium-severity `nexus-ips` event and the threshold counter in one PostgreSQL transaction, then temporarily returns HTTP 429 for subsequent requests from that source until the counter window expires. Successful responses are not counted.
 4. **Privacy-safe source identifiers:** PostgreSQL counter keys and SOC event identifiers use keyed HMAC fingerprints. Raw source IP addresses and submitted credentials are not written to the protection event attributes.
 5. **Existing HTTP baseline:** Helmet security headers, explicit CORS allow-list behavior, a 1 MB JSON body cap, configured reverse-proxy hop count and Zod validation remain in place.
-6. **Fail-closed protection-store reads:** if the anomaly guard cannot read its shared counter, the API returns HTTP 503 instead of silently bypassing that guard. Telemetry persistence is best-effort and does not interrupt a protective response.
+6. **Fail-closed protection-store reads:** if the anomaly guard cannot read its shared counter, the API returns HTTP 503 instead of silently bypassing that guard. The threshold counter and its `nexus-ips` SOC event are committed atomically; a failed event insert rolls back the threshold increment instead of silently recording an unlogged containment. Persistence failures are reported through a non-sensitive server log.
 7. **Liveness availability:** the lightweight `/health` and `/api/health` liveness routes bypass temporary anomaly containment so a blocked source cannot make the platform health probe mark the API unhealthy. They remain behind the applicable global API request limiter; readiness still checks PostgreSQL.
 8. **HTTP listener hardening:** the Node.js API listener uses a 10-second header receive timeout, 120-second full-request receive timeout, 5-second keep-alive timeout, a maximum of 100 requests per socket and a cap of 100 request headers.
+9. **Startup schema preflight:** before binding the API port, the process verifies `api_rate_limit_counters`, `security_events` and `security_event_reviews`; it exits with a migration instruction if any are missing.
 
 ## Request flow
 
@@ -52,7 +53,7 @@ Shared HTTP-listener anomaly guard (10 min window, all listener paths)
 - HTTP listener timeouts limit slow or incomplete requests after they reach Node.js; they do not replace upstream connection limits or network-layer SYN/DDoS protection.
 - It does not attack, scan, exploit or retaliate against remote systems. Automated action is limited to rate-limiting NEXUS's own inbound API requests for a temporary window.
 - IP-based containment is not proof of malicious intent. Mobile-carrier NAT, offices and shared proxies can cause legitimate users to share one public IP.
-- The anomaly guard performs a shared-counter read for API requests and a counter increment only after suspicious responses. The added database latency and concurrency behavior require load testing.
+- The anomaly guard performs a shared-counter read for each non-exempt request and a counter increment after suspicious responses. The threshold increment and SOC event insert share one database transaction. Requests already in flight when the threshold is reached may complete; later requests are contained. Added database latency and concurrency behavior still require load testing.
 - Distributed attacks from many source IPs, compromised credentials and privilege abuse require additional layers.
 
 ## Next engineering layers
@@ -74,7 +75,7 @@ Shared HTTP-listener anomaly guard (10 min window, all listener paths)
 - Verify HMAC event fingerprints, per-window event deduplication and absence of raw IP / email / password in event attributes.
 - Verify `TRUST_PROXY_HOPS` against the actual deployment edge; never trust arbitrary forwarded headers.
 - Load test legitimate NAT / mobile-carrier traffic and document the false-positive recovery process.
-- Confirm event visibility in the authenticated SOC interface.
+- Verify that the dedicated `source=nexus-ips` SOC query returns the threshold event even when more than 100 unrelated security events exist, and confirm analyst review is audited.
 - Configure and separately validate the host firewall, origin lockdown, TLS and edge WAF / DDoS controls.
 
 ## Security decision policy

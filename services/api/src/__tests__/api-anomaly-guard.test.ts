@@ -57,6 +57,7 @@ describe('API anomaly containment', () => {
     expect(contained.body.error).toBe('SOURCE_TEMPORARILY_CONTAINED');
     expect(Number(contained.headers['retry-after'])).toBeGreaterThan(0);
     expect(onContainment).toHaveBeenCalledTimes(1);
+    expect(onContainment.mock.calls[0]?.[2]).toBe(403);
   });
 
   it('does not count successful responses as suspicious activity', async () => {

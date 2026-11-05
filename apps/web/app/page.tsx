@@ -37,9 +37,11 @@ export default function HomePage() {
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [securityEvents, setSecurityEvents] = useState<SecurityEvent[]>([]);
+  const [ipsEvents, setIpsEvents] = useState<SecurityEvent[]>([]);
   const [incidentTotal, setIncidentTotal] = useState(0);
   const [alertTotal, setAlertTotal] = useState(0);
   const [securityEventTotal, setSecurityEventTotal] = useState(0);
+  const [ipsEventTotal, setIpsEventTotal] = useState(0);
   const [summary, setSummary] = useState<ThreatSummary | null>(null);
   const [loadError, setLoadError] = useState('');
   const [actionError, setActionError] = useState('');
@@ -85,9 +87,11 @@ export default function HomePage() {
       setIncidents(data.incidents);
       setAlerts(data.alerts);
       setSecurityEvents(data.securityEvents);
+      setIpsEvents(data.ipsEvents);
       setIncidentTotal(data.incidentTotal);
       setAlertTotal(data.alertTotal);
       setSecurityEventTotal(data.securityEventTotal);
+      setIpsEventTotal(data.ipsEventTotal);
       setSummary(data.summary);
       setManagedUsers(data.managedUsers);
     } catch (error) {
@@ -110,8 +114,6 @@ export default function HomePage() {
       setAlertIncidentId(incidents[0].id);
     }
   }, [incidents, alertIncidentId]);
-
-  const ipsEvents = securityEvents.filter((item) => item.source === 'nexus-ips');
 
   const metrics = useMemo(() => {
     const open = incidents.filter((item) => ['open', 'investigating', 'contained'].includes(item.status)).length;
@@ -327,7 +329,7 @@ export default function HomePage() {
           <article className="metric-card"><span className="metric-label">Critical incidents</span><strong>{metrics.critical}</strong><small>From the latest {incidents.length} loaded records</small></article>
           <article className="metric-card"><span className="metric-label">Active alerts</span><strong>{metrics.activeAlerts}</strong><small>From the latest {alerts.length} loaded records</small></article>
           <article className="metric-card"><span className="metric-label">New security events</span><strong>{securityEvents.filter((item) => item.reviewStatus === 'new').length}</strong><small>Latest {securityEvents.length} of {securityEventTotal} received</small></article>
-          <article className="metric-card"><span className="metric-label">NEXUS IPS events</span><strong>{ipsEvents.length}</strong><small>Internal protection events in the latest {securityEvents.length} loaded records</small></article>
+          <article className="metric-card"><span className="metric-label">NEXUS IPS events</span><strong>{ipsEventTotal}</strong><small>Persisted internal protection events in PostgreSQL</small></article>
           <article className="metric-card"><span className="metric-label">AI score</span><strong>{summary?.summary.ai_score == null ? 'Not scored' : `${summary.summary.ai_score}/100`}</strong><small>No calibrated operational score is configured.</small></article>
         </section>
 
@@ -423,6 +425,46 @@ export default function HomePage() {
           <div className="section-heading">
             <div><div className="eyebrow">TELEMETRY INTAKE</div><h2>Security events <span className="count-pill">{securityEventTotal}</span></h2></div>
             <span className="section-subtitle">NEXUS IPS containment events and trusted upstream telemetry</span>
+          </div>
+
+          <div className="section-heading">
+            <div><div className="eyebrow">INTRUSION PREVENTION</div><h3>NEXUS IPS event ledger <span className="count-pill">{ipsEventTotal}</span></h3></div>
+            <span className="section-subtitle">Latest {ipsEvents.length} of {ipsEventTotal} · source-filtered from PostgreSQL</span>
+          </div>
+
+          <div className="data-table-wrap">
+            <table className="data-table">
+              <thead><tr><th>Detection</th><th>Observed</th><th>HTTP signal</th><th>Response</th><th>Source fingerprint</th><th>Review</th></tr></thead>
+              <tbody>
+                {ipsEvents.map((event) => {
+                  const attributes = event.attributes ?? {};
+                  const httpSignal = [attributes.http_method, attributes.response_status].filter(Boolean).join(' · ') || '—';
+                  const threshold = attributes.configured_limit
+                    ? `${attributes.configured_limit} events / ${attributes.window_seconds ?? '?'}s`
+                    : '—';
+                  const fingerprint = attributes.source_ip_fingerprint;
+                  return (
+                    <tr key={event.id}>
+                      <td><strong>{event.eventType}</strong><small className="row-id">{event.summary}</small></td>
+                      <td>{displayDate(event.observedAt)}</td>
+                      <td>{httpSignal}<small className="row-id">{threshold}</small></td>
+                      <td>{attributes.response_action ?? '—'}</td>
+                      <td><code>{fingerprint ? `${fingerprint.slice(0, 12)}…` : 'Unavailable'}</code><small className="row-id">Keyed HMAC · not a raw IP address</small></td>
+                      <td>
+                        {event.reviewStatus === 'reviewed' ? (
+                          <span className="status-pill status-contained">reviewed</span>
+                        ) : canManage ? (
+                          <button className="text-button" onClick={() => void reviewSecurityEvent(event.id)}>Mark reviewed</button>
+                        ) : (
+                          <span className="status-pill status-open">new</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+                {ipsEvents.length === 0 ? <tr><td colSpan={6} className="empty-cell">{isLoading ? 'Loading NEXUS IPS events…' : 'No persisted NEXUS IPS containment events have been recorded yet.'}</td></tr> : null}
+              </tbody>
+            </table>
           </div>
 
           <div className="data-table-wrap">

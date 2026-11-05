@@ -1,4 +1,5 @@
 import { createHmac } from 'node:crypto';
+import type { SecurityEventInput } from '../security-events/security-event.repository.js';
 import type { Request, RequestHandler } from 'express';
 import { ipKeyGenerator, rateLimit } from 'express-rate-limit';
 
@@ -14,7 +15,7 @@ const MAX_FAILED_ATTEMPTS = 10;
 export interface LoginAttemptLimiterOptions {
   windowMs?: number;
   limit?: number;
-  onLimit?: (request: Request) => void;
+  onLimit?: (request: Request) => void | Promise<void>;
   useSharedStore?: boolean;
 }
 
@@ -25,45 +26,39 @@ export interface ProtectionEventOptions {
   limit: number;
   responseAction: string;
   severity?: SecurityEventSeverity;
+  attributes?: Record<string, string>;
 }
 
-/**
- * Persist a privacy-preserving security event.
- * Only a keyed HMAC fingerprint is stored; raw source IP and credentials are not.
- */
-export function recordProtectionEvent(
-  request: Request,
-  options: ProtectionEventOptions
-): void {
+/** Build a privacy-preserving event with a stable per-source/type/window key. */
+export function createProtectionEvent(request: Request, options: ProtectionEventOptions): SecurityEventInput {
   const secret = process.env.RATE_LIMIT_HASH_SECRET?.trim() || process.env.SESSION_SECRET?.trim();
-  if (!secret || secret.length < 32) return;
-
+  if (!secret || secret.length < 32) throw new Error('PROTECTION_EVENT_SECRET_NOT_CONFIGURED');
+  const now = Date.now();
   const rawSourceIp = request.ip || 'unknown';
   const sourceIp = rawSourceIp === 'unknown' ? rawSourceIp : ipKeyGenerator(rawSourceIp);
-  const bucket = Math.floor(Date.now() / options.windowMs);
-  const fingerprint = createHmac('sha256', secret)
-    .update(sourceIp)
-    .digest('hex');
-  const eventId = createHmac('sha256', secret)
-    .update(`${options.eventType}:${fingerprint}:${bucket}`)
-    .digest('hex');
-
-  void securityEventRepository.ingestBatch([{
+  const bucket = Math.floor(now / options.windowMs);
+  const fingerprint = createHmac('sha256', secret).update(sourceIp).digest('hex');
+  const eventId = createHmac('sha256', secret).update(`${options.eventType}:${fingerprint}:${bucket}`).digest('hex');
+  return {
     source: 'nexus-ips',
     externalEventId: `${options.eventType}:${eventId}`,
     eventType: options.eventType,
     severity: options.severity ?? 'high',
-    observedAt: new Date().toISOString(),
+    observedAt: new Date(now).toISOString(),
     summary: options.summary,
     attributes: {
       source_ip_fingerprint: fingerprint.slice(0, 24),
       window_seconds: String(Math.floor(options.windowMs / 1000)),
       configured_limit: String(options.limit),
-      response_action: options.responseAction
+      response_action: options.responseAction,
+      ...(options.attributes ?? {})
     }
-  }]).catch(() => {
-    // Protection remains active if event telemetry storage is unavailable.
-  });
+  };
+}
+
+/** Persist the SOC event and propagate errors rather than silently dropping it. */
+export async function recordProtectionEvent(request: Request, options: ProtectionEventOptions): Promise<void> {
+  await securityEventRepository.ingestBatch([createProtectionEvent(request, options)]);
 }
 
 export function createLoginAttemptLimiter(
@@ -84,20 +79,31 @@ export function createLoginAttemptLimiter(
     passOnStoreError: false,
     skipSuccessfulRequests: true,
     ...storeOptions,
-    handler: (request, response) => {
-      (options.onLimit ?? (() => recordProtectionEvent(request, {
-        eventType: 'login-rate-limit-triggered',
-        summary: 'Repeated failed login requests exceeded the configured source-network threshold.',
-        windowMs,
-        limit,
-        responseAction: 'rate_limited',
-        severity: 'high'
-      })))(request);
+    handler: async (request, response) => {
+      try {
+        if (options.onLimit) {
+          await options.onLimit(request);
+        } else {
+          await recordProtectionEvent(request, {
+            eventType: 'login-rate-limit-triggered',
+            summary: 'Repeated failed login requests exceeded the configured source-network threshold.',
+            windowMs,
+            limit,
+            responseAction: 'rate_limited',
+            severity: 'high',
+            attributes: { http_method: request.method }
+          });
+        }
+      } catch {
+        console.error('[nexus-ips] Failed to persist the login rate-limit SOC event.');
+      }
+
       response.status(429).json({
         error: 'LOGIN_RATE_LIMITED',
         message: 'Repeated login failures triggered temporary source-network protection. Try again later.'
       });
     }
+
   });
 }
 

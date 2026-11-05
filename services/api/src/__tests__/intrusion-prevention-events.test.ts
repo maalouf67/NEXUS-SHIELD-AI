@@ -20,7 +20,8 @@ const eventOptions = {
   windowMs: 10 * 60 * 1000,
   limit: 40,
   responseAction: 'temporary_api_quarantine',
-  severity: 'medium' as const
+  severity: 'medium' as const,
+  attributes: { http_method: 'GET', response_status: '404', listener_scope: 'api' }
 };
 
 function requestFrom(ip: string): Request {
@@ -55,7 +56,7 @@ describe('privacy-preserving protection events', () => {
   it('stores a keyed source fingerprint without storing the raw IP address', () => {
     const sourceIp = '203.0.113.44';
 
-    recordProtectionEvent(requestFrom(sourceIp), eventOptions);
+    await recordProtectionEvent(requestFrom(sourceIp), eventOptions);
 
     expect(ingestBatch).toHaveBeenCalledTimes(1);
     const event = ingestBatch.mock.calls[0]?.[0][0];
@@ -66,6 +67,8 @@ describe('privacy-preserving protection events', () => {
       severity: 'medium'
     });
     expect(event?.attributes.source_ip_fingerprint).toMatch(/^[a-f0-9]{24}$/);
+    expect(event?.attributes.response_status).toBe('404');
+    expect(event?.attributes.http_method).toBe('GET');
     expect(JSON.stringify(event)).not.toContain(sourceIp);
     expect(JSON.stringify(event)).not.toContain('password');
     expect(JSON.stringify(event)).not.toContain('email');
@@ -74,8 +77,8 @@ describe('privacy-preserving protection events', () => {
   it('generates a stable event identifier for the same source, type and time bucket', () => {
     const sourceIp = '198.51.100.27';
 
-    recordProtectionEvent(requestFrom(sourceIp), eventOptions);
-    recordProtectionEvent(requestFrom(sourceIp), eventOptions);
+    await recordProtectionEvent(requestFrom(sourceIp), eventOptions);
+    await recordProtectionEvent(requestFrom(sourceIp), eventOptions);
 
     const first = ingestBatch.mock.calls[0]?.[0][0];
     const second = ingestBatch.mock.calls[1]?.[0][0];
@@ -87,9 +90,9 @@ describe('privacy-preserving protection events', () => {
   it('generates a different event identifier in a later time bucket', () => {
     const sourceIp = '198.51.100.27';
 
-    recordProtectionEvent(requestFrom(sourceIp), eventOptions);
+    await recordProtectionEvent(requestFrom(sourceIp), eventOptions);
     vi.mocked(Date.now).mockReturnValue(1_800_000_600_000);
-    recordProtectionEvent(requestFrom(sourceIp), eventOptions);
+    await recordProtectionEvent(requestFrom(sourceIp), eventOptions);
 
     const first = ingestBatch.mock.calls[0]?.[0][0];
     const second = ingestBatch.mock.calls[1]?.[0][0];
@@ -97,19 +100,17 @@ describe('privacy-preserving protection events', () => {
     expect(second?.externalEventId).not.toBe(first?.externalEventId);
   });
 
-  it('does not emit a fingerprinted event when no strong HMAC secret is configured', () => {
+  it('fails explicitly when no strong HMAC secret is configured', async () => {
     delete process.env.RATE_LIMIT_HASH_SECRET;
     delete process.env.SESSION_SECRET;
-
-    recordProtectionEvent(requestFrom('203.0.113.44'), eventOptions);
-
+    await expect(recordProtectionEvent(requestFrom('203.0.113.44'), eventOptions))
+      .rejects.toThrow('PROTECTION_EVENT_SECRET_NOT_CONFIGURED');
     expect(ingestBatch).not.toHaveBeenCalled();
   });
 
-  it('does not let telemetry persistence failure interrupt the caller', () => {
+  it('propagates telemetry persistence failure instead of silently dropping it', async () => {
     ingestBatch.mockRejectedValueOnce(new Error('database unavailable'));
-
-    expect(() => recordProtectionEvent(requestFrom('203.0.113.44'), eventOptions))
-      .not.toThrow();
+    await expect(recordProtectionEvent(requestFrom('203.0.113.44'), eventOptions))
+      .rejects.toThrow('database unavailable');
   });
 });
