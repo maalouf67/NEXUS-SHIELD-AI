@@ -118,3 +118,13 @@ A deeper read of PR #19's routes, storage service and the current database migra
 
 A scanner failure on the same unchanged Dockerfile is not evidence that a documentation/test-only branch introduced a new vulnerability. It remains a release blocker until the underlying Dockerfile finding is corrected and the target branch passes the required security workflow.
 
+## 15. Server-side session revocation blocker
+
+A review of the current API auth routes and React Native draft found a separate session lifecycle gap:
+
+- The current API issues 15-minute JWT access tokens and validates their signatures/claims; the current auth router exposes login and `/auth/me`, but no server-side logout or token-revocation endpoint.
+- React Native PR #14 removes the token from Expo SecureStore on sign-out. This protects against reuse from that local app storage after sign-out, but it does not invalidate a token copied before sign-out.
+- User disablement and role changes need explicit invalidation semantics for already-issued tokens.
+
+**Tracked work:** [Issue #25 — server-side access-session revocation](https://github.com/maalouf67/NEXUS-SHIELD-AI/issues/25). Do not treat local token deletion as server-side logout. Before production mobile release, implement and test the session lifecycle, revocation, disabled-user behavior, and fail-closed session-store behavior.
+
