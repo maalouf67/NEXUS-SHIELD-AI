@@ -46,7 +46,7 @@ export function createApiAnomalyGuard(
   const onContainment = options.onContainment ?? ((request: Request) => {
     recordProtectionEvent(request, {
       eventType: 'api-anomaly-containment-triggered',
-      summary: 'Repeated unauthorized, forbidden, missing-route or unsupported-method responses triggered temporary API source containment.',
+      summary: 'Repeated malformed, oversized, unauthorized, forbidden, missing-route or unsupported-method requests triggered temporary API source containment.',
       windowMs,
       limit: threshold,
       responseAction: 'temporary_api_quarantine',
