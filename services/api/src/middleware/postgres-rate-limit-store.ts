@@ -18,15 +18,19 @@ type CounterRow = {
  */
 export class PostgresRateLimitStore implements Store {
   readonly prefix: string;
-  private windowMs = 15 * 60 * 1000;
+  private windowMs: number;
   private schemaReady: Promise<void> | undefined;
   private cleanupCounter = 0;
 
-  constructor(scope: string) {
+  constructor(scope: string, windowMs = 15 * 60 * 1000) {
     if (!/^[a-z0-9:_-]{1,80}$/i.test(scope)) {
       throw new Error("Invalid rate-limit scope.");
     }
+    if (!Number.isInteger(windowMs) || windowMs < 1_000) {
+      throw new Error("Invalid rate-limit window.");
+    }
     this.prefix = scope;
+    this.windowMs = windowMs;
   }
 
   init(options: Options): void {
