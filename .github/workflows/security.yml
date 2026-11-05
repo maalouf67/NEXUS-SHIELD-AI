@@ -79,14 +79,12 @@ jobs:
       - name: Verify the PostgreSQL image gosu binary
         run: |
           set -euo pipefail
-          container_id="$(docker create nexus-postgres:ci)"
-          trap 'docker rm -f "$container_id" >/dev/null 2>&1 || true' EXIT
-          docker cp "$container_id:/usr/local/bin/gosu" "$RUNNER_TEMP/gosu"
-          chmod 0755 "$RUNNER_TEMP/gosu"
-          version="$("$RUNNER_TEMP/gosu" --version)"
+          version="$(docker run --rm --user 0 --entrypoint /usr/local/bin/gosu nexus-postgres:ci --version)"
           echo "$version"
           echo "$version" | grep -F "1.19 (go1.24.6"
-          "$RUNNER_TEMP/gosu" nobody true
+          switched_uid="$(docker run --rm --user 0 --entrypoint /usr/local/bin/gosu nexus-postgres:ci nobody id -u)"
+          test "$switched_uid" != "0"
+          echo "gosu switched from root to UID $switched_uid inside the PostgreSQL image."
 
       - name: Check upstream gosu source for reachable Go vulnerabilities
         working-directory: gosu-upstream
