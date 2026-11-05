@@ -6,7 +6,7 @@ import { recordProtectionEvent } from './intrusion-prevention.js';
 
 const WINDOW_MS = 10 * 60 * 1000;
 const MAX_SUSPICIOUS_RESPONSES = 40;
-const SUSPICIOUS_RESPONSE_STATUSES = new Set([401, 403, 404, 405]);
+const SUSPICIOUS_RESPONSE_STATUSES = new Set([400, 401, 403, 404, 405, 413]);
 
 export interface ApiAnomalyCounterStore {
   get(key: string): Promise<ClientRateLimitInfo | undefined>;
