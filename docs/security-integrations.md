@@ -25,7 +25,7 @@ Audit snapshot: 2026-11-05. This document separates repository implementation, C
 
 ## Release and trust boundaries
 
-- Demo threat-summary metrics are sample data, not live threat telemetry.
+- The threat-summary endpoint now returns incident counts aggregated from PostgreSQL. It does not fabricate an AI score; the score remains null until a documented, validated scoring model is implemented. Database aggregation does not create live threat telemetry or detect incidents.
 - AI-generated assessments are based only on information supplied by an authorized analyst; they are not evidence of an actual incident.
 - Attack Path Intelligence is bounded, read-only graph analysis; it does not scan assets or prove exploitability.
 - Active Defense / IPS in PR #26 is HTTP/application-layer rate limiting and temporary request-source containment. It is not a host firewall, TCP/UDP IPS, edge WAF or volumetric DDoS mitigation.
