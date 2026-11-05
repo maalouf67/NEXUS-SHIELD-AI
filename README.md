@@ -50,7 +50,16 @@ docker compose up -d postgres
 
 PostgreSQL and Adminer bind to `127.0.0.1` only. Adminer is available locally at `http://127.0.0.1:8080`.
 
-The API database pool supports explicit local non-TLS mode and verified TLS mode. When using the bundled Supabase CA or another provider CA, set `DATABASE_SSL=true` and configure `DATABASE_SSL_CA_PATH` where appropriate.
+After PostgreSQL starts, apply the numbered schema and verify the API's database connection:
+
+```bash
+npm run db:migrate
+npm run db:check
+```
+
+The migration runner applies numbered files 001–008, uses a PostgreSQL advisory lock, records SHA-256 checksums, and refuses modified historical migrations. It is safe to re-run against a database whose schema is already present, provided the schema matches the repository migration files. Back up an existing or production database and inspect pending SQL before migration. See [Database migrations and connectivity](docs/DATABASE-MIGRATIONS.md).
+
+The API database pool supports explicit local non-TLS mode and verified TLS mode. Supabase hosts use the bundled Supabase CA by default; other providers use Node's trusted system roots unless DATABASE_SSL_CA_PATH explicitly supplies a provider CA. Certificate verification remains enabled.
 
 ## JavaScript services
 
@@ -180,10 +189,10 @@ Every new user password is hashed with bcrypt before storage. Failed login respo
 
 ### Apply the user authentication migration
 
-The schema is in `database/init/003_user_auth.sql`. Docker applies it automatically only when it initializes a new database. For an existing database, back it up and apply the migration once:
+The schema is in `database/init/003_user_auth.sql`. Docker applies it automatically only when it initializes a new database. After backing up an existing database, use the ordered migration runner:
 
 ```bash
-psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/init/003_user_auth.sql
+npm run db:migrate
 ```
 
 ### Create the first administrator
@@ -208,10 +217,10 @@ The API also exposes a PostgreSQL-backed inventory. These endpoints require the 
 - `GET /api/assets/inventory` — reads the saved inventory.
 - `POST /api/attack-paths/analyze-inventory` — runs the read-only graph engine against the saved inventory. It does not scan external systems or change database records.
 
-The inventory schema is defined in `database/init/002_attack_path_inventory.sql`. It is included in Docker's initialization directory for new databases. For an existing database, back it up and apply the migration once:
+The inventory schema is defined in `database/init/002_attack_path_inventory.sql`. It is included in Docker's initialization directory for new databases. After backing up an existing database, use the ordered migration runner:
 
 ```bash
-psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/init/002_attack_path_inventory.sql
+npm run db:migrate
 ```
 
 The database must be reachable by the API and the migration must be applied before using persistent inventory endpoints. A successful HTTP route response alone does not prove that a database has been initialized.
@@ -232,10 +241,10 @@ Admin and analyst roles can also:
 
 Every incident creation and status change is recorded in `incident_activity` in the same database transaction as the incident change. Status changes use row-level locking to prevent concurrent updates from silently overwriting one another. Reopening resolved or closed incidents is restricted to admins. Viewing is read-only; this API does not run containment, scans, or automated remediation actions.
 
-The schema is in `database/init/004_incident_management.sql`. Docker applies it automatically only when creating a new database. For an existing database, back it up and apply the migration once:
+The schema is in `database/init/004_incident_management.sql`. Docker applies it automatically only when creating a new database. After backing up an existing database, use the ordered migration runner:
 
 ```bash
-psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/init/004_incident_management.sql
+npm run db:migrate
 ```
 
 ## Alert review API
@@ -248,10 +257,10 @@ The authenticated alert API provides:
 
 Alert creation and status changes are recorded in the linked incident audit history within the same database transaction. These endpoints record analyst-supplied information; they do not collect telemetry, verify a threat, run a scan, or perform containment.
 
-The alert-to-audit link is added by `database/init/005_alert_audit_link.sql`. For an existing database, back it up and apply the migration once:
+The alert-to-audit link is added by `database/init/005_alert_audit_link.sql`. After backing up an existing database, use the ordered migration runner:
 
 ```bash
-psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/init/005_alert_audit_link.sql
+npm run db:migrate
 ```
 
 ## Normalized security event ingestion
@@ -268,10 +277,10 @@ Authenticated admin, analyst, and viewer users can read `GET /api/security-event
 
 Ingestion only stores the normalized event for review. It does not verify the upstream product's detection, create an incident or alert automatically, run a scan, or execute containment. A provider-specific connector or SIEM/EDR configuration must still be built and configured; no external source is connected by default.
 
-The schema is in `database/init/006_security_event_ingestion.sql`. Docker applies it automatically only when creating a new database. For an existing database, back it up and apply the migration once:
+The schema is in `database/init/006_security_event_ingestion.sql`. Docker applies it automatically only when creating a new database. After backing up an existing database, use the ordered migration runner:
 
 ```bash
-psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/init/006_security_event_ingestion.sql
+npm run db:migrate
 ```
 
 ## Checks
