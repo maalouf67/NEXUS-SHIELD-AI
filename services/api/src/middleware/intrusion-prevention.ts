@@ -1,6 +1,6 @@
 import { createHmac } from 'node:crypto';
 import type { Request, RequestHandler } from 'express';
-import { rateLimit } from 'express-rate-limit';
+import { ipKeyGenerator, rateLimit } from 'express-rate-limit';
 
 import { PostgresRateLimitStore } from './postgres-rate-limit-store.js';
 import {
@@ -38,7 +38,8 @@ export function recordProtectionEvent(
   const secret = process.env.RATE_LIMIT_HASH_SECRET?.trim() || process.env.SESSION_SECRET?.trim();
   if (!secret || secret.length < 32) return;
 
-  const sourceIp = request.ip || 'unknown';
+  const rawSourceIp = request.ip || 'unknown';
+  const sourceIp = rawSourceIp === 'unknown' ? rawSourceIp : ipKeyGenerator(rawSourceIp);
   const bucket = Math.floor(Date.now() / options.windowMs);
   const fingerprint = createHmac('sha256', secret)
     .update(sourceIp)
