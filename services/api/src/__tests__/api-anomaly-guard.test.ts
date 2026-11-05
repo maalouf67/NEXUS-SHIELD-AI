@@ -1,6 +1,7 @@
 import express from 'express';
 import { describe, expect, it, vi } from 'vitest';
 import request from 'supertest';
+import { ipKeyGenerator } from 'express-rate-limit';
 
 import {
   createApiAnomalyGuard,
@@ -161,6 +162,12 @@ describe('API anomaly containment', () => {
 
     expect(suspicious.status).toBe(404);
     expect(liveness.status).toBe(200);
+  });
+
+
+  it('keeps distinct IPv4-mapped addresses in separate source buckets', () => {
+    expect(ipKeyGenerator('::ffff:192.0.2.1'))
+      .not.toBe(ipKeyGenerator('::ffff:198.51.100.2'));
   });
 
 });
