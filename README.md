@@ -94,7 +94,7 @@ The Python AI service:
 - Accepts exactly one multipart file and enforces a configurable maximum of 100 MiB.
 - Ignores the supplied file name and MIME type. It streams bytes into a private owner-scoped quarantine directory using a generated SHA-256 identifier.
 - Uses restrictive directory/file permissions (0700/0600), checks symlinks and content hashes, and never executes an uploaded file.
-- Uses ClamAV `clamdscan` with a 60-second process timeout. Scanner failures/timeouts are never converted into a clean verdict.
+- Streams each quarantined sample to the separate private ClamAV daemon using the bounded `INSTREAM` TCP protocol with a 60-second timeout. The AI image contains no ClamAV daemon/client packages. Scanner connection failures, protocol errors and timeouts are never converted into a clean verdict.
 - Keeps a sample quarantined if ClamAV cannot return a verdict; a retry can only reference a sample owned by the authenticated account.
 
 ## Scan history and retention
@@ -110,7 +110,7 @@ These are configured source-code policies. Their behavior must still be observed
 
 ## Local development — Docker and a real ClamAV test
 
-ClamAV's TCP socket is reachable only over the private Docker Compose network; port 3310 is not published to the host. The AI HTTP service binds to host loopback at `127.0.0.1:8001`. The quarantine volume and ClamAV signature database use separate persistent Docker volumes. The Compose ClamAV container is assigned 4 GiB memory, aligned with ClamAV's documented preferred memory budget for signature loading and reloads.
+ClamAV's TCP socket is reachable only over the private Docker Compose network; port 3310 is not published to the host. The AI service streams samples directly to the ClamAV daemon using the ClamAV INSTREAM protocol; no clamdscan binary is installed in the AI image. The AI HTTP service binds to host loopback at `127.0.0.1:8001`. The quarantine volume and ClamAV signature database use separate persistent Docker volumes. The Compose ClamAV container is assigned 4 GiB memory, aligned with ClamAV's documented preferred memory budget for signature loading and reloads.
 
 1. Configure strong, unique values for `POSTGRES_PASSWORD`, `JWT_SECRET`, `SESSION_SECRET`, and `NEXUS_SERVICE_API_TOKEN` in the root `.env`. The service token must be at least 32 characters.
 2. Copy the required values into `services/api/.env` and `apps/web/.env.local`. Set `API_BASE_URL=http://127.0.0.1:4000` and `AI_BASE_URL=http://127.0.0.1:8001` in the web server environment; set `AI_BASE_URL` and the same service token in the API environment.
@@ -128,7 +128,7 @@ ClamAV's TCP socket is reachable only over the private Docker Compose network; p
 
 5. Sign in as an Admin or Analyst and open `/scan`. Use only benign files while developing. A signature-clean result is not a guarantee that a file is harmless.
 
-The CI workflow builds the Docker images, waits for the real ClamAV daemon to become healthy, submits a benign fixture and the harmless EICAR antivirus test string, and verifies the expected `clean` and `detected` results. This runtime test is separate from Python unit tests, which mock scanner responses.
+The CI workflow builds the Docker images, waits for the real ClamAV daemon to become healthy, verifies the private INSTREAM TCP protocol, submits a benign fixture and the harmless EICAR antivirus test string, and verifies the expected `clean` and `detected` results. This runtime test is separate from Python unit tests, which mock scanner responses.
 
 **Important:** the Android module is an on-demand file-scanning companion, not a full-device antivirus. Continuous VPN/network filtering, an endpoint agent, iOS support, asynchronous scan queues, file-release workflows and automated response are not active. The Android debug APK is a development artifact only.
 

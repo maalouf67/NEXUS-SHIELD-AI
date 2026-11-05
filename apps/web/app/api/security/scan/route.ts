@@ -168,7 +168,7 @@ async function scannerResponse(upstream: Response, apiBase: URL, serviceToken: s
       sha256: scan.sha256,
       size_bytes: scan.size_bytes,
       verdict: scan.verdict,
-      scanner: 'ClamAV clamdscan',
+      scanner: 'ClamAV clamd INSTREAM',
       scanned_at: scan.scanned_at,
       execution_performed: false,
       disclaimer: typeof scan.disclaimer === 'string' ? scan.disclaimer : 'A clean signature scan does not guarantee that a file is harmless.'

@@ -87,11 +87,15 @@ def _require_service_auth(authorization: str | None) -> None:
 
 
 def _scanner_options() -> dict:
-    options = {"scanner_binary": os.getenv("CLAMDSCAN_BIN", "clamdscan")}
-    config_file = os.getenv("CLAMDSCAN_CONFIG_FILE", "").strip()
-    if config_file:
-        options["scanner_config_file"] = config_file
-    return options
+    host = os.getenv("CLAMD_HOST", "clamav").strip()
+    raw_port = os.getenv("CLAMD_PORT", "3310").strip()
+    try:
+        port = int(raw_port)
+    except ValueError as exc:
+        raise HTTPException(status_code=503, detail={"code": "SCANNER_CONFIG_INVALID"}) from exc
+    if not host or not 1 <= port <= 65535:
+        raise HTTPException(status_code=503, detail={"code": "SCANNER_CONFIG_INVALID"})
+    return {"clamd_host": host, "clamd_port": port}
 
 
 def _max_upload_bytes() -> int:
