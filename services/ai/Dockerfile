@@ -10,7 +10,10 @@ WORKDIR /app
 # the INSTREAM protocol client implemented with Python's standard library.
 COPY services/ai/requirements.txt ./requirements.txt
 RUN python -m pip install --no-cache-dir -r requirements.txt \
-    && python -c "import importlib.util; assert importlib.util.find_spec('setuptools') is None"
+    # pip/setuptools/wheel are build tools; none are required by the runtime.
+    && python -m pip uninstall -y pip setuptools wheel \
+    && rm -rf /usr/local/lib/python3.13/ensurepip /usr/local/bin/pip* \
+    && python -c "import importlib.util; assert importlib.util.find_spec('pip') is None; assert importlib.util.find_spec('setuptools') is None"
 
 COPY services/ai/app ./app
 
