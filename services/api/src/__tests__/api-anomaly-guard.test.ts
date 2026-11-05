@@ -92,4 +92,30 @@ describe('API anomaly containment', () => {
     expect(result.body.error).toBe('PROTECTION_STORE_UNAVAILABLE');
     expect(route).not.toHaveBeenCalled();
   });
+
+  it('groups IPv6 addresses in the same /56 source network for containment', async () => {
+    const store = new MemoryCounterStore(60_000);
+    const app = express();
+    app.set('trust proxy', 1);
+
+    app.use('/api', createApiAnomalyGuard({
+      windowMs: 60_000,
+      threshold: 2,
+      store
+    }));
+    app.get('/api/missing', (_request, response) => response.status(404).json({ error: 'NOT_FOUND' }));
+    app.get('/api/healthy', (_request, response) => response.status(200).json({ status: 'ok' }));
+
+    const first = await request(app).get('/api/missing')
+      .set('X-Forwarded-For', '2001:db8:abcd:1200::1');
+    const second = await request(app).get('/api/missing')
+      .set('X-Forwarded-For', '2001:db8:abcd:12ff::1');
+    const contained = await request(app).get('/api/healthy')
+      .set('X-Forwarded-For', '2001:db8:abcd:12aa::9');
+
+    expect(first.status).toBe(404);
+    expect(second.status).toBe(404);
+    expect(contained.status).toBe(429);
+  });
+
 });
