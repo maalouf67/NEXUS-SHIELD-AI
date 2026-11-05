@@ -14,6 +14,7 @@ import * as SecureStore from "expo-secure-store";
 import {
   checkPhoneReputation,
   fetchCurrentUser,
+  revokeSession,
   signIn,
   type PhoneReputationResult,
   type SessionUser
@@ -103,11 +104,47 @@ export default function App() {
   }
 
   async function handleSignOut() {
-    await SecureStore.deleteItemAsync(TOKEN_KEY).catch(() => undefined);
+    if (!token || busy) return;
+
+    setBusy(true);
+    setError("");
+    setNotice("");
+
+    let serverRevocation: "revoked" | "already-inactive" | null = null;
+    let serverError = "";
+    let localTokenRemoved = false;
+
+    // Attempt API revocation first, but always attempt to remove the secure
+    // storage copy even when the API is offline or rejects the request.
+    try {
+      serverRevocation = await revokeSession(token);
+    } catch (cause) {
+      serverError = cause instanceof Error ? cause.message : "Server revocation could not be confirmed.";
+    }
+
+    try {
+      await SecureStore.deleteItemAsync(TOKEN_KEY);
+      localTokenRemoved = true;
+    } catch (cause) {
+      const storageError = cause instanceof Error ? cause.message : "Secure storage deletion failed.";
+      setError("The token was cleared from app memory, but secure-storage deletion could not be confirmed. " + storageError);
+    }
+
     setToken(null);
     setUser(null);
     setResult(null);
-    setNotice("Signed out.");
+
+    if (!localTokenRemoved) {
+      setNotice("The app has signed out locally. Secure-storage deletion still needs verification.");
+    } else if (serverRevocation === "revoked") {
+      setNotice("Signed out. The API revoked the server session and the local secure-storage token was removed.");
+    } else if (serverRevocation === "already-inactive") {
+      setNotice("Signed out. The API reports the session is expired or already inactive; the local token was removed.");
+    } else {
+      setNotice("Signed out locally. Server revocation could not be confirmed; the access token may remain valid until its 15-minute expiry. " + serverError);
+    }
+
+    setBusy(false);
   }
 
   async function handlePhoneCheck() {
@@ -226,7 +263,7 @@ export default function App() {
             <Text style={styles.brand}>◈ NEXUS SHIELD AI</Text>
             <Text style={styles.muted}>{user.email} · {user.role}</Text>
           </View>
-          <ActionButton label="Sign out" onPress={() => void handleSignOut()} secondary />
+          <ActionButton label="Sign out" onPress={() => void handleSignOut()} secondary disabled={busy} />
         </View>
 
         <Text style={styles.kicker}>MOBILE SECURITY CONSOLE</Text>
