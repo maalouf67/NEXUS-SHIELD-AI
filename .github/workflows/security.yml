@@ -63,7 +63,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: tianon/gosu
-          ref: 6456aaa0f3c854d199d0f037f068eb97515b7513
+          ref: 29b939aa5bd4dc588af765b8248f6e39150d2565
           path: gosu-upstream
           persist-credentials: false
 
@@ -81,7 +81,7 @@ jobs:
           set -euo pipefail
           version="$(docker run --rm --user 0 --entrypoint /usr/local/bin/gosu nexus-postgres:ci --version)"
           echo "$version"
-          echo "$version" | grep -F "1.19 (go1.24.6"
+          echo "$version" | grep -F "1.20"
           switched_uid="$(docker run --rm --user 0 --entrypoint /usr/local/bin/gosu nexus-postgres:ci nobody id -u)"
           test "$switched_uid" != "0"
           echo "gosu switched from root to UID $switched_uid inside the PostgreSQL image."
