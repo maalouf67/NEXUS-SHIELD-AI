@@ -54,7 +54,7 @@ database/init   -> ordered PostgreSQL initialization/migration SQL
 
 - The Android DNS feature is limited to user-started IPv4/UDP DNS forwarding to Quad9 DNS-over-TLS. It is not a full-device VPN or endpoint antivirus.
 - There is no native iOS application in the repository yet.
-- Threat-summary dashboard values are demo data until a trusted event source is connected.
+- The threat-summary endpoint aggregates incident counts from PostgreSQL; it does not produce live upstream threat telemetry or a calibrated AI score.
 - The normalized security-event endpoint is an ingestion contract; no vendor-specific SIEM/EDR source is connected by default.
 - Active Defense in PR #26 is HTTP/application-layer rate limiting and temporary source containment, not a host firewall, TCP/UDP IPS, edge WAF or volumetric DDoS mitigation.
 - Production database/provider connectivity, cloud volume compatibility and device-level mobile security require environment-specific validation separate from CI.
