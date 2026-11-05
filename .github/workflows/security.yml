@@ -90,10 +90,9 @@ jobs:
 
       - name: Check upstream gosu source for reachable Go vulnerabilities
         working-directory: gosu-upstream
-        env:
-          PATH: ${{ runner.temp }}:/home/runner/go/bin:/usr/local/go/bin:${{ env.PATH }}
         run: |
           set -euo pipefail
+          export PATH="$(go env GOPATH)/bin:$PATH"
           bash ./govulncheck-with-excludes.sh ./...
 
       - name: Validate PostgreSQL startup on a root-owned volume
@@ -124,9 +123,10 @@ jobs:
           test "$ready" = true
           database_user="$(docker exec "$container" psql -U nexus_ci -d nexus_ci -Atqc "SELECT current_user")"
           test "$database_user" = "nexus_ci"
-          process_user="$(docker exec "$container" sh -c "ps -o user= -p 1" | tr -d '[:space:]')"
-          test "$process_user" = "postgres"
-          echo "PostgreSQL initialized on a root-owned volume and PID 1 runs as postgres."
+          expected_uid="$(docker exec "$container" id -u postgres)"
+          process_uid="$(docker exec "$container" awk '/^Uid:/ { print $2 }' /proc/1/status)"
+          test "$process_uid" = "$expected_uid"
+          echo "PostgreSQL initialized on a root-owned volume and PID 1 runs as postgres (UID $process_uid)."
 
       - name: Pull the configured ClamAV runtime image
         run: docker pull clamav/clamav:1.5.4
