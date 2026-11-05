@@ -44,7 +44,7 @@ app.use(
 app.use('/api', apiRateLimiter);
 // Unit tests exercise the guard directly with isolated stores. Do not make the
 // shared PostgreSQL production store a hidden dependency of unrelated route tests.
-app.use('/api', process.env.NODE_ENV === 'test'
+app.use(process.env.NODE_ENV === 'test'
   ? (_request, _response, next) => next()
   : apiAnomalyGuard);
 app.use(express.json({ limit: '1mb' }));
