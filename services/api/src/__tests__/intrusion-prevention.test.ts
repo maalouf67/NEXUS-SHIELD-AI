@@ -12,7 +12,7 @@ describe('active defense login protection', () => {
     app.use(express.json());
     app.use('/api', createAuthRouter(
       undefined,
-      createLoginAttemptLimiter({ windowMs: 60_000, limit: 2, onLimit })
+      createLoginAttemptLimiter({ windowMs: 60_000, limit: 2, onLimit, useSharedStore: false })
     ));
 
     const payload = { email: 'not-an-email', password: 'invalid' };
@@ -33,7 +33,7 @@ describe('active defense login protection', () => {
     app.use(express.json());
     app.use('/api', createAuthRouter(
       undefined,
-      createLoginAttemptLimiter({ windowMs: 60_000, limit: 1 })
+      createLoginAttemptLimiter({ windowMs: 60_000, limit: 1, useSharedStore: false })
     ));
 
     await request(app).post('/api/auth/login')
