@@ -2,10 +2,11 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { Pool } from 'pg';
 
-type DatabaseSslEnvironment = Pick<
-  NodeJS.ProcessEnv,
-  'DATABASE_SSL' | 'DATABASE_SSL_CA_PATH' | 'DATABASE_URL'
->;
+type DatabaseSslEnvironment = {
+  DATABASE_SSL?: string;
+  DATABASE_SSL_CA_PATH?: string;
+  DATABASE_URL?: string;
+};
 
 function isSupabaseDatabaseUrl(value: string | undefined): boolean {
   if (!value) return false;
@@ -25,7 +26,11 @@ function isSupabaseDatabaseUrl(value: string | undefined): boolean {
  * is never disabled by this helper.
  */
 export function createDatabaseSslOptions(
-  environment: DatabaseSslEnvironment = process.env
+  environment: DatabaseSslEnvironment = {
+    DATABASE_SSL: process.env.DATABASE_SSL,
+    DATABASE_SSL_CA_PATH: process.env.DATABASE_SSL_CA_PATH,
+    DATABASE_URL: process.env.DATABASE_URL
+  }
 ): false | { rejectUnauthorized: true; ca?: string } {
   if (environment.DATABASE_SSL === 'false') return false;
 
