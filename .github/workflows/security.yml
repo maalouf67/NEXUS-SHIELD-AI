@@ -59,6 +59,75 @@ jobs:
           docker build --pull -f database/Dockerfile.railway -t nexus-postgres:ci .
           docker build --pull -f services/ai/Dockerfile -t nexus-ai:ci .
 
+      - name: Checkout the pinned upstream gosu source
+        uses: actions/checkout@v4
+        with:
+          repository: tianon/gosu
+          ref: 6456aaa0f3c854d199d0f037f068eb97515b7513
+          path: gosu-upstream
+          persist-credentials: false
+
+      - name: Set up Go for upstream vulnerability analysis
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.27.3"
+          cache: false
+
+      - name: Install pinned govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@v1.1.4
+
+      - name: Verify the PostgreSQL image gosu binary
+        run: |
+          set -euo pipefail
+          container_id="$(docker create nexus-postgres:ci)"
+          trap 'docker rm -f "$container_id" >/dev/null 2>&1 || true' EXIT
+          docker cp "$container_id:/usr/local/bin/gosu" "$RUNNER_TEMP/gosu"
+          chmod 0755 "$RUNNER_TEMP/gosu"
+          version="$("$RUNNER_TEMP/gosu" --version)"
+          echo "$version"
+          echo "$version" | grep -F "gosu version: 1.19 (go1.24.6"
+          "$RUNNER_TEMP/gosu" nobody true
+
+      - name: Check upstream gosu source for reachable Go vulnerabilities
+        working-directory: gosu-upstream
+        env:
+          PATH: ${{ runner.temp }}:/home/runner/go/bin:/usr/local/go/bin:${{ env.PATH }}
+        run: |
+          set -euo pipefail
+          bash ./govulncheck-with-excludes.sh ./...
+
+      - name: Validate PostgreSQL startup on a root-owned volume
+        run: |
+          set -euo pipefail
+          volume="nexus-pgdata-root-owned"
+          container="nexus-pg-root-volume-check"
+          docker volume create "$volume"
+          cleanup() {
+            docker rm -f "$container" >/dev/null 2>&1 || true
+            docker volume rm "$volume" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          docker run --detach --name "$container" --user 0 \
+            --env POSTGRES_USER=nexus_ci \
+            --env POSTGRES_PASSWORD=nexus-ci-only-password \
+            --env POSTGRES_DB=nexus_ci \
+            --volume "$volume:/var/lib/postgresql/data" \
+            nexus-postgres:ci
+          ready=false
+          for attempt in $(seq 1 60); do
+            if docker exec "$container" pg_isready -U nexus_ci -d nexus_ci >/dev/null 2>&1; then
+              ready=true
+              break
+            fi
+            sleep 2
+          done
+          test "$ready" = true
+          database_user="$(docker exec "$container" psql -U nexus_ci -d nexus_ci -Atqc "SELECT current_user")"
+          test "$database_user" = "nexus_ci"
+          process_user="$(docker exec "$container" sh -c "ps -o user= -p 1" | tr -d '[:space:]')"
+          test "$process_user" = "postgres"
+          echo "PostgreSQL initialized on a root-owned volume and PID 1 runs as postgres."
+
       - name: Pull the configured ClamAV runtime image
         run: docker pull clamav/clamav:1.5.4
 
