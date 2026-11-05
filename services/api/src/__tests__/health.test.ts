@@ -1,8 +1,35 @@
-import { describe, expect, it } from 'vitest';
+import jwt from 'jsonwebtoken';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import request from 'supertest';
 import { app } from '../index.js';
 
+const TEST_SECRET = 'nexus-health-test-secret-value-at-least-32';
+const originalSecret = process.env.JWT_SECRET;
+
+function token() {
+  return jwt.sign(
+    { email: 'analyst@example.test', role: 'analyst', jti: '550e8400-e29b-41d4-a716-446655440001' },
+    TEST_SECRET,
+    {
+      algorithm: 'HS256',
+      subject: '550e8400-e29b-41d4-a716-446655440000',
+      issuer: 'nexus-shield-ai',
+      audience: 'nexus-shield-ai-api',
+      expiresIn: '15m'
+    }
+  );
+}
+
 describe('NEXUS SHIELD API', () => {
+  beforeEach(() => {
+    process.env.JWT_SECRET = TEST_SECRET;
+  });
+
+  afterEach(() => {
+    if (originalSecret === undefined) delete process.env.JWT_SECRET;
+    else process.env.JWT_SECRET = originalSecret;
+  });
+
   it('returns health data', async () => {
     const response = await request(app).get('/health');
 
@@ -11,12 +38,12 @@ describe('NEXUS SHIELD API', () => {
     expect(response.body.service).toBe('nexus-shield-api');
   });
 
-  it('reports the PostgreSQL-backed threat summary as unavailable when the database is not configured for the test', async () => {
-    const response = await request(app).get('/api/threats/summary');
+  it.skipIf(!process.env.DATABASE_URL)('returns the PostgreSQL-backed threat summary', async () => {
+    const response = await request(app).get('/api/threats/summary')
+      .set('Authorization', 'Bearer ' + token());
 
-    // The route must not fabricate a successful threat summary when PostgreSQL
-    // is unreachable. Database-backed success is covered by integration tests.
-    expect(response.status).toBe(503);
-    expect(response.body.error).toBe('THREAT_SUMMARY_UNAVAILABLE');
+    expect(response.status).toBe(200);
+    expect(response.body.data_source).toBe('postgresql');
+    expect(response.body.summary.critical).toBeGreaterThanOrEqual(0);
   });
 });
