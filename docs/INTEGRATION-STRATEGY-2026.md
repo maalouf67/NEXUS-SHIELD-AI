@@ -74,3 +74,23 @@ The tools below complement the existing GitHub repository and CI. They are not i
 - PR #19: still targets `fix/trivy-postgres-nonroot`; its own description identifies workspace-global inventory without tenant ownership. Do not merge it into a multi-tenant product until isolation is implemented and tested.
 - PR #22: API Build/Test passed. Trivy failed on the existing `database/Dockerfile.railway` DS-0002 HIGH finding from `main`; the new readiness test file did not cause that finding. Re-run security CI after the non-root image fix is safely incorporated.
 - PR #14: its recorded Build/Test, Security, lint/shared-contract, Python and React Native/iOS workflow runs passed at head `c235342207857ddbf5b729e737e32d772602351f`. The branch nevertheless diverges from current `main` and remains a draft; no merge or device validation is claimed.
+
+## 12. Official references for the additional toolchain
+
+- Aikido repository onboarding and scan coverage: https://help.aikido.dev/getting-started/setting-up-your-account/create-account-and-connect-your-repositories
+- Aikido IDE plugin support: https://help.aikido.dev/ai-and-dev-tools/ide-plugins-overview
+- Aikido GitHub Actions integration and paid-plan requirement: https://integrations.aikido.dev/integrations/github-actions
+- Aikido Jira issue tracking integration: https://integrations.aikido.dev/integrations/jira
+- Bolt.new GitHub integration: https://bolt.new/blog/github-hackathon
+- Bolt.new connectors, including GitHub and Jira: https://bolt.new/blog/introducing-connectors
+- React Native framework recommendation: https://reactnative.dev/docs/environment-setup
+- Expo New Architecture: https://docs.expo.dev/guides/new-architecture/
+- Expo EAS Build and hosted native builds: https://docs.expo.dev/build
+- Expo EAS Workflows: https://docs.expo.dev/eas/workflows/
+- Atlassian GitHub/Jira development traceability: https://www.atlassian.com/partnerships/github/guide
+- Zapier webhook security and trigger setup: https://help.zapier.com/hc/en-us/articles/8496083355661-How-to-get-started-with-Webhooks-by-Zapier
+- Zapier webhook trigger limits and plan availability: https://help.zapier.com/hc/en-us/articles/8496288690317-Trigger-Zap-workflows-from-webhooks
+- Zapier webhook rate limits and retry guidance: https://help.zapier.com/hc/en-us/articles/29972220283789-Webhooks-by-Zapier-rate-limits
+- Railway volume ownership and `RAILWAY_RUN_UID=0`: https://docs.railway.com/volumes
+- Railway `RAILWAY_RUN_UID` configuration reference: https://docs.railway.com/variables/reference
+
