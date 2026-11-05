@@ -97,3 +97,23 @@ export async function checkPhoneReputation(
   });
   return parseResponse<PhoneReputationResult>(response);
 }
+export type SessionRevocationResult = "revoked" | "already-inactive";
+
+/**
+ * Ask the API to revoke this short-lived access session. A 401 means the API
+ * no longer accepts the token (expired or already revoked). Network/5xx errors
+ * are surfaced so the caller does not claim server revocation succeeded.
+ */
+export async function revokeSession(token: string): Promise<SessionRevocationResult> {
+  const response = await fetch(getApiBaseUrl() + "/api/auth/logout", {
+    method: "POST",
+    headers: { Authorization: "Bearer " + token, Accept: "application/json" },
+    cache: "no-store"
+  });
+
+  if (response.status === 204) return "revoked";
+  if (response.status === 401) return "already-inactive";
+  if (response.ok) throw new Error("The NEXUS API returned an unexpected logout response.");
+  await parseResponse<never>(response);
+  throw new Error("The NEXUS API logout request failed.");
+}
