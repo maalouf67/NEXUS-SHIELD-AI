@@ -7,6 +7,7 @@ import { recordProtectionEvent } from './intrusion-prevention.js';
 const WINDOW_MS = 10 * 60 * 1000;
 const MAX_SUSPICIOUS_RESPONSES = 40;
 const SUSPICIOUS_RESPONSE_STATUSES = new Set([400, 401, 403, 404, 405, 413]);
+const EXEMPT_LIVENESS_PATHS = new Set(['/health']);
 
 export interface ApiAnomalyCounterStore {
   get(key: string): Promise<ClientRateLimitInfo | undefined>;
@@ -55,6 +56,10 @@ export function createApiAnomalyGuard(
   });
 
   return (request, response, next) => {
+    // Keep the lightweight liveness probe reachable during source containment.
+    // Readiness still checks its dependencies and reports their actual status.
+    if (EXEMPT_LIVENESS_PATHS.has(request.path)) return next();
+
     const sourceKey = request.ip ? ipKeyGenerator(request.ip) : 'unknown';
 
     void store.get(sourceKey).then((counter) => {
