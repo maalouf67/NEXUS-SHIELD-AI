@@ -11,10 +11,12 @@ describe('NEXUS SHIELD API', () => {
     expect(response.body.service).toBe('nexus-shield-api');
   });
 
-  it('returns threat summary', async () => {
+  it('reports the PostgreSQL-backed threat summary as unavailable when the database is not configured for the test', async () => {
     const response = await request(app).get('/api/threats/summary');
 
-    expect(response.status).toBe(200);
-    expect(response.body.summary.critical).toBeGreaterThanOrEqual(0);
+    // The route must not fabricate a successful threat summary when PostgreSQL
+    // is unreachable. Database-backed success is covered by integration tests.
+    expect(response.status).toBe(503);
+    expect(response.body.error).toBe('THREAT_SUMMARY_UNAVAILABLE');
   });
 });
