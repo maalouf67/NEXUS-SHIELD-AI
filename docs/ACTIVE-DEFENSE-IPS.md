@@ -10,7 +10,7 @@ Protect NEXUS-owned infrastructure: public API routes, authentication endpoints,
 
 1. **Global API request throttling:** the existing API limiter protects `/api` with a 100-request / 15-minute per-source-IP quota. Outside test mode it uses the PostgreSQL-backed shared store, so limits are shared across API instances. Store failures fail closed.
 2. **Login abuse prevention:** the login route has a dedicated 10-request / 15-minute source-IP limiter. Successful 2xx logins are excluded from the failed-attempt quota; failed and malformed requests count. Outside test mode, counters use the PostgreSQL store under a separate `auth-login-ip` scope.
-3. **Suspicious-response detection and temporary API containment:** the guard observes completed API responses with HTTP 401, 403, 404 or 405. After 40 such responses from one source IP inside a 10-minute window, it emits a deduplicated medium-severity `nexus-ips` event and temporarily returns HTTP 429 for that source until the counter window expires. Successful responses are not counted.
+3. **Suspicious-response detection and temporary API containment:** the guard observes completed API responses with HTTP 400, 401, 403, 404, 405 or 413. It is mounted before JSON parsing so malformed and oversized bodies are included. After 40 such responses from one source network inside a 10-minute window, it emits a deduplicated medium-severity `nexus-ips` event and temporarily returns HTTP 429 for that source until the counter window expires. Successful responses are not counted.
 4. **Privacy-safe source identifiers:** PostgreSQL counter keys and SOC event identifiers use keyed HMAC fingerprints. Raw source IP addresses and submitted credentials are not written to the protection event attributes.
 5. **Existing HTTP baseline:** Helmet security headers, explicit CORS allow-list behavior, a 1 MB JSON body cap, configured reverse-proxy hop count and Zod validation remain in place.
 6. **Fail-closed protection-store reads:** if the anomaly guard cannot read its shared counter, the API returns HTTP 503 instead of silently bypassing that guard. Telemetry persistence is best-effort and does not interrupt a protective response.
@@ -33,7 +33,7 @@ Shared API request limiter (100 / 15 min)
   |
   v
 Shared API anomaly guard (10 min window)
-  |-- completed 401 / 403 / 404 / 405 responses increment a source counter
+  |-- completed 400 / 401 / 403 / 404 / 405 / 413 responses increment a source counter
   |-- 40 suspicious responses -> temporary HTTP 429 containment
   |-- HMAC-fingerprinted event -> SOC analyst review
   |
@@ -66,7 +66,7 @@ Shared API anomaly guard (10 min window)
 
 - API build, type-check and full test suite.
 - Confirm the login limiter counts failed attempts and does not penalize successful 2xx logins.
-- Confirm the anomaly guard only counts 401 / 403 / 404 / 405 responses, returns 429 after the threshold, and does not count successful responses.
+- Confirm the anomaly guard only counts 400 / 401 / 403 / 404 / 405 / 413 responses, runs before JSON parsing, returns 429 after the threshold, and does not count successful responses.
 - Test database unavailability: the anomaly guard must fail closed.
 - Test PostgreSQL counter sharing across two API instances and race behavior under concurrent requests.
 - Test event deduplication, HMAC fingerprinting and absence of raw IP / email / password in event attributes.
