@@ -82,8 +82,11 @@ jobs:
         run: npm run lint --workspace @nexus-shield/api
 
   python-ai:
-    name: Python AI service validation
+    name: Python AI service validation (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.13"]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -91,7 +94,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: ${{ matrix.python-version }}
 
       - name: Install AI service dependencies
         run: python -m pip install -r services/ai/requirements.txt
