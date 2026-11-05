@@ -2,12 +2,12 @@ name: NEXUS SHIELD AI - React Native and iOS Native Checks
 
 on:
   push:
-    branches: ["main"]
+    branches: ["main", "feature/**"]
     paths:
       - "apps/react-native/**"
       - ".github/workflows/react-native-ios.yml"
   pull_request:
-    branches: ["main"]
+    branches: ["main", "feature/**"]
     paths:
       - "apps/react-native/**"
       - ".github/workflows/react-native-ios.yml"
