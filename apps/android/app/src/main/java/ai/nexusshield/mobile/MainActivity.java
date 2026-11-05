@@ -45,6 +45,7 @@ public final class MainActivity extends Activity {
     private EditText emailInput;
     private EditText passwordInput;
     private Button loginButton;
+    private Button logoutButton;
     private Button chooseButton;
     private Button scanButton;
     private Button historyButton;
@@ -110,6 +111,11 @@ public final class MainActivity extends Activity {
         loginButton = button("Sign in securely");
         connectionCard.addView(loginButton);
         loginButton.setOnClickListener(view -> signIn());
+        logoutButton = button("Sign out and revoke session");
+        connectionCard.addView(logoutButton);
+        logoutButton.setEnabled(false);
+        logoutButton.setAlpha(0.45f);
+        logoutButton.setOnClickListener(view -> signOut());
 
         addGap(page, 14);
         LinearLayout scanCard = card(page);
@@ -235,6 +241,7 @@ public final class MainActivity extends Activity {
                     accountCanScan = "admin".equals(role) || "analyst".equals(role);
                     scanButton.setEnabled(accountCanScan && selectedFileUri != null);
                     scanButton.setAlpha(scanButton.isEnabled() ? 1.0f : 0.45f);
+                    loginButton.setText("Signed in");
                     setStatus("Signed in as " + role + ". Your short-lived token is held in memory and is not saved to disk.");
                     setBusy(false, null);
                     loadHistory();
@@ -284,6 +291,48 @@ public final class MainActivity extends Activity {
         chooseButton.setEnabled(true);
         scanButton.setEnabled(accountCanScan && accessToken != null);
         scanButton.setAlpha(scanButton.isEnabled() ? 1.0f : 0.45f);
+    }
+
+    private void signOut() {
+        if (busy || accessToken == null || apiBaseUrl == null) return;
+        final String token = accessToken;
+        setBusy(true, "Requesting server-side session revocation…");
+
+        worker.execute(() -> {
+            HttpURLConnection connection = null;
+            String signOutStatus;
+            try {
+                connection = open(new URL(apiBaseUrl + "/api/auth/logout"), "POST");
+                connection.setConnectTimeout(10000);
+                connection.setReadTimeout(10000);
+                connection.setRequestProperty("Authorization", "Bearer " + token);
+                int status = connection.getResponseCode();
+                if (status == 204) {
+                    signOutStatus = "Server session revoked. Signed out locally.";
+                } else if (status == 401) {
+                    signOutStatus = "The API reports this session is already expired or inactive. Signed out locally.";
+                } else {
+                    signOutStatus = "Signed out locally. Server revocation could not be confirmed (HTTP "
+                        + status + "). The token may remain valid until its 15-minute expiry.";
+                }
+            } catch (Exception error) {
+                signOutStatus = "Signed out locally. Server revocation could not be confirmed; the token may remain valid "
+                    + "until its 15-minute expiry. " + message(error);
+            } finally {
+                if (connection != null) connection.disconnect();
+            }
+
+            final String finalStatus = signOutStatus;
+            runOnUiThread(() -> {
+                // The bearer token is memory-only in this Android companion.
+                // Clear it regardless of whether the API could be reached.
+                accessToken = null;
+                accountCanScan = false;
+                loginButton.setText("Sign in securely");
+                historyText.setText("Sign in to load your account's saved scan history.");
+                setBusy(false, finalStatus);
+            });
+        });
     }
 
     private void scanSelectedFile() {
@@ -455,7 +504,9 @@ public final class MainActivity extends Activity {
 
     private void setBusy(boolean value, String status) {
         busy = value;
-        loginButton.setEnabled(!value);
+        loginButton.setEnabled(!value && accessToken == null);
+        logoutButton.setEnabled(!value && accessToken != null);
+        logoutButton.setAlpha(logoutButton.isEnabled() ? 1.0f : 0.45f);
         chooseButton.setEnabled(!value);
         scanButton.setEnabled(!value && accountCanScan && accessToken != null && selectedFileUri != null);
         scanButton.setAlpha(scanButton.isEnabled() ? 1.0f : 0.45f);
