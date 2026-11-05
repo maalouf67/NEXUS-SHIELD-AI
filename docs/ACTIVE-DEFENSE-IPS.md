@@ -14,9 +14,8 @@ Protect NEXUS-owned infrastructure: the public HTTP listener, API routes, authen
 4. **Privacy-safe source identifiers:** PostgreSQL counter keys and SOC event identifiers use keyed HMAC fingerprints. Raw source IP addresses and submitted credentials are not written to the protection event attributes.
 5. **Existing HTTP baseline:** Helmet security headers, explicit CORS allow-list behavior, a 1 MB JSON body cap, configured reverse-proxy hop count and Zod validation remain in place.
 6. **Fail-closed protection-store reads:** if the anomaly guard cannot read its shared counter, the API returns HTTP 503 instead of silently bypassing that guard. Telemetry persistence is best-effort and does not interrupt a protective response.
-7. **Liveness availability:** the lightweight `/health` and `/api/health` liveness routes bypass temporary anomaly containment so a blocked source cannot make the platform health probe mark the API unhealthy. It remains behind the global API request limiter; readiness still checks PostgreSQL.
-7. **HTTP listener hardening:** the Node.js API listener uses a 10-second header receive timeout, 120-second full-request receive timeout, 5-second keep-alive timeout, a maximum of 100 requests per socket and a cap of 100 request headers.
-
+7. **Liveness availability:** the lightweight `/health` and `/api/health` liveness routes bypass temporary anomaly containment so a blocked source cannot make the platform health probe mark the API unhealthy. They remain behind the applicable global API request limiter; readiness still checks PostgreSQL.
+8. **HTTP listener hardening:** the Node.js API listener uses a 10-second header receive timeout, 120-second full-request receive timeout, 5-second keep-alive timeout, a maximum of 100 requests per socket and a cap of 100 request headers.
 
 ## Request flow
 
@@ -27,16 +26,18 @@ Client
 TLS / deployment edge (must be configured and verified)
   |
   v
-Express: trusted proxy hops -> Helmet -> CORS -> 1 MB JSON cap
+Express: trusted proxy hops -> Helmet -> CORS
+  |
+  +--> /api requests -> shared API request limiter (100 / 15 min)
   |
   v
-Shared API request limiter (100 / 15 min)
-  |
-  v
-Shared HTTP-listener anomaly guard (10 min window)
-  |-- completed 400 / 401 / 403 / 404 / 405 / 413 responses anywhere on the HTTP listener increment a source counter
+Shared HTTP-listener anomaly guard (10 min window, all listener paths)
+  |-- completed 400 / 401 / 403 / 404 / 405 / 413 responses increment a source counter
   |-- 40 suspicious responses -> temporary HTTP 429 containment
   |-- HMAC-fingerprinted event -> SOC analyst review
+  |
+  v
+1 MB JSON body parser
   |
   +--> /auth/login -> dedicated failed-login limiter (10 / 15 min)
   |
@@ -70,7 +71,7 @@ Shared HTTP-listener anomaly guard (10 min window)
 - Confirm the anomaly guard covers root and API routes, counts only 400 / 401 / 403 / 404 / 405 / 413 responses, runs before JSON parsing, preserves liveness routes, returns 429 after the threshold, and does not count successful responses.
 - Test database unavailability: the anomaly guard must fail closed.
 - Test PostgreSQL counter sharing across two API instances and race behavior under concurrent requests.
-- Test event deduplication, HMAC fingerprinting and absence of raw IP / email / password in event attributes.
+- Verify HMAC event fingerprints, per-window event deduplication and absence of raw IP / email / password in event attributes.
 - Verify `TRUST_PROXY_HOPS` against the actual deployment edge; never trust arbitrary forwarded headers.
 - Load test legitimate NAT / mobile-carrier traffic and document the false-positive recovery process.
 - Confirm event visibility in the authenticated SOC interface.
