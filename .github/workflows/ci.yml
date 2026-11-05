@@ -226,7 +226,7 @@ jobs:
             fi
             sleep 2
           done
-          docker compose exec -T ai clamdscan --config-file=/etc/clamav/clamdscan.conf --ping=3:1 --no-summary
+          docker compose exec -T ai python -c "import socket; s=socket.create_connection(('clamav', 3310), timeout=3); s.sendall(b'zPING\\0'); response=s.recv(64); s.close(); assert response == b'PONG\\0', response; print('ClamAV INSTREAM TCP service is reachable')"
 
       - name: Verify Compose migrations and seed isolated test users
         env:

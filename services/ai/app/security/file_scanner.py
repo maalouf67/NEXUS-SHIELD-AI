@@ -2,7 +2,8 @@ import hashlib
 import os
 import re
 import stat
-import subprocess
+import socket
+import struct
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
@@ -154,17 +155,17 @@ def scan_quarantined_file(
     sample_id: str,
     quarantine_dir: str | Path,
     *,
-    scanner_binary: str | None = None,
-    scanner_config_file: str | Path | None = None,
+    clamd_host: str | None = None,
+    clamd_port: int | None = None,
     max_file_bytes: int = DEFAULT_MAX_FILE_BYTES,
     timeout_seconds: int = DEFAULT_SCAN_TIMEOUT_SECONDS,
 ) -> dict[str, Any]:
     """
-    Scan a pre-staged file with ClamAV clamdscan.
+    Stream a pre-staged file to a private ClamAV daemon using its INSTREAM protocol.
 
-    A supplied client configuration selects the configured TCP daemon. For a
-    remote TCP daemon, clamdscan streams file contents using INSTREAM. Without
-    a client configuration, the local Unix-socket mode uses --fdpass.
+    The AI service is a protocol client only; the ClamAV engine and signature
+    database live in the separate ClamAV container/service. No shell command or
+    ClamAV binary is required in this image.
     """
     if not SAMPLE_ID_PATTERN.fullmatch(sample_id):
         raise ScanInputError("sample_id must be a lowercase SHA-256 hex identifier")
@@ -191,39 +192,50 @@ def scan_quarantined_file(
     if sha256 != sample_id:
         raise ScanInputError("sample identifier does not match the file SHA-256 digest")
 
-    binary = scanner_binary or os.getenv("CLAMDSCAN_BIN", "clamdscan")
-    command = [binary]
-    if scanner_config_file is not None:
-        config_path = Path(scanner_config_file).expanduser()
-        if config_path.is_symlink() or not config_path.is_file():
-            raise ScannerUnavailable("ClamAV client configuration file is missing or invalid")
-        try:
-            config_path = config_path.resolve(strict=True)
-        except OSError as exc:
-            raise ScannerUnavailable("ClamAV client configuration file is unavailable") from exc
-        command.append(f"--config-file={config_path}")
-    else:
-        command.append("--fdpass")
-    command.extend(["--no-summary", str(resolved_candidate)])
-
+    host = (clamd_host or os.getenv("CLAMD_HOST", "clamav")).strip()
     try:
-        completed = subprocess.run(
-            command,
-            capture_output=True,
-            text=True,
-            check=False,
-            timeout=timeout_seconds,
-        )
-    except FileNotFoundError as exc:
-        raise ScannerUnavailable("ClamAV clamdscan binary is not installed or configured") from exc
-    except subprocess.TimeoutExpired as exc:
-        raise ScannerTimeout("ClamAV scan exceeded the configured time limit") from exc
-    except OSError as exc:
-        raise ScannerExecutionError("ClamAV scanner could not be started") from exc
+        port = int(clamd_port if clamd_port is not None else os.getenv("CLAMD_PORT", "3310"))
+    except (TypeError, ValueError) as exc:
+        raise ScanInputError("ClamAV TCP port must be an integer") from exc
+    if not host or not 1 <= port <= 65535:
+        raise ScanInputError("ClamAV TCP host and port are invalid")
 
-    if completed.returncode == 0:
+    response = bytearray()
+    try:
+        connection = socket.create_connection((host, port), timeout=timeout_seconds)
+        try:
+            connection.settimeout(timeout_seconds)
+            connection.sendall(b"zINSTREAM\\0")
+            with resolved_candidate.open("rb") as sample:
+                for chunk in iter(lambda: sample.read(UPLOAD_CHUNK_BYTES), b""):
+                    connection.sendall(struct.pack("!I", len(chunk)))
+                    connection.sendall(chunk)
+            connection.sendall(struct.pack("!I", 0))
+
+            # Clamd terminates its NUL-delimited INSTREAM response with OK,
+            # FOUND or ERROR. Bound the response to avoid untrusted growth.
+            while b"\\0" not in response:
+                chunk = connection.recv(1024)
+                if not chunk:
+                    break
+                response.extend(chunk)
+                if len(response) > 8192:
+                    raise ScannerExecutionError("ClamAV returned an oversized response")
+        finally:
+            connection.close()
+    except socket.timeout as exc:
+        raise ScannerTimeout("ClamAV scan exceeded the configured time limit") from exc
+    except ScannerExecutionError:
+        raise
+    except OSError as exc:
+        raise ScannerUnavailable("ClamAV daemon could not be reached") from exc
+
+    if b"\\0" not in response:
+        raise ScannerExecutionError("ClamAV closed the stream without a verdict")
+    message = bytes(response).split(b"\\0", 1)[0].decode("utf-8", errors="replace").strip()
+    if message.endswith(" OK"):
         verdict = "clean"
-    elif completed.returncode == 1:
+    elif message.endswith(" FOUND"):
         verdict = "detected"
     else:
         raise ScannerExecutionError("ClamAV returned an error status")
@@ -233,7 +245,7 @@ def scan_quarantined_file(
         "sha256": sha256,
         "size_bytes": size_bytes,
         "verdict": verdict,
-        "scanner": "ClamAV clamdscan",
+        "scanner": "ClamAV clamd INSTREAM",
         "scanned_at": datetime.now(timezone.utc).isoformat(),
         "execution_performed": False,
         "disclaimer": "A clean signature scan does not guarantee that a file is harmless.",
