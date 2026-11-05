@@ -14,7 +14,7 @@ The workflow at `.github/workflows/security.yml` runs:
 4. **ClamAV runtime image scan** against the exact Compose image reference `clamav/clamav:1.5.4`.
 5. **Dependency Review** on pull requests, plus the existing `npm audit --audit-level=high` check in the build workflow.
 
-The Trivy binary is explicitly pinned to `v0.76.1` under the existing `aquasecurity/trivy-action@v0.36.0` action. Filesystem and image gates select HIGH and CRITICAL severity and do not ignore unfixed findings. JSON reports are uploaded as workflow artifacts for 30 days where a scan produces an output file.
+The Trivy binary is explicitly pinned to `v0.76.1` under the existing `aquasecurity/trivy-action@v0.36.0` action. Filesystem and image gates select HIGH and CRITICAL severity and do not ignore unfixed findings. JSON reports are uploaded as workflow artifacts for 30 days where a scan produces an output file. The PostgreSQL container job also verifies the exact upstream `gosu` binary, runs the upstream project's pinned `govulncheck` source review, and tests PostgreSQL startup on a root-owned local Docker volume with the container runtime UID overridden to root. This local test is a Railway-volume compatibility preflight, not a live Railway test.
 
 ## Local reproduction
 
@@ -30,7 +30,7 @@ trivy image --scanners vuln,misconfig,secret --severity HIGH,CRITICAL nexus-ai:l
 trivy image --scanners vuln,misconfig,secret --severity HIGH,CRITICAL clamav/clamav:1.5.4
 ```
 
-A non-zero exit status is a finding requiring triage, remediation, or an explicit, documented risk decision. Do not add broad ignore rules just to make CI green.
+A non-zero exit status is a finding requiring triage, remediation, or an explicit, documented risk decision. Do not add broad ignore rules just to make CI green. The official `tianon/gosu` 1.19 release embeds Go 1.24.6; its own SECURITY.md instructs consumers to use `govulncheck` to determine whether standard-library CVEs are reachable before rebuilding or declaring impact. NEXUS CI pins that source commit and uses the upstream review wrapper. Until this reachability check succeeds, the CVEs reported by Trivy remain unresolved findings; no blanket ignore or VEX exception is used.
 
 ## Known limits
 
