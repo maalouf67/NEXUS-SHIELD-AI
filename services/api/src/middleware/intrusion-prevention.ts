@@ -12,6 +12,7 @@ export interface LoginAttemptLimiterOptions {
   windowMs?: number;
   limit?: number;
   onLimit?: (request: Request) => void;
+  useSharedStore?: boolean;
 }
 
 function recordProtectionEvent(request: Request, windowMs: number, limit: number): void {
@@ -52,9 +53,10 @@ export function createLoginAttemptLimiter(
 ): RequestHandler {
   const windowMs = options.windowMs ?? WINDOW_MS;
   const limit = options.limit ?? MAX_FAILED_ATTEMPTS;
-  const storeOptions = process.env.NODE_ENV === 'test'
-    ? {}
-    : { store: new PostgresRateLimitStore('auth-login-ip') };
+  const useSharedStore = options.useSharedStore ?? process.env.NODE_ENV !== 'test';
+  const storeOptions = useSharedStore
+    ? { store: new PostgresRateLimitStore('auth-login-ip') }
+    : {};
 
   return rateLimit({
     windowMs,
