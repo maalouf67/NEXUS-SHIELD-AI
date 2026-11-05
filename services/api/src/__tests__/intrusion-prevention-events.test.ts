@@ -74,7 +74,7 @@ describe('privacy-preserving protection events', () => {
     expect(JSON.stringify(event)).not.toContain('email');
   });
 
-  it('generates a stable event identifier for the same source, type and time bucket', async () => {
+  it('generates a stable event identifier for the same source, type and trigger timestamp', async () => {
     const sourceIp = '198.51.100.27';
 
     await recordProtectionEvent(requestFrom(sourceIp), eventOptions);
@@ -87,7 +87,21 @@ describe('privacy-preserving protection events', () => {
     expect(second?.externalEventId).toBe(first?.externalEventId);
   });
 
-  it('generates a different event identifier in a later time bucket', async () => {
+  it('does not collide for separate trigger timestamps inside the same nominal time window', async () => {
+    const sourceIp = '198.51.100.27';
+
+    vi.mocked(Date.now).mockReturnValue(1_800_000_000_001);
+    await recordProtectionEvent(requestFrom(sourceIp), eventOptions);
+    vi.mocked(Date.now).mockReturnValue(1_800_000_000_002);
+    await recordProtectionEvent(requestFrom(sourceIp), eventOptions);
+
+    const first = ingestBatch.mock.calls[0]?.[0][0];
+    const second = ingestBatch.mock.calls[1]?.[0][0];
+
+    expect(second?.externalEventId).not.toBe(first?.externalEventId);
+  });
+
+  it('generates a different event identifier for a later trigger timestamp', async () => {
     const sourceIp = '198.51.100.27';
 
     await recordProtectionEvent(requestFrom(sourceIp), eventOptions);
