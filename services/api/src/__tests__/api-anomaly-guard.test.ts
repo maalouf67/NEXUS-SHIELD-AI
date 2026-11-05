@@ -19,10 +19,11 @@ class MemoryCounterStore implements ApiAnomalyCounterStore {
   }
 
   async increment(key: string) {
-    const current = await this.get(key);
+    const current = this.counters.get(key);
+    const isCurrent = current && current.resetTime.getTime() > Date.now();
     const next = {
-      hits: (current?.totalHits ?? 0) + 1,
-      resetTime: current?.resetTime ?? new Date(Date.now() + this.windowMs)
+      hits: isCurrent ? current.hits + 1 : 1,
+      resetTime: isCurrent ? current.resetTime : new Date(Date.now() + this.windowMs)
     };
     this.counters.set(key, next);
     return { totalHits: next.hits, resetTime: next.resetTime };
