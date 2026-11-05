@@ -53,7 +53,7 @@ describe('privacy-preserving protection events', () => {
     }
   });
 
-  it('stores a keyed source fingerprint without storing the raw IP address', () => {
+  it('stores a keyed source fingerprint without storing the raw IP address', async () => {
     const sourceIp = '203.0.113.44';
 
     await recordProtectionEvent(requestFrom(sourceIp), eventOptions);
@@ -74,7 +74,7 @@ describe('privacy-preserving protection events', () => {
     expect(JSON.stringify(event)).not.toContain('email');
   });
 
-  it('generates a stable event identifier for the same source, type and time bucket', () => {
+  it('generates a stable event identifier for the same source, type and time bucket', async () => {
     const sourceIp = '198.51.100.27';
 
     await recordProtectionEvent(requestFrom(sourceIp), eventOptions);
@@ -87,7 +87,7 @@ describe('privacy-preserving protection events', () => {
     expect(second?.externalEventId).toBe(first?.externalEventId);
   });
 
-  it('generates a different event identifier in a later time bucket', () => {
+  it('generates a different event identifier in a later time bucket', async () => {
     const sourceIp = '198.51.100.27';
 
     await recordProtectionEvent(requestFrom(sourceIp), eventOptions);
