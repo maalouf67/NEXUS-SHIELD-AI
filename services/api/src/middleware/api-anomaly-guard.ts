@@ -7,7 +7,7 @@ import { recordProtectionEvent } from './intrusion-prevention.js';
 const WINDOW_MS = 10 * 60 * 1000;
 const MAX_SUSPICIOUS_RESPONSES = 40;
 const SUSPICIOUS_RESPONSE_STATUSES = new Set([400, 401, 403, 404, 405, 413]);
-const EXEMPT_LIVENESS_PATHS = new Set(['/health']);
+const EXEMPT_LIVENESS_PATHS = new Set(['/health', '/api/health']);
 
 export interface ApiAnomalyCounterStore {
   get(key: string): Promise<ClientRateLimitInfo | undefined>;
@@ -22,8 +22,8 @@ export interface ApiAnomalyGuardOptions {
 }
 
 /**
- * Application-layer containment for repeated unauthorized, forbidden,
- * not-found and unsupported-method responses. The shared counter stores only
+ * HTTP-listener containment for repeated malformed, unauthorized, forbidden,
+ * not-found, unsupported-method and oversized-request responses. The shared counter stores only
  * a keyed HMAC of the source IP in PostgreSQL.
  *
  * This does not block TCP/UDP packets or replace an edge firewall/WAF.
