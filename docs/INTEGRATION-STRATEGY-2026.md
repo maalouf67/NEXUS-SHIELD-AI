@@ -94,3 +94,27 @@ The tools below complement the existing GitHub repository and CI. They are not i
 - Railway volume ownership and `RAILWAY_RUN_UID=0`: https://docs.railway.com/volumes
 - Railway `RAILWAY_RUN_UID` configuration reference: https://docs.railway.com/variables/reference
 
+## 13. Multi-tenant SOC release blocker — audit details
+
+A deeper read of PR #19's routes, storage service and the current database migrations found that this is not just a missing filter in one endpoint:
+
+- `assets`, `asset_evidence`, `asset_relationships`, and `relationship_evidence` have no workspace/organization ownership key in the current migration.
+- The PR #19 asset inventory repository selects all assets/evidence/relationships and upserts by globally unique record IDs. Its `getInventory()` and `upsertInventory()` contract accepts no authenticated workspace scope.
+- `GET /assets/inventory` and `POST /attack-paths/analyze-inventory` authenticate a user but load the same global inventory. `POST /assets/inventory/import` is authorized by a single global service token, not a tenant-scoped integration identity.
+- Current security-event list and repository operations, incident/alert lists and the threat-summary aggregate are also global SQL operations. The current user schema supplies global roles but no organization or workspace membership table.
+- Therefore adding a request-supplied `workspace_id` or a route-only filter would not solve the problem. The ownership model must be introduced and propagated through migrations, repositories, routes, integration identities, audit records and tests.
+
+**Tracked work:** [Issue #24 — define and enforce workspace isolation](https://github.com/maalouf67/NEXUS-SHIELD-AI/issues/24). PR #19 must not be released as a multi-tenant SOC feature until its acceptance criteria are met. No production schema or data was changed during this audit.
+
+## 14. Latest pull-request validation snapshot (2026-11-05)
+
+| Work | Build / functional checks | Security checks | Current decision |
+|---|---|---|---|
+| PR #18 — non-root PostgreSQL image | Passed | Passed | Keep open pending the explicit Railway volume/runtime deployment decision |
+| PR #19 — database-backed SOC and inventory | No run associated with reviewed head | No run associated with reviewed head | Hold; workspace isolation issue #24 must be designed and tested |
+| PR #21 — integration strategy | Build/Test passed | Failed on existing `DS-0002` in main's Railway Dockerfile | Draft documentation PR; no tool account is connected by this document |
+| PR #22 — readiness tests | Build/Test passed | Failed on the same baseline `DS-0002` | Test-only change; keep pending security rerun after PR #18 is safely incorporated |
+| PR #23 — AI agent guardrails | Build/Test passed, including Android, Python and ClamAV integration jobs | Failed on the same baseline `DS-0002` | Instruction-only PR; no runtime behavior changed |
+
+A scanner failure on the same unchanged Dockerfile is not evidence that a documentation/test-only branch introduced a new vulnerability. It remains a release blocker until the underlying Dockerfile finding is corrected and the target branch passes the required security workflow.
+
