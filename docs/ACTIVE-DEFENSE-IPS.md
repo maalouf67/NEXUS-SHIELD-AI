@@ -14,6 +14,8 @@ Protect NEXUS-owned infrastructure: public API routes, authentication endpoints,
 4. **Privacy-safe source identifiers:** PostgreSQL counter keys and SOC event identifiers use keyed HMAC fingerprints. Raw source IP addresses and submitted credentials are not written to the protection event attributes.
 5. **Existing HTTP baseline:** Helmet security headers, explicit CORS allow-list behavior, a 1 MB JSON body cap, configured reverse-proxy hop count and Zod validation remain in place.
 6. **Fail-closed protection-store reads:** if the anomaly guard cannot read its shared counter, the API returns HTTP 503 instead of silently bypassing that guard. Telemetry persistence is best-effort and does not interrupt a protective response.
+7. **HTTP listener hardening:** the Node.js API listener uses a 10-second header receive timeout, 120-second full-request receive timeout, 5-second keep-alive timeout, a maximum of 100 requests per socket and a cap of 100 request headers.
+
 
 ## Request flow
 
@@ -45,6 +47,7 @@ Shared API anomaly guard (10 min window)
 - This is **application-layer HTTP containment**. Express cannot filter raw TCP/UDP packets before they reach the host, close a public listener, or absorb a volumetric DDoS attack.
 - It is not an operating-system firewall, network IDS/IPS, WAF, endpoint EDR or DDoS scrubbing service. Those controls must be configured at the deployment edge / host network and verified independently.
 - It does not inspect arbitrary encrypted traffic, uploaded files or device processes.
+- HTTP listener timeouts limit slow or incomplete requests after they reach Node.js; they do not replace upstream connection limits or network-layer SYN/DDoS protection.
 - It does not attack, scan, exploit or retaliate against remote systems. Automated action is limited to rate-limiting NEXUS's own inbound API requests for a temporary window.
 - IP-based containment is not proof of malicious intent. Mobile-carrier NAT, offices and shared proxies can cause legitimate users to share one public IP.
 - The anomaly guard performs a shared-counter read for API requests and a counter increment only after suspicious responses. The added database latency and concurrency behavior require load testing.
