@@ -14,6 +14,7 @@ Protect NEXUS-owned infrastructure: public API routes, authentication endpoints,
 4. **Privacy-safe source identifiers:** PostgreSQL counter keys and SOC event identifiers use keyed HMAC fingerprints. Raw source IP addresses and submitted credentials are not written to the protection event attributes.
 5. **Existing HTTP baseline:** Helmet security headers, explicit CORS allow-list behavior, a 1 MB JSON body cap, configured reverse-proxy hop count and Zod validation remain in place.
 6. **Fail-closed protection-store reads:** if the anomaly guard cannot read its shared counter, the API returns HTTP 503 instead of silently bypassing that guard. Telemetry persistence is best-effort and does not interrupt a protective response.
+7. **Liveness availability:** the lightweight `/api/health` liveness route bypasses temporary anomaly containment so a blocked source cannot make the platform health probe mark the API unhealthy. It remains behind the global API request limiter; readiness still checks PostgreSQL.
 7. **HTTP listener hardening:** the Node.js API listener uses a 10-second header receive timeout, 120-second full-request receive timeout, 5-second keep-alive timeout, a maximum of 100 requests per socket and a cap of 100 request headers.
 
 
