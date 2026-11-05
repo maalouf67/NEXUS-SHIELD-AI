@@ -36,9 +36,10 @@ export function createProtectionEvent(request: Request, options: ProtectionEvent
   const now = Date.now();
   const rawSourceIp = request.ip || 'unknown';
   const sourceIp = rawSourceIp === 'unknown' ? rawSourceIp : ipKeyGenerator(rawSourceIp);
-  const bucket = Math.floor(now / options.windowMs);
   const fingerprint = createHmac('sha256', secret).update(sourceIp).digest('hex');
-  const eventId = createHmac('sha256', secret).update(`${options.eventType}:${fingerprint}:${bucket}`).digest('hex');
+  // Use the exact trigger timestamp, not an epoch-aligned bucket: limiter
+  // windows start on first activity and may cross fixed clock-window borders.
+  const eventId = createHmac('sha256', secret).update(`${options.eventType}:${fingerprint}:${now}`).digest('hex');
   return {
     source: 'nexus-ips',
     externalEventId: `${options.eventType}:${eventId}`,
