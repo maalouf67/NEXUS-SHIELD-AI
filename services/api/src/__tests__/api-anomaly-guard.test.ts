@@ -143,4 +143,24 @@ describe('API anomaly containment', () => {
     expect(contained.status).toBe(429);
   });
 
+
+  it('keeps the lightweight liveness route reachable after source containment', async () => {
+    const store = new MemoryCounterStore(60_000);
+    const app = express();
+
+    app.use('/api', createApiAnomalyGuard({
+      windowMs: 60_000,
+      threshold: 1,
+      store
+    }));
+    app.get('/api/missing', (_request, response) => response.status(404).json({ error: 'NOT_FOUND' }));
+    app.get('/api/health', (_request, response) => response.status(200).json({ ok: true }));
+
+    const suspicious = await request(app).get('/api/missing');
+    const liveness = await request(app).get('/api/health');
+
+    expect(suspicious.status).toBe(404);
+    expect(liveness.status).toBe(200);
+  });
+
 });
