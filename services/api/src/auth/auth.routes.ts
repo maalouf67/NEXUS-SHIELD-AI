@@ -1,36 +1,28 @@
 import { randomBytes } from 'node:crypto';
 import { Router } from 'express';
-import { rateLimit } from 'express-rate-limit';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { z } from 'zod';
 
 import { requireAuth, authTokenConfig } from './auth.middleware.js';
 import { userRepository, type UserRepository } from './user.repository.js';
+import { loginAttemptLimiter } from '../middleware/intrusion-prevention.js';
 
 const LoginRequestSchema = z.object({
   email: z.string().email().max(254).transform((value) => value.trim().toLowerCase()),
   password: z.string().min(1).max(128)
 }).strict();
 
-const loginRateLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  limit: 10,
-  standardHeaders: 'draft-8',
-  legacyHeaders: false,
-  message: {
-    error: 'LOGIN_RATE_LIMITED',
-    message: 'Too many login attempts. Try again later.'
-  }
-});
-
 // Use a real password hash for unknown accounts too, reducing obvious timing differences.
 const dummyPasswordHash = bcrypt.hash(randomBytes(32).toString('base64url'), 12);
 
-export function createAuthRouter(repository: UserRepository = userRepository) {
+export function createAuthRouter(
+  repository: UserRepository = userRepository,
+  loginLimiter = loginAttemptLimiter
+) {
   const router = Router();
 
-  router.post('/auth/login', loginRateLimiter, async (req, res) => {
+  router.post('/auth/login', loginLimiter, async (req, res) => {
     const parsed = LoginRequestSchema.safeParse(req.body);
 
     if (!parsed.success) {
