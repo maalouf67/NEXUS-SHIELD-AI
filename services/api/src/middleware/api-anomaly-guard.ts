@@ -1,5 +1,5 @@
 import type { Request, RequestHandler } from 'express';
-import type { ClientRateLimitInfo, IncrementResponse } from 'express-rate-limit';
+import { ipKeyGenerator, type ClientRateLimitInfo, type IncrementResponse } from 'express-rate-limit';
 
 import { PostgresRateLimitStore } from './postgres-rate-limit-store.js';
 import { recordProtectionEvent } from './intrusion-prevention.js';
@@ -55,7 +55,7 @@ export function createApiAnomalyGuard(
   });
 
   return (request, response, next) => {
-    const sourceKey = request.ip || 'unknown';
+    const sourceKey = request.ip ? ipKeyGenerator(request.ip) : 'unknown';
 
     void store.get(sourceKey).then((counter) => {
       if (counter && counter.totalHits >= threshold) {
