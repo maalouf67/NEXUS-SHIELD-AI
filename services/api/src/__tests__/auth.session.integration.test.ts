@@ -27,6 +27,7 @@ describe.skipIf(!enabled)('PostgreSQL server-session integration', () => {
 
     const sessionId = randomUUID();
     sessionIds.push(sessionId);
+    expect(await sessionRepository.findActiveSession(randomUUID(), userId)).toBeNull();
     await sessionRepository.createSession({
       id: sessionId,
       userId,
@@ -36,12 +37,48 @@ describe.skipIf(!enabled)('PostgreSQL server-session integration', () => {
     expect(await sessionRepository.findActiveSession(sessionId, userId)).toEqual({
       userId, email, role: 'analyst'
     });
+    const wrongUserId = randomUUID();
+    expect(await sessionRepository.findActiveSession(sessionId, wrongUserId)).toBeNull();
+
+    const expiredSessionId = randomUUID();
+    sessionIds.push(expiredSessionId);
+    await pool.query(
+      'INSERT INTO user_sessions (id, user_id, expires_at) VALUES ($1, $2, NOW() - INTERVAL \'1 minute\')',
+      [expiredSessionId, userId]
+    );
+    expect(await sessionRepository.findActiveSession(expiredSessionId, userId)).toBeNull();
     await pool.query('UPDATE users SET role = $1 WHERE id = $2', ['viewer', userId]);
     expect((await sessionRepository.findActiveSession(sessionId, userId))?.role).toBe('viewer');
 
     expect(await sessionRepository.revokeSession(sessionId, userId)).toBe(true);
     expect(await sessionRepository.findActiveSession(sessionId, userId)).toBeNull();
     expect(await sessionRepository.revokeSession(sessionId, userId)).toBe(false);
+  });
+
+  it('cleans stale expired sessions without deleting active ones', async () => {
+    const email = `cleanup-${userId}@example.test`;
+    await pool.query(
+      `INSERT INTO users (id, email, role, password_hash, is_active)
+       VALUES ($1, $2, 'analyst', NULL, TRUE)`,
+      [userId, email]
+    );
+
+    const staleId = randomUUID();
+    const activeId = randomUUID();
+    sessionIds.push(staleId, activeId);
+    await pool.query(
+      'INSERT INTO user_sessions (id, user_id, expires_at) VALUES ($1, $2, NOW() - INTERVAL \'8 days\')',
+      [staleId, userId]
+    );
+
+    await sessionRepository.createSession({
+      id: activeId,
+      userId,
+      expiresAt: new Date(Date.now() + 15 * 60 * 1000)
+    });
+
+    expect((await pool.query('SELECT id FROM user_sessions WHERE id = $1', [staleId])).rowCount).toBe(0);
+    expect((await pool.query('SELECT id FROM user_sessions WHERE id = $1', [activeId])).rowCount).toBe(1);
   });
 
   it('revokes all active sessions for one user without affecting another user', async () => {

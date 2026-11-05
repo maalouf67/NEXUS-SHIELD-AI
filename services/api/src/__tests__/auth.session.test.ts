@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import express from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
@@ -6,6 +7,7 @@ import request from 'supertest';
 
 import { createAuthRouter } from '../auth/auth.routes.js';
 import { createRequireAuth } from '../auth/auth.middleware.js';
+import { createUsersRouter } from '../auth/users.routes.js';
 import type { ActiveSession, NewSession, SessionRepository } from '../auth/session.repository.js';
 import type { StoredUser, UserRepository } from '../auth/user.repository.js';
 
@@ -71,7 +73,22 @@ function appForSessions() {
   const app = express();
   app.use(express.json());
   app.use('/api', createAuthRouter(repository, noLimit, sessionRepository, strictAuth));
+  app.use('/api', createUsersRouter(repository, sessionRepository, strictAuth));
   return app;
+}
+
+function tokenWithSession(sessionId: string, subjectId = USER_ID) {
+  return jwt.sign(
+    { email: user.email, role: user.role, jti: sessionId },
+    SECRET,
+    {
+      algorithm: 'HS256',
+      subject: subjectId,
+      issuer: 'nexus-shield-ai',
+      audience: 'nexus-shield-ai-api',
+      expiresIn: '15m'
+    }
+  );
 }
 
 function tokenWithoutSession() {
@@ -155,6 +172,67 @@ describe('server-side session lifecycle', () => {
       .set('Authorization', 'Bearer ' + login.body.access_token);
     expect(response.status).toBe(503);
     expect(response.body.error).toBe('AUTH_STORE_UNAVAILABLE');
+  });
+
+  it('rejects unknown, expired, and wrong-user session identifiers', async () => {
+    const app = appForSessions();
+    const unknownId = randomUUID();
+    const unknown = await request(app).get('/api/auth/me')
+      .set('Authorization', 'Bearer ' + tokenWithSession(unknownId));
+    expect(unknown.status).toBe(401);
+
+    const otherUserId = randomUUID();
+    const wrongUserSessionId = randomUUID();
+    await sessionRepository.createSession({
+      id: wrongUserSessionId,
+      userId: otherUserId,
+      expiresAt: new Date(Date.now() + 15 * 60 * 1000)
+    });
+    const wrongUser = await request(app).get('/api/auth/me')
+      .set('Authorization', 'Bearer ' + tokenWithSession(wrongUserSessionId, USER_ID));
+    expect(wrongUser.status).toBe(401);
+
+    const expiredSessionId = randomUUID();
+    await sessionRepository.createSession({
+      id: expiredSessionId,
+      userId: USER_ID,
+      expiresAt: new Date(Date.now() - 1000)
+    });
+    const expired = await request(app).get('/api/auth/me')
+      .set('Authorization', 'Bearer ' + tokenWithSession(expiredSessionId));
+    expect(expired.status).toBe(401);
+  });
+
+  it('allows an admin to revoke sessions for an account recovery target', async () => {
+    const app = appForSessions();
+    const login = await request(app).post('/api/auth/login')
+      .send({ email: user.email, password: PASSWORD });
+    const targetUserId = randomUUID();
+    const targetSessionId = randomUUID();
+    await sessionRepository.createSession({
+      id: targetSessionId,
+      userId: targetUserId,
+      expiresAt: new Date(Date.now() + 15 * 60 * 1000)
+    });
+
+    const response = await request(app).post('/api/users/' + targetUserId + '/sessions/revoke-all')
+      .set('Authorization', 'Bearer ' + login.body.access_token);
+    expect(response.status).toBe(200);
+    expect(response.body.revoked_sessions).toBe(1);
+    expect(sessions.get(targetSessionId)?.revokedAt).toBeInstanceOf(Date);
+  });
+
+  it('does not allow an analyst to revoke another account sessions', async () => {
+    const app = appForSessions();
+    user.role = 'analyst';
+    const login = await request(app).post('/api/auth/login')
+      .send({ email: user.email, password: PASSWORD });
+    const targetUserId = randomUUID();
+
+    const response = await request(app).post('/api/users/' + targetUserId + '/sessions/revoke-all')
+      .set('Authorization', 'Bearer ' + login.body.access_token);
+    expect(response.status).toBe(403);
+    expect(response.body.error).toBe('FORBIDDEN');
   });
 
   it('rejects a signed token without a jti session identifier', async () => {
