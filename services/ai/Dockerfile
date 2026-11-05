@@ -1,4 +1,4 @@
-FROM python:3.11-alpine
+FROM python:3.13-alpine
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -9,13 +9,7 @@ WORKDIR /app
 # ClamAV runs as a separate private-network service. The AI image contains only
 # the INSTREAM protocol client implemented with Python's standard library.
 COPY services/ai/requirements.txt ./requirements.txt
-
-# Packaging tools are build-time only. Remove them and any bundled metadata
-# from the runtime image; the application does not import setuptools or wheel.
-RUN python -m pip install --no-cache-dir --upgrade pip setuptools wheel \
-    && python -m pip install --no-cache-dir -r requirements.txt \
-    && python -m pip uninstall -y setuptools wheel \
-    && find /usr -iname '*setuptools*' -exec rm -rf {} + \
+RUN python -m pip install --no-cache-dir -r requirements.txt \
     && python -c "import importlib.util; assert importlib.util.find_spec('setuptools') is None"
 
 COPY services/ai/app ./app
