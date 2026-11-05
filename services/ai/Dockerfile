@@ -9,8 +9,9 @@ WORKDIR /app
 # ClamAV runs as a separate private-network service. The AI image contains only
 # the INSTREAM protocol client implemented with Python's standard library.
 COPY services/ai/requirements.txt ./requirements.txt
+
+# Packaging tools are build-time only and are not required by the application.
 RUN python -m pip install --no-cache-dir -r requirements.txt \
-    # pip/setuptools/wheel are build tools; none are required by the runtime.
     && python -m pip uninstall -y pip setuptools wheel \
     && rm -rf /usr/local/lib/python3.13/ensurepip /usr/local/bin/pip* \
     && python -c "import importlib.util; assert importlib.util.find_spec('pip') is None; assert importlib.util.find_spec('setuptools') is None"
