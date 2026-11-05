@@ -3,7 +3,10 @@ import type { Request, RequestHandler } from 'express';
 import { rateLimit } from 'express-rate-limit';
 
 import { PostgresRateLimitStore } from './postgres-rate-limit-store.js';
-import { securityEventRepository } from '../security-events/security-event.repository.js';
+import {
+  securityEventRepository,
+  type SecurityEventSeverity
+} from '../security-events/security-event.repository.js';
 
 const WINDOW_MS = 15 * 60 * 1000;
 const MAX_FAILED_ATTEMPTS = 10;
@@ -15,36 +18,50 @@ export interface LoginAttemptLimiterOptions {
   useSharedStore?: boolean;
 }
 
-function recordProtectionEvent(request: Request, windowMs: number, limit: number): void {
+export interface ProtectionEventOptions {
+  eventType: string;
+  summary: string;
+  windowMs: number;
+  limit: number;
+  responseAction: string;
+  severity?: SecurityEventSeverity;
+}
+
+/**
+ * Persist a privacy-preserving security event.
+ * Only a keyed HMAC fingerprint is stored; raw source IP and credentials are not.
+ */
+export function recordProtectionEvent(
+  request: Request,
+  options: ProtectionEventOptions
+): void {
   const secret = process.env.RATE_LIMIT_HASH_SECRET?.trim() || process.env.SESSION_SECRET?.trim();
   if (!secret || secret.length < 32) return;
 
   const sourceIp = request.ip || 'unknown';
-  const bucket = Math.floor(Date.now() / windowMs);
+  const bucket = Math.floor(Date.now() / options.windowMs);
   const fingerprint = createHmac('sha256', secret)
     .update(sourceIp)
     .digest('hex');
   const eventId = createHmac('sha256', secret)
-    .update(`login-rate-limit:${fingerprint}:${bucket}`)
+    .update(`${options.eventType}:${fingerprint}:${bucket}`)
     .digest('hex');
 
-  // Persist a privacy-preserving signal for analyst review. The raw source IP
-  // and submitted credentials are deliberately never stored in this event.
   void securityEventRepository.ingestBatch([{
     source: 'nexus-ips',
-    externalEventId: `login-limit:${eventId}`,
-    eventType: 'login-rate-limit-triggered',
-    severity: 'high',
+    externalEventId: `${options.eventType}:${eventId}`,
+    eventType: options.eventType,
+    severity: options.severity ?? 'high',
     observedAt: new Date().toISOString(),
-    summary: 'Repeated failed login requests exceeded the configured source-network threshold.',
+    summary: options.summary,
     attributes: {
       source_ip_fingerprint: fingerprint.slice(0, 24),
-      window_seconds: String(Math.floor(windowMs / 1000)),
-      configured_limit: String(limit),
-      response_action: 'rate_limited'
+      window_seconds: String(Math.floor(options.windowMs / 1000)),
+      configured_limit: String(options.limit),
+      response_action: options.responseAction
     }
   }]).catch(() => {
-    // Prevention remains active if telemetry storage is unavailable.
+    // Protection remains active if event telemetry storage is unavailable.
   });
 }
 
@@ -67,7 +84,14 @@ export function createLoginAttemptLimiter(
     skipSuccessfulRequests: true,
     ...storeOptions,
     handler: (request, response) => {
-      (options.onLimit ?? (() => recordProtectionEvent(request, windowMs, limit)))(request);
+      (options.onLimit ?? (() => recordProtectionEvent(request, {
+        eventType: 'login-rate-limit-triggered',
+        summary: 'Repeated failed login requests exceeded the configured source-network threshold.',
+        windowMs,
+        limit,
+        responseAction: 'rate_limited',
+        severity: 'high'
+      })))(request);
       response.status(429).json({
         error: 'LOGIN_RATE_LIMITED',
         message: 'Repeated login failures triggered temporary source-network protection. Try again later.'
