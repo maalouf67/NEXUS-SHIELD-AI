@@ -5,7 +5,7 @@ export interface ManagedUser { id: string; email: string; role: UserRole; isActi
 export interface ThreatSummary {
   is_demo: boolean;
   data_source: string;
-  summary: { total_incidents: number; critical: number; mitigated: number; ai_score: number; updated_at: string };
+  summary: { total_incidents: number; critical: number; mitigated: number; ai_score: number | null; updated_at: string };
 }
 export interface Incident {
   id: string; title: string; severity: 'low' | 'medium' | 'high' | 'critical';
