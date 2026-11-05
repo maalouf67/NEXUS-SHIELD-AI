@@ -8,6 +8,7 @@ import { privacyRouter } from './routes/privacy.js';
 import { attackPathsRouter } from './routes/attack-paths.js';
 import { assetInventoryRouter } from './assets/asset-inventory.routes.js';
 import { apiRateLimiter } from './middleware/rate-limit.js';
+import { apiAnomalyGuard } from './middleware/api-anomaly-guard.js';
 import { authRouter } from './auth/auth.routes.js';
 import { usersRouter } from './auth/users.routes.js';
 import { incidentsRouter } from './incidents/incidents.routes.js';
@@ -41,6 +42,7 @@ app.use(
 );
 app.use(express.json({ limit: '1mb' }));
 app.use('/api', apiRateLimiter);
+app.use('/api', apiAnomalyGuard);
 
 app.use('/health', healthRouter);
 app.use('/api/health', healthRouter);
