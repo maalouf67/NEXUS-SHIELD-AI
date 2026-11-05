@@ -31,7 +31,7 @@ class QuarantineScannerTests(unittest.TestCase):
     def tearDown(self):
         self.temp_dir.cleanup()
 
-    def _clamd_connection(self, response=b"stream: OK\\0"):
+    def _clamd_connection(self, response=b"stream: OK\0"):
         connection = MagicMock()
         connection.recv.side_effect = [response]
         return connection
@@ -48,8 +48,8 @@ class QuarantineScannerTests(unittest.TestCase):
         self.assertEqual(result["scanner"], "ClamAV clamd INSTREAM")
         create_connection.assert_called_once_with(("clamav", 3310), timeout=60)
         sent = b"".join(call.args[0] for call in connection.sendall.call_args_list)
-        self.assertTrue(sent.startswith(b"zINSTREAM\\0"))
-        offset = len(b"zINSTREAM\\0")
+        self.assertTrue(sent.startswith(b"zINSTREAM\0"))
+        offset = len(b"zINSTREAM\0")
         chunk_size = struct.unpack("!I", sent[offset:offset + 4])[0]
         self.assertEqual(chunk_size, len(self.sample_bytes))
         self.assertEqual(sent[offset + 4:offset + 4 + chunk_size], self.sample_bytes)
@@ -58,14 +58,14 @@ class QuarantineScannerTests(unittest.TestCase):
 
     @patch("app.security.file_scanner.socket.create_connection")
     def test_detected_verdict_is_reported_without_execution(self, create_connection):
-        create_connection.return_value = self._clamd_connection(b"stream: Eicar-Test-Signature FOUND\\0")
+        create_connection.return_value = self._clamd_connection(b"stream: Eicar-Test-Signature FOUND\0")
         result = scan_quarantined_file(self.sample_id, self.root)
         self.assertEqual(result["verdict"], "detected")
         self.assertFalse(result["execution_performed"])
 
     @patch("app.security.file_scanner.socket.create_connection")
     def test_clamd_error_is_not_reported_as_clean(self, create_connection):
-        create_connection.return_value = self._clamd_connection(b"stream: INSTREAM size limit exceeded. ERROR\\0")
+        create_connection.return_value = self._clamd_connection(b"stream: INSTREAM size limit exceeded. ERROR\0")
         with self.assertRaises(ScannerExecutionError):
             scan_quarantined_file(self.sample_id, self.root)
 
