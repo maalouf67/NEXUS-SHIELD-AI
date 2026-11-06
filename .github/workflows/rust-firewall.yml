@@ -36,11 +36,8 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: services/firewall-rust
-      - name: Run rustfmt and show the exact source diff for review
-        run: |
-          cargo fmt --all
-          git diff --check
-          git diff -- services/firewall-rust
+      - name: Check Rust formatting
+        run: cargo fmt --all -- --check
       - name: Unit and SOC HTTP contract tests
         run: cargo test
       - name: Clippy
