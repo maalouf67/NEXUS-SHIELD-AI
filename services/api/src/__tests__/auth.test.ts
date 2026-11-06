@@ -1,4 +1,6 @@
+import { randomUUID } from 'node:crypto';
 import express from 'express';
+import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import type { AuthSessionRepository } from '../auth/auth-session.repository.js';
 import { authSessionRepository } from '../auth/auth-session.repository.js';
@@ -6,6 +8,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import request from 'supertest';
 
 import { createAuthRouter } from '../auth/auth.routes.js';
+import { authTokenConfig } from '../auth/auth.middleware.js';
+import { registerTestAuthSession } from '../auth/auth-session.repository.js';
 import { createUsersRouter } from '../auth/users.routes.js';
 import type {
   NewUser,
@@ -207,6 +211,40 @@ describe('NEXUS user authentication and RBAC', () => {
         .set('Authorization', `Bearer ${token}`);
       expect(response.status).toBe(401);
     }
+  });
+
+
+  it('allows an administrator to revoke all sessions for a target user', async () => {
+    const passwordHash = await bcrypt.hash(TEST_PASSWORD, 4);
+    const repository = makeRepository({}, { ...adminUser, passwordHash });
+    const app = createTestApp(repository);
+    const adminToken = await loginAs(repository, adminUser.email, TEST_PASSWORD);
+    const targetSessionId = randomUUID();
+    registerTestAuthSession({
+      sessionId: targetSessionId,
+      userId: ANALYST_ID,
+      expiresAt: new Date(Date.now() + 15 * 60 * 1000),
+      testIdentity: { id: ANALYST_ID, email: 'analyst@example.com', role: 'analyst' }
+    });
+    const targetToken = jwt.sign({ jti: targetSessionId }, TEST_SECRET, {
+      algorithm: 'HS256',
+      subject: ANALYST_ID,
+      issuer: authTokenConfig.issuer,
+      audience: authTokenConfig.audience,
+      expiresIn: '15m'
+    });
+
+    const response = await request(app)
+      .post(`/api/auth/users/${ANALYST_ID}/sessions/revoke-all`)
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.revoked_sessions).toBe(1);
+
+    const targetAccess = await request(app)
+      .get('/api/auth/me')
+      .set('Authorization', `Bearer ${targetToken}`);
+    expect(targetAccess.status).toBe(401);
   });
 
   it('fails closed when the session store cannot validate an access token', async () => {
