@@ -2,9 +2,9 @@ name: NEXUS SHIELD AI - Security Checks
 
 on:
   push:
-    branches: ["main"]
+    branches: ["main", "feature/**"]
   pull_request:
-    branches: ["main"]
+    branches: ["main", "feat/**"]
   schedule:
     - cron: "30 8 * * 1"
   workflow_dispatch:
@@ -18,23 +18,174 @@ concurrency:
 
 jobs:
   trivy-security-scan:
-    name: Trivy Security Scan
+    name: Trivy filesystem, dependency and secret scan
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Scan filesystem for vulnerabilities and misconfigurations
+      - name: Scan repository for vulnerabilities, misconfigurations and secrets
         uses: aquasecurity/trivy-action@v0.36.0
         with:
+          version: v0.76.1
           scan-type: fs
           scan-ref: .
-          scanners: vuln,misconfig
+          scanners: vuln,misconfig,secret
           severity: HIGH,CRITICAL
-          ignore-unfixed: true
+          ignore-unfixed: "false"
           exit-code: "1"
-          format: table
+          format: json
+          output: trivy-filesystem-results.json
+
+      - name: Upload filesystem scan report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-filesystem-report
+          path: trivy-filesystem-results.json
+          if-no-files-found: warn
+          retention-days: 30
+
+  container-image-scan:
+    name: Trivy runtime container image scans
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build the production PostgreSQL and AI images
+        run: |
+          docker build --pull -f database/Dockerfile.railway -t nexus-postgres:ci .
+          docker build --pull -f services/ai/Dockerfile -t nexus-ai:ci .
+
+      - name: Checkout the pinned upstream gosu source
+        uses: actions/checkout@v4
+        with:
+          repository: tianon/gosu
+          ref: 29b939aa5bd4dc588af765b8248f6e39150d2565
+          path: gosu-upstream
+          persist-credentials: false
+
+      - name: Verify vendored gosu source matches pinned upstream
+        run: |
+          set -euo pipefail
+          for file in main.go setup-user.go version.go go.mod go.sum LICENSE; do
+            cmp "database/gosu-src/$file" "gosu-upstream/$file"
+          done
+
+      - name: Set up Go for upstream vulnerability analysis
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.27.3"
+          cache: false
+
+      - name: Install pinned govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
+
+      - name: Verify the PostgreSQL image gosu binary
+        run: |
+          set -euo pipefail
+          version="$(docker run --rm --user 0 --entrypoint /usr/local/bin/gosu nexus-postgres:ci --version)"
+          echo "$version"
+          echo "$version" | grep -F "1.20 (go1.27.3"
+          switched_uid="$(docker run --rm --user 0 --entrypoint /usr/local/bin/gosu nexus-postgres:ci nobody id -u)"
+          test "$switched_uid" != "0"
+          echo "gosu switched from root to UID $switched_uid inside the PostgreSQL image."
+
+      - name: Check upstream gosu source for reachable Go vulnerabilities
+        working-directory: gosu-upstream
+        run: |
+          set -euo pipefail
+          export PATH="$(go env GOPATH)/bin:$PATH"
+          bash ./govulncheck-with-excludes.sh ./...
+
+      - name: Validate PostgreSQL startup on a root-owned volume
+        run: |
+          set -euo pipefail
+          volume="nexus-pgdata-root-owned"
+          container="nexus-pg-root-volume-check"
+          docker volume create "$volume"
+          cleanup() {
+            docker rm -f "$container" >/dev/null 2>&1 || true
+            docker volume rm "$volume" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          docker run --detach --name "$container" --user 0 \
+            --env POSTGRES_USER=nexus_ci \
+            --env POSTGRES_PASSWORD=nexus-ci-only-password \
+            --env POSTGRES_DB=nexus_ci \
+            --volume "$volume:/var/lib/postgresql/data" \
+            nexus-postgres:ci
+          ready=false
+          for attempt in $(seq 1 60); do
+            if docker exec "$container" pg_isready -U nexus_ci -d nexus_ci >/dev/null 2>&1; then
+              ready=true
+              break
+            fi
+            sleep 2
+          done
+          test "$ready" = true
+          database_user="$(docker exec "$container" psql -U nexus_ci -d nexus_ci -Atqc "SELECT current_user")"
+          test "$database_user" = "nexus_ci"
+          expected_uid="$(docker exec "$container" id -u postgres)"
+          process_uid="$(docker exec "$container" awk '/^Uid:/ { print $2 }' /proc/1/status)"
+          test "$process_uid" = "$expected_uid"
+          echo "PostgreSQL initialized on a root-owned volume and PID 1 runs as postgres (UID $process_uid)."
+
+      - name: Pull the configured ClamAV runtime image
+        run: docker pull clamav/clamav:1.5.4
+
+      - name: Scan PostgreSQL runtime image
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          version: v0.76.1
+          scan-type: image
+          image-ref: nexus-postgres:ci
+          scanners: vuln,misconfig,secret
+          severity: HIGH,CRITICAL
+          ignore-unfixed: "false"
+          exit-code: "1"
+          format: json
+          output: trivy-postgres-image-results.json
+
+      - name: Scan AI service runtime image
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          version: v0.76.1
+          scan-type: image
+          image-ref: nexus-ai:ci
+          scanners: vuln,misconfig,secret
+          severity: HIGH,CRITICAL
+          ignore-unfixed: "false"
+          exit-code: "1"
+          format: json
+          output: trivy-ai-image-results.json
+
+      - name: Scan ClamAV runtime image
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          version: v0.76.1
+          scan-type: image
+          image-ref: clamav/clamav:1.5.4
+          scanners: vuln,misconfig,secret
+          severity: HIGH,CRITICAL
+          ignore-unfixed: "false"
+          exit-code: "1"
+          format: json
+          output: trivy-clamav-image-results.json
+
+      - name: Upload container image scan reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-container-image-reports
+          path: |
+            trivy-postgres-image-results.json
+            trivy-ai-image-results.json
+            trivy-clamav-image-results.json
+          if-no-files-found: warn
+          retention-days: 30
 
   postgres-runtime-image:
     name: PostgreSQL runtime image, gosu and root-owned volume validation

@@ -1,23 +1,24 @@
-FROM python:3.11-slim
+FROM python:3.13-alpine
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1
 
 WORKDIR /app
 
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends clamav-daemon clamdscan \
-    && command -v clamdscan \
-    && rm -rf /var/lib/apt/lists/*
-
-COPY infra/clamav/railway-clamdscan.conf /etc/clamav/clamdscan.conf
-
+# ClamAV runs as a separate private-network service. The AI image contains only
+# the INSTREAM protocol client implemented with Python's standard library.
 COPY services/ai/requirements.txt ./requirements.txt
-RUN python -m pip install --no-cache-dir -r requirements.txt
+
+# Packaging tools are build-time only and are not required by the application.
+RUN python -m pip install --no-cache-dir -r requirements.txt \
+    && python -m pip uninstall -y pip setuptools wheel \
+    && rm -rf /usr/local/lib/python3.13/ensurepip /usr/local/bin/pip* \
+    && python -c "import importlib.util; assert importlib.util.find_spec('pip') is None; assert importlib.util.find_spec('setuptools') is None"
 
 COPY services/ai/app ./app
 
-RUN useradd --system --uid 10001 --create-home nexus \
+RUN adduser -D -u 10001 -h /home/nexus nexus \
     && mkdir -p /var/lib/nexus/quarantine \
     && chown -R nexus:nexus /var/lib/nexus \
     && chmod 0700 /var/lib/nexus/quarantine

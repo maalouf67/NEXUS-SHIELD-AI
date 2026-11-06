@@ -1,0 +1,213 @@
+import express from 'express';
+import { describe, expect, it, vi } from 'vitest';
+import request from 'supertest';
+import { ipKeyGenerator } from 'express-rate-limit';
+
+import {
+  createApiAnomalyGuard,
+  type ApiAnomalyCounterStore
+} from '../middleware/api-anomaly-guard.js';
+
+class MemoryCounterStore implements ApiAnomalyCounterStore {
+  private readonly counters = new Map<string, { hits: number; resetTime: Date }>();
+
+  constructor(private readonly windowMs: number) {}
+
+  async get(key: string) {
+    const current = this.counters.get(key);
+    if (!current || current.resetTime.getTime() <= Date.now()) return undefined;
+    return { totalHits: current.hits, resetTime: current.resetTime };
+  }
+
+  async increment(key: string) {
+    const current = this.counters.get(key);
+    const isCurrent = current && current.resetTime.getTime() > Date.now();
+    const next = {
+      hits: isCurrent ? current.hits + 1 : 1,
+      resetTime: isCurrent ? current.resetTime : new Date(Date.now() + this.windowMs)
+    };
+    this.counters.set(key, next);
+    return { totalHits: next.hits, resetTime: next.resetTime };
+  }
+}
+
+describe('API anomaly containment', () => {
+  it('temporarily contains a source after repeated suspicious API responses', async () => {
+    const store = new MemoryCounterStore(60_000);
+    const onContainment = vi.fn();
+    const app = express();
+
+    app.use('/api', createApiAnomalyGuard({
+      windowMs: 60_000,
+      threshold: 2,
+      store,
+      onContainment
+    }));
+    app.get('/api/missing', (_request, response) => response.status(404).json({ error: 'NOT_FOUND' }));
+    app.get('/api/denied', (_request, response) => response.status(403).json({ error: 'FORBIDDEN' }));
+    app.get('/api/healthy', (_request, response) => response.status(200).json({ status: 'ok' }));
+
+    const first = await request(app).get('/api/missing');
+    const second = await request(app).get('/api/denied');
+    const contained = await request(app).get('/api/healthy');
+
+    expect(first.status).toBe(404);
+    expect(second.status).toBe(403);
+    expect(contained.status).toBe(429);
+    expect(contained.body.error).toBe('SOURCE_TEMPORARILY_CONTAINED');
+    expect(Number(contained.headers['retry-after'])).toBeGreaterThan(0);
+    expect(onContainment).toHaveBeenCalledTimes(1);
+    expect(onContainment.mock.calls[0]?.[2]).toBe(403);
+  });
+
+  it('does not count successful responses as suspicious activity', async () => {
+    const store = new MemoryCounterStore(60_000);
+    const app = express();
+
+    app.use('/api', createApiAnomalyGuard({
+      windowMs: 60_000,
+      threshold: 2,
+      store
+    }));
+    app.get('/api/healthy', (_request, response) => response.status(200).json({ status: 'ok' }));
+    app.get('/api/unauthorized', (_request, response) => response.status(401).json({ error: 'UNAUTHORIZED' }));
+
+    expect((await request(app).get('/api/healthy')).status).toBe(200);
+    expect((await request(app).get('/api/unauthorized')).status).toBe(401);
+    expect((await request(app).get('/api/healthy')).status).toBe(200);
+  });
+
+  it('fails closed when the shared protection counter cannot be read', async () => {
+    const store = {
+      get: vi.fn().mockRejectedValue(new Error('database unavailable')),
+      increment: vi.fn()
+    } as unknown as ApiAnomalyCounterStore;
+    const route = vi.fn((_request, response) => response.status(200).json({ status: 'ok' }));
+    const app = express();
+
+    app.use('/api', createApiAnomalyGuard({ store }));
+    app.get('/api/healthy', route);
+
+    const result = await request(app).get('/api/healthy');
+
+    expect(result.status).toBe(503);
+    expect(result.body.error).toBe('PROTECTION_STORE_UNAVAILABLE');
+    expect(route).not.toHaveBeenCalled();
+  });
+
+  it('groups IPv6 addresses in the same /56 source network for containment', async () => {
+    const store = new MemoryCounterStore(60_000);
+    const app = express();
+    app.set('trust proxy', 1);
+
+    app.use('/api', createApiAnomalyGuard({
+      windowMs: 60_000,
+      threshold: 2,
+      store
+    }));
+    app.get('/api/missing', (_request, response) => response.status(404).json({ error: 'NOT_FOUND' }));
+    app.get('/api/healthy', (_request, response) => response.status(200).json({ status: 'ok' }));
+
+    const first = await request(app).get('/api/missing')
+      .set('X-Forwarded-For', '2001:db8:abcd:1200::1');
+    const second = await request(app).get('/api/missing')
+      .set('X-Forwarded-For', '2001:db8:abcd:12ff::1');
+    const contained = await request(app).get('/api/healthy')
+      .set('X-Forwarded-For', '2001:db8:abcd:12aa::9');
+
+    expect(first.status).toBe(404);
+    expect(second.status).toBe(404);
+    expect(contained.status).toBe(429);
+  });
+
+
+  it('counts malformed and oversized JSON before route handling', async () => {
+    const store = new MemoryCounterStore(60_000);
+    const app = express();
+
+    app.use('/api', createApiAnomalyGuard({
+      windowMs: 60_000,
+      threshold: 2,
+      store
+    }));
+    app.use(express.json({ limit: '16b' }));
+    app.post('/api/body', (_request, response) => response.status(200).json({ status: 'ok' }));
+
+    const malformed = await request(app).post('/api/body')
+      .set('Content-Type', 'application/json')
+      .send('{"broken":');
+    const oversized = await request(app).post('/api/body')
+      .send({ payload: 'x'.repeat(100) });
+    const contained = await request(app).post('/api/body').send({ ok: true });
+
+    expect(malformed.status).toBe(400);
+    expect(oversized.status).toBe(413);
+    expect(contained.status).toBe(429);
+  });
+
+
+  it('keeps the lightweight liveness route reachable after source containment', async () => {
+    const store = new MemoryCounterStore(60_000);
+    const app = express();
+
+    app.use('/api', createApiAnomalyGuard({
+      windowMs: 60_000,
+      threshold: 1,
+      store
+    }));
+    app.get('/api/missing', (_request, response) => response.status(404).json({ error: 'NOT_FOUND' }));
+    app.get('/api/health', (_request, response) => response.status(200).json({ ok: true }));
+
+    const suspicious = await request(app).get('/api/missing');
+    const liveness = await request(app).get('/api/health');
+
+    expect(suspicious.status).toBe(404);
+    expect(liveness.status).toBe(200);
+  });
+
+
+  it('keeps distinct IPv4-mapped addresses in separate source buckets', () => {
+    expect(ipKeyGenerator('::ffff:192.0.2.1'))
+      .not.toBe(ipKeyGenerator('::ffff:198.51.100.2'));
+  });
+
+
+  it('contains path enumeration across the full HTTP listener, not only /api routes', async () => {
+    const store = new MemoryCounterStore(60_000);
+    const app = express();
+
+    app.use(createApiAnomalyGuard({
+      windowMs: 60_000,
+      threshold: 2,
+      store
+    }));
+    app.get('/known', (_request, response) => response.status(200).json({ status: 'ok' }));
+
+    const firstProbe = await request(app).get('/random-path-one');
+    const secondProbe = await request(app).get('/random-path-two');
+    const contained = await request(app).get('/known');
+
+    expect(firstProbe.status).toBe(404);
+    expect(secondProbe.status).toBe(404);
+    expect(contained.status).toBe(429);
+  });
+
+  it('preserves both root and API liveness paths during containment', async () => {
+    const store = new MemoryCounterStore(60_000);
+    const app = express();
+
+    app.use(createApiAnomalyGuard({
+      windowMs: 60_000,
+      threshold: 1,
+      store
+    }));
+    app.get('/missing', (_request, response) => response.status(404).json({ error: 'NOT_FOUND' }));
+    app.get('/health', (_request, response) => response.status(200).json({ ok: true }));
+    app.get('/api/health', (_request, response) => response.status(200).json({ ok: true }));
+
+    expect((await request(app).get('/missing')).status).toBe(404);
+    expect((await request(app).get('/health')).status).toBe(200);
+    expect((await request(app).get('/api/health')).status).toBe(200);
+  });
+
+});

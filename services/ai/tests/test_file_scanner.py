@@ -1,14 +1,17 @@
 import hashlib
 import io
+import socket
 import stat
+import struct
 import tempfile
 import unittest
 from pathlib import Path
-from subprocess import CompletedProcess
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 
 from app.security.file_scanner import (
     ScanInputError,
+    ScannerExecutionError,
+    ScannerTimeout,
     ScannerUnavailable,
     UploadTooLarge,
     scan_quarantined_file,
@@ -28,54 +31,71 @@ class QuarantineScannerTests(unittest.TestCase):
     def tearDown(self):
         self.temp_dir.cleanup()
 
-    @patch("app.security.file_scanner.subprocess.run")
-    def test_clean_verdict_returns_hash_and_metadata(self, run):
-        run.return_value = CompletedProcess(args=[], returncode=0, stdout="", stderr="")
-        result = scan_quarantined_file(self.sample_id, self.root)
+    def _clamd_connection(self, response=b"stream: OK\0"):
+        connection = MagicMock()
+        connection.recv.side_effect = [response]
+        return connection
+
+    @patch("app.security.file_scanner.socket.create_connection")
+    def test_clean_verdict_streams_content_using_instream_protocol(self, create_connection):
+        connection = self._clamd_connection()
+        create_connection.return_value = connection
+        result = scan_quarantined_file(self.sample_id, self.root, clamd_host="clamav", clamd_port=3310)
         self.assertEqual(result["verdict"], "clean")
         self.assertEqual(result["sha256"], self.sample_id)
         self.assertEqual(result["size_bytes"], len(self.sample_bytes))
         self.assertFalse(result["execution_performed"])
-        run.assert_called_once()
-        self.assertNotIn("shell", run.call_args.kwargs)
-        self.assertIn("--fdpass", run.call_args.args[0])
+        self.assertEqual(result["scanner"], "ClamAV clamd INSTREAM")
+        create_connection.assert_called_once_with(("clamav", 3310), timeout=60)
+        sent = b"".join(call.args[0] for call in connection.sendall.call_args_list)
+        self.assertTrue(sent.startswith(b"zINSTREAM\0"))
+        offset = len(b"zINSTREAM\0")
+        chunk_size = struct.unpack("!I", sent[offset:offset + 4])[0]
+        self.assertEqual(chunk_size, len(self.sample_bytes))
+        self.assertEqual(sent[offset + 4:offset + 4 + chunk_size], self.sample_bytes)
+        self.assertEqual(sent[-4:], struct.pack("!I", 0))
+        connection.close.assert_called_once()
 
-    @patch("app.security.file_scanner.subprocess.run")
-    def test_detected_verdict_is_reported_without_execution(self, run):
-        run.return_value = CompletedProcess(args=[], returncode=1, stdout="", stderr="")
+    @patch("app.security.file_scanner.socket.create_connection")
+    def test_detected_verdict_is_reported_without_execution(self, create_connection):
+        create_connection.return_value = self._clamd_connection(b"stream: Eicar-Test-Signature FOUND\0")
         result = scan_quarantined_file(self.sample_id, self.root)
         self.assertEqual(result["verdict"], "detected")
         self.assertFalse(result["execution_performed"])
 
-    @patch("app.security.file_scanner.subprocess.run")
-    def test_remote_clamd_uses_client_config_and_stream_transport(self, run):
-        run.return_value = CompletedProcess(args=[], returncode=0, stdout="", stderr="")
-        config = self.root / "clamdscan.conf"
-        config.write_text("\n".join(("TCPSocket 3310", "TCPAddr clamav")) + "\n", encoding="utf-8")
-        scan_quarantined_file(self.sample_id, self.root, scanner_config_file=config)
-        command = run.call_args.args[0]
-        self.assertIn(f"--config-file={config.resolve()}", command)
-        self.assertNotIn("--fdpass", command)
-        self.assertNotIn("--host=clamav", command)
-        self.assertNotIn("--port=3310", command)
-        self.assertIn("--no-summary", command)
+    @patch("app.security.file_scanner.socket.create_connection")
+    def test_clamd_error_is_not_reported_as_clean(self, create_connection):
+        create_connection.return_value = self._clamd_connection(b"stream: INSTREAM size limit exceeded. ERROR\0")
+        with self.assertRaises(ScannerExecutionError):
+            scan_quarantined_file(self.sample_id, self.root)
 
-    def test_missing_client_config_fails_closed(self):
-        with self.assertRaises(ScannerUnavailable):
-            scan_quarantined_file(
-                self.sample_id,
-                self.root,
-                scanner_config_file=self.root / "missing-clamdscan.conf",
-            )
+    @patch("app.security.file_scanner.socket.create_connection", side_effect=socket.timeout)
+    def test_clamd_timeout_fails_closed(self, create_connection):
+        with self.assertRaises(ScannerTimeout):
+            scan_quarantined_file(self.sample_id, self.root)
 
-    @patch("app.security.file_scanner.subprocess.run", side_effect=FileNotFoundError)
-    def test_missing_scanner_fails_closed(self, run):
+    @patch("app.security.file_scanner.socket.create_connection", side_effect=OSError("connection refused"))
+    def test_unavailable_clamd_fails_closed(self, create_connection):
         with self.assertRaises(ScannerUnavailable):
+            scan_quarantined_file(self.sample_id, self.root)
+
+    @patch("app.security.file_scanner.socket.create_connection")
+    def test_incomplete_clamd_response_fails_closed(self, create_connection):
+        connection = MagicMock()
+        connection.recv.return_value = b""
+        create_connection.return_value = connection
+        with self.assertRaises(ScannerExecutionError):
             scan_quarantined_file(self.sample_id, self.root)
 
     def test_invalid_identifier_is_rejected(self):
         with self.assertRaises(ScanInputError):
             scan_quarantined_file("../outside", self.root)
+
+    def test_invalid_clamd_port_is_rejected_before_connect(self):
+        with patch("app.security.file_scanner.socket.create_connection") as connect:
+            with self.assertRaises(ScanInputError):
+                scan_quarantined_file(self.sample_id, self.root, clamd_port=70000)
+            connect.assert_not_called()
 
     def test_content_hash_must_match_quarantine_identifier(self):
         claimed_id = hashlib.sha256(b"different content").hexdigest()
@@ -87,11 +107,11 @@ class QuarantineScannerTests(unittest.TestCase):
         with self.assertRaises(ScannerUnavailable):
             scan_quarantined_file(self.sample_id, self.root / "missing")
 
-    @patch("app.security.file_scanner.subprocess.run")
-    def test_oversized_sample_is_rejected_before_scanner_call(self, run):
+    @patch("app.security.file_scanner.socket.create_connection")
+    def test_oversized_sample_is_rejected_before_scanner_call(self, connect):
         with self.assertRaises(ScanInputError):
             scan_quarantined_file(self.sample_id, self.root, max_file_bytes=4)
-        run.assert_not_called()
+        connect.assert_not_called()
 
     def test_symlink_is_rejected(self):
         link_id = hashlib.sha256(b"link").hexdigest()

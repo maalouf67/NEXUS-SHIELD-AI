@@ -1,0 +1,83 @@
+# NEXUS SHIELD AI — Active Cyber Defense & Intrusion Prevention
+
+**Status: HTTP-listener and API prevention layers implemented on a draft feature branch; not merged or production-verified.** This document separates source-code controls from deployment-level capabilities that still require configuration and runtime evidence.
+
+## Objective
+
+Protect NEXUS-owned infrastructure: the public HTTP listener, API routes, authentication endpoints, application data paths and the services behind the API. This is an internal service-protection capability, not a customer-device protection feature.
+
+## Controls implemented in this branch
+
+1. **Global API request throttling:** the existing API limiter protects `/api` with a 100-request / 15-minute per-source-IP quota. Outside test mode it uses the PostgreSQL-backed shared store, so limits are shared across API instances. Store failures fail closed.
+2. **Login abuse prevention:** the login route has a dedicated 10-request / 15-minute source-IP limiter. Successful 2xx logins are excluded from the failed-attempt quota; failed and malformed requests count. Outside test mode, counters use the PostgreSQL store under a separate `auth-login-ip` scope.
+3. **Suspicious-response detection and temporary HTTP-listener containment:** the guard observes completed HTTP responses across the Express listener with status 400, 401, 403, 404, 405 or 413, including root-path and non-API route probing. It is mounted before JSON parsing so malformed and oversized bodies are included. After 40 such responses from one source network inside a 10-minute window, it commits a medium-severity `nexus-ips` event with a trigger-specific HMAC identifier and the threshold counter in one PostgreSQL transaction, then temporarily returns HTTP 429 for subsequent requests from that source until the counter window expires. Successful responses are not counted.
+4. **Privacy-safe source identifiers:** PostgreSQL counter keys and SOC event identifiers use keyed HMAC fingerprints. Raw source IP addresses and submitted credentials are not written to the protection event attributes.
+5. **Existing HTTP baseline:** Helmet security headers, explicit CORS allow-list behavior, a 1 MB JSON body cap, configured reverse-proxy hop count and Zod validation remain in place.
+6. **Fail-closed protection-store reads:** if the anomaly guard cannot read its shared counter, the API returns HTTP 503 instead of silently bypassing that guard. The threshold counter and its `nexus-ips` SOC event are committed atomically; a failed event insert rolls back the threshold increment instead of silently recording an unlogged containment. Persistence failures are reported through a non-sensitive server log.
+7. **Liveness availability:** the lightweight `/health` and `/api/health` liveness routes bypass temporary anomaly containment so a blocked source cannot make the platform health probe mark the API unhealthy. They remain behind the applicable global API request limiter; readiness still checks PostgreSQL.
+8. **HTTP listener hardening:** the Node.js API listener uses a 10-second header receive timeout, 120-second full-request receive timeout, 5-second keep-alive timeout, a maximum of 100 requests per socket and a cap of 100 request headers.
+9. **Startup schema preflight:** before binding the API port, the process verifies `api_rate_limit_counters`, `security_events` and `security_event_reviews`; it exits with a migration instruction if any are missing.
+
+## Request flow
+
+```text
+Client
+  |
+  v
+TLS / deployment edge (must be configured and verified)
+  |
+  v
+Express: trusted proxy hops -> Helmet -> CORS
+  |
+  +--> /api requests -> shared API request limiter (100 / 15 min)
+  |
+  v
+Shared HTTP-listener anomaly guard (10 min window, all listener paths)
+  |-- completed 400 / 401 / 403 / 404 / 405 / 413 responses increment a source counter
+  |-- 40 suspicious responses -> temporary HTTP 429 containment
+  |-- HMAC-fingerprinted event -> SOC analyst review
+  |
+  v
+1 MB JSON body parser
+  |
+  +--> /auth/login -> dedicated failed-login limiter (10 / 15 min)
+  |
+  +--> application routes -> existing authentication / RBAC / validation
+```
+
+## What this does not do
+
+- This is **application-layer HTTP containment**. Express cannot filter raw TCP/UDP packets before they reach the host, close a public listener, or absorb a volumetric DDoS attack.
+- It is not an operating-system firewall, network IDS/IPS, WAF, endpoint EDR or DDoS scrubbing service. Those controls must be configured at the deployment edge / host network and verified independently.
+- It does not inspect arbitrary encrypted traffic, uploaded files or device processes.
+- HTTP listener timeouts limit slow or incomplete requests after they reach Node.js; they do not replace upstream connection limits or network-layer SYN/DDoS protection.
+- It does not attack, scan, exploit or retaliate against remote systems. Automated action is limited to rate-limiting NEXUS's own inbound API requests for a temporary window.
+- IP-based containment is not proof of malicious intent. Mobile-carrier NAT, offices and shared proxies can cause legitimate users to share one public IP.
+- The anomaly guard performs a shared-counter read for each non-exempt request and a counter increment after suspicious responses. The threshold increment and SOC event insert share one database transaction. Requests already in flight when the threshold is reached may complete; later requests are contained. Added database latency and concurrency behavior still require load testing.
+- Distributed attacks from many source IPs, compromised credentials and privilege abuse require additional layers.
+
+## Next engineering layers
+
+1. **Deployment perimeter:** configure an edge WAF / DDoS protection service, restrict direct origin access, enforce TLS, and allow only required inbound ports. No WAF or host firewall is claimed until configured and tested in the actual hosting account.
+2. **Identity/session defense:** server-side JWT session revocation, MFA for privileged accounts, credential-stuffing detection and safe account recovery.
+3. **Cross-source intelligence:** threat feeds with provenance, confidence, age and licensing. Reputation alone must not trigger irreversible blocking.
+4. **Graduated response:** alert -> analyst review -> reversible, time-limited source containment. Account disablement, session revocation and production firewall changes require explicit authorization, an audit record and rollback path.
+5. **Network sensor (later):** evaluate a narrowly scoped Rust/eBPF sensor only if the chosen hosting platform provides the required host and kernel privileges. It must monitor only NEXUS-owned infrastructure and begin in observe-only mode.
+6. **Operational readiness:** shared-store health, false-positive review, event retention, SOC visibility, alerting and incident runbooks.
+
+## Validation required before release
+
+- API build, type-check and full test suite.
+- Confirm the login limiter counts failed attempts and does not penalize successful 2xx logins.
+- Confirm the anomaly guard covers root and API routes, counts only 400 / 401 / 403 / 404 / 405 / 413 responses, runs before JSON parsing, preserves liveness routes, returns 429 after the threshold, and does not count successful responses.
+- Test database unavailability: the anomaly guard must fail closed.
+- Test PostgreSQL counter sharing across two API instances and race behavior under concurrent requests.
+- Verify HMAC event fingerprints, stable identifiers for the same trigger timestamp, distinct identifiers for separate trigger timestamps and absence of raw IP / email / password in event attributes.
+- Verify `TRUST_PROXY_HOPS` against the actual deployment edge; never trust arbitrary forwarded headers.
+- Load test legitimate NAT / mobile-carrier traffic and document the false-positive recovery process.
+- Verify that the dedicated `source=nexus-ips` SOC query returns the threshold event even when more than 100 unrelated security events exist, and confirm analyst review is audited.
+- Configure and separately validate the host firewall, origin lockdown, TLS and edge WAF / DDoS controls.
+
+## Security decision policy
+
+NEXUS may automatically throttle and temporarily contain inbound requests to its own API according to the documented thresholds. It must not retaliate against remote systems, run exploit code, scan third-party targets without authorization, or automatically destroy / quarantine data. AI output remains advisory. High-impact containment requires human authorization, auditability and a rollback path.

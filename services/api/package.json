@@ -10,7 +10,9 @@
     "lint": "tsc --noEmit",
     "test": "vitest run src",
     "bootstrap:admin": "tsx src/scripts/bootstrap-admin.ts",
-    "cleanup:malware-scans": "tsx src/scripts/cleanup-expired-malware-scans.ts"
+    "cleanup:malware-scans": "tsx src/scripts/cleanup-expired-malware-scans.ts",
+    "db:migrate": "tsx src/scripts/migrate-database.ts",
+    "db:check": "tsx src/scripts/check-database-connection.ts"
   },
   "dependencies": {
     "@ai-sdk/openai": "^4.0.106",

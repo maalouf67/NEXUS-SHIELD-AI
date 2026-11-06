@@ -5,7 +5,7 @@ export interface ManagedUser { id: string; email: string; role: UserRole; isActi
 export interface ThreatSummary {
   is_demo: boolean;
   data_source: string;
-  summary: { total_incidents: number; critical: number; mitigated: number; ai_score: number; updated_at: string };
+  summary: { total_incidents: number; critical: number; mitigated: number; ai_score: number | null; updated_at: string };
 }
 export interface Incident {
   id: string; title: string; severity: 'low' | 'medium' | 'high' | 'critical';
@@ -38,17 +38,18 @@ interface ListResult<T> {
 }
 
 export interface DashboardData {
-  incidents: Incident[]; alerts: Alert[]; securityEvents: SecurityEvent[];
-  incidentTotal: number; alertTotal: number; securityEventTotal: number;
+  incidents: Incident[]; alerts: Alert[]; securityEvents: SecurityEvent[]; ipsEvents: SecurityEvent[];
+  incidentTotal: number; alertTotal: number; securityEventTotal: number; ipsEventTotal: number;
   summary: ThreatSummary | null; managedUsers: ManagedUser[];
 }
 
 /** Load authenticated dashboard data through same-origin Next.js API routes only. */
 export async function fetchDashboardData(isAdmin: boolean): Promise<DashboardData> {
-  const [incidentsResult, alertsResult, eventsResult, summaryResult, usersResult] = await Promise.all([
+  const [incidentsResult, alertsResult, eventsResult, ipsEventsResult, summaryResult, usersResult] = await Promise.all([
     apiRequest<ListResult<Incident>>('/api/nexus/incidents?limit=100'),
     apiRequest<ListResult<Alert>>('/api/nexus/alerts?limit=100'),
     apiRequest<ListResult<SecurityEvent>>('/api/nexus/security-events?limit=100'),
+    apiRequest<ListResult<SecurityEvent>>('/api/nexus/security-events?source=nexus-ips&limit=100'),
     apiRequest<ThreatSummary>('/api/nexus/threats/summary').catch(() => null),
     isAdmin ? apiRequest<{ users?: ManagedUser[] }>('/api/nexus/users') : Promise.resolve({ users: [] })
   ]);
@@ -57,9 +58,11 @@ export async function fetchDashboardData(isAdmin: boolean): Promise<DashboardDat
     incidents: incidentsResult.incidents ?? [],
     alerts: alertsResult.alerts ?? [],
     securityEvents: eventsResult.events ?? [],
+    ipsEvents: ipsEventsResult.events ?? [],
     incidentTotal: incidentsResult.pagination?.total ?? 0,
     alertTotal: alertsResult.pagination?.total ?? 0,
     securityEventTotal: eventsResult.pagination?.total ?? 0,
+    ipsEventTotal: ipsEventsResult.pagination?.total ?? 0,
     summary: summaryResult,
     managedUsers: usersResult.users ?? []
   };

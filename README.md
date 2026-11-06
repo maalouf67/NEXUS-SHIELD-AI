@@ -7,7 +7,7 @@ NEXUS SHIELD AI is an actively developed cyber-defense platform foundation combi
 - The Attack Path Intelligence engine performs bounded, deterministic, read-only graph traversal over asset relationships supplied by a caller.
 - The API exposes that engine through a service-token-protected endpoint. It does not scan devices, discover assets, execute security actions, or prove exploitability.
 - The cost-incurring AI threat-analysis endpoint also requires the same server-side service token; the dashboard does not trigger AI requests automatically.
-- The threat summary and dashboard examples are demo data, not live security telemetry.
+- Dashboard incident, critical and mitigated totals are aggregated from PostgreSQL incident records. No calibrated AI score or live upstream threat telemetry is available by default; security-event records appear only when a trusted source submits them.
 - AI threat analysis evaluates information explicitly supplied to the API. It is not a system scan or incident confirmation.
 - API bearer authentication and admin/analyst/viewer role checks are implemented. The web dashboard includes an initial authenticated flow, team management, and incident/alert/event review. A normalized event ingestion endpoint is ready for trusted upstream sources, but provider-specific connectors, live source configuration, and automated response are not yet in place.
 - A PostgreSQL-backed asset inventory API now supports authenticated, transactional upserts and read-only analysis of stored relationships.
@@ -18,8 +18,8 @@ Do not describe sample data or planned capabilities as active protection.
 
 - Frontend: Next.js web/admin console
 - API: Node.js, TypeScript, Express, and Zod
-- AI engine: Python + FastAPI and the OpenAI Responses API
-- AI application layer: typed threat-analysis agent
+- AI threat-analysis layer: TypeScript AI SDK orchestrator/provider inside the Express API; OpenAI access uses the server-side `OPENAI_API_KEY`
+- Malware scanning service: Python + FastAPI, authenticated service-to-service requests, private quarantine and ClamAV integration
 - Data: PostgreSQL
 - Security baseline: Helmet, CORS allow-list, request validation, API rate limiting, environment validation, and protected service-to-service route access
 
@@ -50,7 +50,16 @@ docker compose up -d postgres
 
 PostgreSQL and Adminer bind to `127.0.0.1` only. Adminer is available locally at `http://127.0.0.1:8080`.
 
-The API database pool supports explicit local non-TLS mode and verified TLS mode. When using the bundled Supabase CA or another provider CA, set `DATABASE_SSL=true` and configure `DATABASE_SSL_CA_PATH` where appropriate.
+After PostgreSQL starts, apply the numbered schema and verify the API's database connection:
+
+```bash
+npm run db:migrate
+npm run db:check
+```
+
+The migration runner applies numbered files 001–008, uses a PostgreSQL advisory lock, records SHA-256 checksums, and refuses modified historical migrations. It is safe to re-run against a database whose schema is already present, provided the schema matches the repository migration files. Back up an existing or production database and inspect pending SQL before migration. See [Database migrations and connectivity](docs/DATABASE-MIGRATIONS.md).
+
+The API database pool supports explicit local non-TLS mode and verified TLS mode. Supabase hosts use the bundled Supabase CA by default; other providers use Node's trusted system roots unless DATABASE_SSL_CA_PATH explicitly supplies a provider CA. Certificate verification remains enabled.
 
 ## JavaScript services
 
@@ -85,7 +94,7 @@ The Python AI service:
 - Accepts exactly one multipart file and enforces a configurable maximum of 100 MiB.
 - Ignores the supplied file name and MIME type. It streams bytes into a private owner-scoped quarantine directory using a generated SHA-256 identifier.
 - Uses restrictive directory/file permissions (0700/0600), checks symlinks and content hashes, and never executes an uploaded file.
-- Uses ClamAV `clamdscan` with a 60-second process timeout. Scanner failures/timeouts are never converted into a clean verdict.
+- Streams each quarantined sample to the separate private ClamAV daemon using the bounded `INSTREAM` TCP protocol with a 60-second timeout. The AI image contains no ClamAV daemon/client packages. Scanner connection failures, protocol errors and timeouts are never converted into a clean verdict.
 - Keeps a sample quarantined if ClamAV cannot return a verdict; a retry can only reference a sample owned by the authenticated account.
 
 ## Scan history and retention
@@ -101,7 +110,7 @@ These are configured source-code policies. Their behavior must still be observed
 
 ## Local development — Docker and a real ClamAV test
 
-ClamAV's TCP socket is reachable only over the private Docker Compose network; port 3310 is not published to the host. The AI HTTP service binds to host loopback at `127.0.0.1:8001`. The quarantine volume and ClamAV signature database use separate persistent Docker volumes. The Compose ClamAV container is assigned 4 GiB memory, aligned with ClamAV's documented preferred memory budget for signature loading and reloads.
+ClamAV's TCP socket is reachable only over the private Docker Compose network; port 3310 is not published to the host. The AI service streams samples directly to the ClamAV daemon using the ClamAV INSTREAM protocol; no clamdscan binary is installed in the AI image. The AI HTTP service binds to host loopback at `127.0.0.1:8001`. The quarantine volume and ClamAV signature database use separate persistent Docker volumes. The Compose ClamAV container is assigned 4 GiB memory, aligned with ClamAV's documented preferred memory budget for signature loading and reloads.
 
 1. Configure strong, unique values for `POSTGRES_PASSWORD`, `JWT_SECRET`, `SESSION_SECRET`, and `NEXUS_SERVICE_API_TOKEN` in the root `.env`. The service token must be at least 32 characters.
 2. Copy the required values into `services/api/.env` and `apps/web/.env.local`. Set `API_BASE_URL=http://127.0.0.1:4000` and `AI_BASE_URL=http://127.0.0.1:8001` in the web server environment; set `AI_BASE_URL` and the same service token in the API environment.
@@ -119,7 +128,7 @@ ClamAV's TCP socket is reachable only over the private Docker Compose network; p
 
 5. Sign in as an Admin or Analyst and open `/scan`. Use only benign files while developing. A signature-clean result is not a guarantee that a file is harmless.
 
-The CI workflow builds the Docker images, waits for the real ClamAV daemon to become healthy, submits a benign fixture and the harmless EICAR antivirus test string, and verifies the expected `clean` and `detected` results. This runtime test is separate from Python unit tests, which mock scanner responses.
+The CI workflow builds the Docker images, waits for the real ClamAV daemon to become healthy, verifies the private INSTREAM TCP protocol, submits a benign fixture and the harmless EICAR antivirus test string, and verifies the expected `clean` and `detected` results. This runtime test is separate from Python unit tests, which mock scanner responses.
 
 **Important:** the Android module is an on-demand file-scanning companion, not a full-device antivirus. Continuous VPN/network filtering, an endpoint agent, iOS support, asynchronous scan queues, file-release workflows and automated response are not active. The Android debug APK is a development artifact only.
 
@@ -180,10 +189,10 @@ Every new user password is hashed with bcrypt before storage. Failed login respo
 
 ### Apply the user authentication migration
 
-The schema is in `database/init/003_user_auth.sql`. Docker applies it automatically only when it initializes a new database. For an existing database, back it up and apply the migration once:
+The schema is in `database/init/003_user_auth.sql`. Docker applies it automatically only when it initializes a new database. After backing up an existing database, use the ordered migration runner:
 
 ```bash
-psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/init/003_user_auth.sql
+npm run db:migrate
 ```
 
 ### Create the first administrator
@@ -208,10 +217,10 @@ The API also exposes a PostgreSQL-backed inventory. These endpoints require the 
 - `GET /api/assets/inventory` — reads the saved inventory.
 - `POST /api/attack-paths/analyze-inventory` — runs the read-only graph engine against the saved inventory. It does not scan external systems or change database records.
 
-The inventory schema is defined in `database/init/002_attack_path_inventory.sql`. It is included in Docker's initialization directory for new databases. For an existing database, back it up and apply the migration once:
+The inventory schema is defined in `database/init/002_attack_path_inventory.sql`. It is included in Docker's initialization directory for new databases. After backing up an existing database, use the ordered migration runner:
 
 ```bash
-psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/init/002_attack_path_inventory.sql
+npm run db:migrate
 ```
 
 The database must be reachable by the API and the migration must be applied before using persistent inventory endpoints. A successful HTTP route response alone does not prove that a database has been initialized.
@@ -232,10 +241,10 @@ Admin and analyst roles can also:
 
 Every incident creation and status change is recorded in `incident_activity` in the same database transaction as the incident change. Status changes use row-level locking to prevent concurrent updates from silently overwriting one another. Reopening resolved or closed incidents is restricted to admins. Viewing is read-only; this API does not run containment, scans, or automated remediation actions.
 
-The schema is in `database/init/004_incident_management.sql`. Docker applies it automatically only when creating a new database. For an existing database, back it up and apply the migration once:
+The schema is in `database/init/004_incident_management.sql`. Docker applies it automatically only when creating a new database. After backing up an existing database, use the ordered migration runner:
 
 ```bash
-psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/init/004_incident_management.sql
+npm run db:migrate
 ```
 
 ## Alert review API
@@ -248,10 +257,10 @@ The authenticated alert API provides:
 
 Alert creation and status changes are recorded in the linked incident audit history within the same database transaction. These endpoints record analyst-supplied information; they do not collect telemetry, verify a threat, run a scan, or perform containment.
 
-The alert-to-audit link is added by `database/init/005_alert_audit_link.sql`. For an existing database, back it up and apply the migration once:
+The alert-to-audit link is added by `database/init/005_alert_audit_link.sql`. After backing up an existing database, use the ordered migration runner:
 
 ```bash
-psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/init/005_alert_audit_link.sql
+npm run db:migrate
 ```
 
 ## Normalized security event ingestion
@@ -268,10 +277,10 @@ Authenticated admin, analyst, and viewer users can read `GET /api/security-event
 
 Ingestion only stores the normalized event for review. It does not verify the upstream product's detection, create an incident or alert automatically, run a scan, or execute containment. A provider-specific connector or SIEM/EDR configuration must still be built and configured; no external source is connected by default.
 
-The schema is in `database/init/006_security_event_ingestion.sql`. Docker applies it automatically only when creating a new database. For an existing database, back it up and apply the migration once:
+The schema is in `database/init/006_security_event_ingestion.sql`. Docker applies it automatically only when creating a new database. After backing up an existing database, use the ordered migration runner:
 
 ```bash
-psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/init/006_security_event_ingestion.sql
+npm run db:migrate
 ```
 
 ## Checks

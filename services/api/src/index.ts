@@ -8,6 +8,7 @@ import { privacyRouter } from './routes/privacy.js';
 import { attackPathsRouter } from './routes/attack-paths.js';
 import { assetInventoryRouter } from './assets/asset-inventory.routes.js';
 import { apiRateLimiter } from './middleware/rate-limit.js';
+import { apiAnomalyGuard } from './middleware/api-anomaly-guard.js';
 import { authRouter } from './auth/auth.routes.js';
 import { usersRouter } from './auth/users.routes.js';
 import { incidentsRouter } from './incidents/incidents.routes.js';
@@ -39,8 +40,14 @@ app.use(
     origin: allowedOrigins.length > 0 ? allowedOrigins : false
   })
 );
-app.use(express.json({ limit: '1mb' }));
+// Apply source throttling and anomaly inspection before parsing request bodies.
 app.use('/api', apiRateLimiter);
+// Unit tests exercise the guard directly with isolated stores. Do not make the
+// shared PostgreSQL production store a hidden dependency of unrelated route tests.
+app.use(process.env.NODE_ENV === 'test'
+  ? (_request, _response, next) => next()
+  : apiAnomalyGuard);
+app.use(express.json({ limit: '1mb' }));
 
 app.use('/health', healthRouter);
 app.use('/api/health', healthRouter);

@@ -56,17 +56,20 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y postgresql-client
 
-      - name: Apply database migrations to temporary CI database
-        env:
-          PGPASSWORD: nexus_test_password
+      - name: Apply database migrations with the application migration runner
+        run: npm run db:migrate
+
+      - name: Verify migration idempotency, PostgreSQL connectivity and schema
         run: |
-          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/init/001_init.sql
-          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/init/002_attack_path_inventory.sql
-          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/init/003_user_auth.sql
-          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/init/004_incident_management.sql
-          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/init/005_alert_audit_link.sql
-          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/init/006_security_event_ingestion.sql
-          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/init/007_malware_scan_history.sql
+          second_run="$(npm run db:migrate 2>&1)"
+          echo "$second_run"
+          echo "$second_run" | grep -F "0 applied, 8 already current, 8 total"
+          npm run db:check
+          table="$(psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -Atqc "SELECT to_regclass('public.api_rate_limit_counters')")"
+          test "$table" = "api_rate_limit_counters"
+          migration_count="$(psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -Atqc "SELECT COUNT(*) FROM nexus_schema_migrations")"
+          test "$migration_count" = "8"
+          echo "PostgreSQL connection verified and all 8 numbered migrations are recorded."
 
       - name: Build web and API workspaces
         run: npm run build
@@ -78,8 +81,11 @@ jobs:
         run: npm run lint --workspace @nexus-shield/api
 
   python-ai:
-    name: Python AI service validation
+    name: Python AI service validation (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.13"]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -87,7 +93,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: ${{ matrix.python-version }}
 
       - name: Install AI service dependencies
         run: python -m pip install -r services/ai/requirements.txt
@@ -223,7 +229,7 @@ jobs:
             fi
             sleep 2
           done
-          docker compose exec -T ai clamdscan --config-file=/etc/clamav/clamdscan.conf --ping=3:1 --no-summary
+          docker compose exec -T ai python -c "import socket; s=socket.create_connection(('clamav', 3310), timeout=3); s.sendall(b'zPING\\0'); response=s.recv(64); s.close(); assert response == b'PONG\\0', response; print('ClamAV INSTREAM TCP service is reachable')"
 
       - name: Verify Compose migrations and seed isolated test users
         env:

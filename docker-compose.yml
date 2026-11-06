@@ -61,13 +61,12 @@ services:
       NEXUS_SERVICE_API_TOKEN: ${NEXUS_SERVICE_API_TOKEN:-}
       NEXUS_QUARANTINE_DIR: /var/lib/nexus/quarantine
       NEXUS_MAX_UPLOAD_BYTES: ${NEXUS_MAX_UPLOAD_BYTES:-104857600}
-      CLAMDSCAN_BIN: clamdscan
-      CLAMDSCAN_CONFIG_FILE: /etc/clamav/clamdscan.conf
+      CLAMD_HOST: clamav
+      CLAMD_PORT: "3310"
     ports:
       - '127.0.0.1:8001:8001'
     volumes:
       - nexus_quarantine:/var/lib/nexus/quarantine
-      - ./infra/clamav/clamdscan.conf:/etc/clamav/clamdscan.conf:ro
     depends_on:
       clamav:
         condition: service_healthy
