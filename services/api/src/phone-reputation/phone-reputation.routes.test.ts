@@ -1,9 +1,11 @@
+import { randomUUID } from "node:crypto";
 import express from "express";
 import jwt from "jsonwebtoken";
 import request from "supertest";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createPhoneReputationRouter } from "./phone-reputation.routes.js";
+import { registerTestAuthSession } from "../auth/auth-session.repository.js";
 import type { PhoneReputationResponse } from "./phone-reputation.orchestrator.js";
 
 const SECRET = "nexus-phone-reputation-test-secret-at-least-32";
@@ -32,10 +34,26 @@ const fixture: PhoneReputationResponse = {
 };
 
 function token(role: "admin" | "analyst" | "viewer", subject = USER_ID) {
-  return jwt.sign({ email: role + "@example.test", role }, SECRET, {
-    algorithm: "HS256", subject, issuer: "nexus-shield-ai",
-    audience: "nexus-shield-ai-api", expiresIn: "15m"
+  const userId = subject;
+  const email = role + "@example.test";
+  const sessionId = randomUUID();
+  registerTestAuthSession({
+    sessionId,
+    userId,
+    expiresAt: new Date(Date.now() + 15 * 60 * 1000),
+    testIdentity: { id: userId, email, role }
   });
+  return jwt.sign(
+    { jti: sessionId },
+    SECRET,
+    {
+      algorithm: 'HS256',
+      subject: userId,
+      issuer: authTokenConfig.issuer,
+      audience: authTokenConfig.audience,
+      expiresIn: '15m'
+    }
+  );
 }
 function appFor(assessor: (phone: string) => Promise<PhoneReputationResponse>) {
   const app = express();
