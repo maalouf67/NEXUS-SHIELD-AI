@@ -30,7 +30,7 @@ async function startServer(): Promise<void> {
   validateEnv();
   await verifyActiveDefenseSchema();
   const port = Number(process.env.PORT ?? 4000);
-  const host = process.env.HOST ?? '127.0.0.1';
+  const host = process.env.HOST ?? (process.env.NODE_ENV === 'production' ? '0.0.0.0' : '127.0.0.1');
   const server = app.listen(port, host, () => {
     console.log(`NEXUS SHIELD AI API listening on http://${host}:${port}`);
     const runCleanupSafely = () => {
