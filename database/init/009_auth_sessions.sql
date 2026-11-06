@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS auth_sessions (
   expires_at TIMESTAMPTZ NOT NULL,
   revoked_at TIMESTAMPTZ,
   revocation_reason VARCHAR(64),
+  revoked_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
   CONSTRAINT chk_auth_sessions_expiry CHECK (expires_at > created_at),
   CONSTRAINT chk_auth_sessions_revocation CHECK (
     (revoked_at IS NULL AND revocation_reason IS NULL)
