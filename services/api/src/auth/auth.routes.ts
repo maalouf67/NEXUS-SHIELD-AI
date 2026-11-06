@@ -63,6 +63,7 @@ export function createAuthRouter(
         sessionId,
         userId: user.id,
         expiresAt,
+        expectedPasswordHash: user.passwordHash,
         testIdentity: {
           id: user.id,
           email: user.email,
@@ -152,7 +153,8 @@ export function createAuthRouter(
       try {
         const revokedSessions = await sessions.revokeAllSessions(
           parsedUserId.data,
-          'admin_revoke_all'
+          'admin_revoke_all',
+          req.authUser?.id
         );
         res.setHeader('Cache-Control', 'no-store');
         return res.status(200).json({
