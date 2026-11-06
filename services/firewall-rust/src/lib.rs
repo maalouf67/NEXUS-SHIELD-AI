@@ -323,7 +323,7 @@ impl NetworkBehaviorDetector {
             attributes.insert("detection_engine".into(), "nexus-rust-firewall".into());
             emitted.push(SecurityEventInput {
                 source: "nexus-rust-firewall".into(),
-                external_event_id: Uuid::new_v4().to_string(),
+                external_event_id: Uuid::new_v5(\n                    &Uuid::NAMESPACE_OID,\n                    format!("nexus-firewall:v1:{source_ip}:{}:{observed_at}", kind.event_type()).as_bytes(),\n                ).to_string(),
                 event_type: kind.event_type().into(),
                 severity: kind.severity().into(),
                 observed_at: observed.to_rfc3339_opts(SecondsFormat::Millis, true),
