@@ -28,6 +28,9 @@ Set these server-side environment variables:
 
 - NEXUS_SOC_API_URL — API origin only, for example https://api.example.com (do not include a path).
 - NEXUS_EVENT_INGESTION_TOKEN — dedicated ingestion token; at least 32 characters.
+- NEXUS_FIREWALL_FINGERPRINT_KEY — separate secret key of at least 32 characters, used to HMAC the source IP into a stable 64-character fingerprint before SOC submission.
+
+The SOC event contains the keyed fingerprint, not the raw source IP. Keep both keys in the server secret store. The offline stdout preview is local operator output and still includes the source IP for local triage.
 
 Remote SOC connections require HTTPS. Plain HTTP is accepted only for localhost in the isolated lab. The adapter posts batches of up to 100 events, retries transient connection/time-out, 408, 429, and 5xx failures up to three attempts, and generates deterministic event IDs from source, signal, and trigger timestamp so replayed input can use the API idempotency constraint. The ingestion header is marked sensitive in the HTTP client.
 
@@ -63,7 +66,7 @@ cargo run -- --input /var/log/nexus/normalized-flows.jsonl
 
 ## Isolated integration lab
 
-The lab image runs as a non-root user, with no network namespace access beyond its own loopback, no Linux capabilities, a read-only root filesystem, a small memory/PID limit, synthetic documentation-range IP addresses, and a local mock SOC endpoint. It verifies the actual HTTP path, ingestion header, event schema, and expected detections without connecting to the real SOC or changing host networking.
+The lab image runs as a non-root user, with no network namespace access beyond its own loopback, no Linux capabilities, a read-only root filesystem, a small memory/PID limit, synthetic documentation-range IP addresses, and a local mock SOC endpoint. It verifies the actual HTTP path, ingestion header, event schema, source-IP pseudonymization, and expected detections without connecting to the real SOC or changing host networking.
 
 ~~~sh
 docker build -f Dockerfile -t nexus-firewall-lab .
