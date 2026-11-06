@@ -1,5 +1,6 @@
 use nexus_firewall::{
-    FlowObservation, NetworkBehaviorConfig, NetworkBehaviorDetector, SecurityEventInput,
+    FirewallPolicy, FlowObservation, NetworkBehaviorConfig, NetworkBehaviorDetector,
+    SecurityEventInput,
 };
 use nexus_firewall::soc::SocClient;
 use serde::Serialize;
@@ -18,8 +19,16 @@ struct PreviewBatch<'a> {
 }
 
 fn usage() {
-    eprintln!("Usage: nexus-firewall --input <flows.jsonl|-> [--soc-url <https://api-host> | --stdout-only]");
+    eprintln!("Usage: nexus-firewall --policy-preview <policy.json>");
+    eprintln!("       nexus-firewall --input <flows.jsonl|-> [--soc-url <https://api-host> | --stdout-only]");
+    eprintln!("Policy preview validates and prints candidate nftables rules only; it never applies them.");
     eprintln!("Input is normalized JSONL from a trusted sensor. No packet capture or host changes occur.");
+}
+
+fn render_policy_preview_json(input: &str) -> Result<String, String> {
+    let policy: FirewallPolicy = serde_json::from_str(input)
+        .map_err(|error| format!("invalid policy JSON: {error}"))?;
+    policy.render_nftables().map_err(|error| error.to_string())
 }
 
 fn run() -> Result<(), String> {
@@ -27,10 +36,19 @@ fn run() -> Result<(), String> {
     let mut input: Option<String> = None;
     let mut soc_url: Option<String> = None;
     let mut stdout_only = false;
+    let mut policy_preview: Option<String> = None;
 
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--input" => input = args.next(),
+            "--policy-preview" => {
+                let path = args.next()
+                    .ok_or_else(|| "--policy-preview requires a policy JSON path".to_string())?;
+                if path.trim().is_empty() {
+                    return Err("--policy-preview path cannot be empty".into());
+                }
+                policy_preview = Some(path);
+            }
             "--soc-url" => soc_url = args.next(),
             "--stdout-only" => stdout_only = true,
             "--help" | "-h" => {
@@ -39,6 +57,17 @@ fn run() -> Result<(), String> {
             }
             _ => return Err(format!("unknown argument: {arg}")),
         }
+    }
+
+    if let Some(policy_path) = policy_preview {
+        if input.is_some() || soc_url.is_some() || stdout_only {
+            return Err("--policy-preview cannot be combined with --input, --soc-url, or --stdout-only".into());
+        }
+        let policy_json = std::fs::read_to_string(&policy_path)
+            .map_err(|error| format!("cannot read policy JSON: {error}"))?;
+        let candidate_rules = render_policy_preview_json(&policy_json)?;
+        println!("{candidate_rules}");
+        return Ok(());
     }
 
     let input = input.ok_or_else(|| "missing --input".to_string())?;
@@ -116,5 +145,40 @@ fn main() {
         eprintln!("nexus-firewall: {error}");
         usage();
         process::exit(2);
+    }
+}
+
+
+#[cfg(test)]
+mod policy_preview_tests {
+    use super::render_policy_preview_json;
+
+    #[test]
+    fn validates_and_renders_candidate_rules_without_applying_them() {
+        let rules = render_policy_preview_json(
+            r#"{"allowed_tcp_ports":[22,443],"denied_sources":["192.0.2.0/24","2001:db8::/32"]}"#,
+        )
+        .unwrap();
+
+        assert!(rules.contains("policy drop"));
+        assert!(rules.contains("tcp dport 22 ct state new accept"));
+        assert!(rules.contains("tcp dport 443 ct state new accept"));
+        assert!(rules.contains("ip saddr 192.0.2.0/24 drop"));
+        assert!(rules.contains("ip6 saddr 2001:db8::/32 drop"));
+    }
+
+    #[test]
+    fn rejects_invalid_policy_values_before_rendering() {
+        let error = render_policy_preview_json(
+            r#"{"allowed_tcp_ports":[0],"denied_sources":[]}"#,
+        )
+        .unwrap_err();
+        assert!(error.contains("port 0"));
+    }
+
+    #[test]
+    fn rejects_malformed_policy_json() {
+        let error = render_policy_preview_json("{not-json").unwrap_err();
+        assert!(error.starts_with("invalid policy JSON:"));
     }
 }
