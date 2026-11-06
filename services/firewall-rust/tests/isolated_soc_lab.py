@@ -6,6 +6,7 @@ import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 TOKEN = "nexus-isolated-lab-token-do-not-reuse-in-production"
+FINGERPRINT_KEY = "nexus-isolated-fingerprint-key-do-not-reuse"
 captured = []
 errors = []
 
@@ -34,6 +35,11 @@ class SocMockHandler(BaseHTTPRequestHandler):
                     raise ValueError("event missing SOC contract fields")
                 if event["source"] != "nexus-rust-firewall":
                     raise ValueError("unexpected source identifier")
+                attributes = event["attributes"]
+                if "source_ip" in attributes or len(attributes.get("source_fingerprint", "")) != 64:
+                    raise ValueError("source IP was not pseudonymized before SOC storage")
+                if "198.51.100.27" in event["summary"]:
+                    raise ValueError("raw source IP leaked into SOC summary")
             captured.extend(events)
         except Exception as exc:
             errors.append(str(exc))
@@ -56,6 +62,7 @@ def main():
     port = server.server_address[1]
     environment = os.environ.copy()
     environment["NEXUS_EVENT_INGESTION_TOKEN"] = TOKEN
+    environment["NEXUS_FIREWALL_FINGERPRINT_KEY"] = FINGERPRINT_KEY
 
     try:
         result = subprocess.run(
