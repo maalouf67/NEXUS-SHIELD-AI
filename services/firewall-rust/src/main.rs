@@ -93,7 +93,10 @@ fn run() -> Result<(), String> {
         }
         let token = env::var("NEXUS_EVENT_INGESTION_TOKEN")
             .map_err(|_| "NEXUS_EVENT_INGESTION_TOKEN is required for SOC forwarding".to_string())?;
-        let client = SocClient::new(&base_url, token).map_err(|error| error.to_string())?;
+        let fingerprint_key = env::var("NEXUS_FIREWALL_FINGERPRINT_KEY")
+            .map_err(|_| "NEXUS_FIREWALL_FINGERPRINT_KEY is required for privacy-preserving SOC forwarding".to_string())?;
+        let client = SocClient::new(&base_url, token, fingerprint_key)
+            .map_err(|error| error.to_string())?;
         let accepted = client.ingest_events(&events).map_err(|error| error.to_string())?;
         println!("Processed {observations_processed} observations; SOC accepted {accepted} security events.");
     } else {
