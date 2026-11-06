@@ -50,7 +50,21 @@ describe('PostgreSQL access-session lifecycle integration', () => {
         expect(await repository.findActiveSession(firstSessionId, userId)).toBeNull();
         expect(await repository.findActiveSession(secondSessionId, userId)).toBeNull();
 
-        await repository.createSession({ sessionId: thirdSessionId, userId, expiresAt });
+        await pool.query('UPDATE users SET password_hash = $2 WHERE id = $1', [userId, 'updated-password-hash']);
+        // Credential changes also revoke existing sessions.
+        expect(await repository.createSession({
+          sessionId: randomUUID(),
+          userId,
+          expiresAt,
+          expectedPasswordHash: 'test-password-hash'
+        })).rejects.toThrow('User security state changed');
+
+        await repository.createSession({
+          sessionId: thirdSessionId,
+          userId,
+          expiresAt,
+          expectedPasswordHash: 'updated-password-hash'
+        });
         expect((await repository.findActiveSession(thirdSessionId, userId))?.role).toBe('viewer');
         expect(await repository.revokeSession(thirdSessionId, userId, 'test_logout')).toBe(true);
         expect(await repository.findActiveSession(thirdSessionId, userId)).toBeNull();
