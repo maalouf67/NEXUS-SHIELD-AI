@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import express from "express";
 import jwt from "jsonwebtoken";
 import request from "supertest";
@@ -9,6 +10,7 @@ vi.mock("../db/pool.js", () => ({
 
 import { checkDatabaseConnection } from "../db/pool.js";
 import { healthRouter } from "./health.js";
+import { registerTestAuthSession } from "../auth/auth-session.repository.js";
 
 const SECRET = "nexus-health-test-secret-at-least-thirty-two-characters";
 const ORIGINAL = {
@@ -19,9 +21,17 @@ const ORIGINAL = {
 };
 
 function token() {
-  return jwt.sign({ email: "analyst@example.test", role: "analyst" }, SECRET, {
+  const userId = "550e8400-e29b-41d4-a716-446655440000";
+  const sessionId = randomUUID();
+  registerTestAuthSession({
+    sessionId,
+    userId,
+    expiresAt: new Date(Date.now() + 15 * 60 * 1000),
+    testIdentity: { id: userId, email: "analyst@example.test", role: "analyst" }
+  });
+  return jwt.sign({ jti: sessionId }, SECRET, {
     algorithm: "HS256",
-    subject: "550e8400-e29b-41d4-a716-446655440000",
+    subject: userId,
     issuer: "nexus-shield-ai",
     audience: "nexus-shield-ai-api",
     expiresIn: "15m"

@@ -9,17 +9,20 @@ async function verifyActiveDefenseSchema(): Promise<void> {
     rate_limit_counters: string | null;
     security_events: string | null;
     security_event_reviews: string | null;
+    auth_sessions: string | null;
   }>(`
     SELECT
       to_regclass('public.api_rate_limit_counters')::text AS rate_limit_counters,
       to_regclass('public.security_events')::text AS security_events,
-      to_regclass('public.security_event_reviews')::text AS security_event_reviews
+      to_regclass('public.security_event_reviews')::text AS security_event_reviews,
+      to_regclass('public.auth_sessions')::text AS auth_sessions
   `);
   const schema = result.rows[0];
   const missing = [
     { name: 'api_rate_limit_counters', exists: Boolean(schema?.rate_limit_counters) },
     { name: 'security_events', exists: Boolean(schema?.security_events) },
-    { name: 'security_event_reviews', exists: Boolean(schema?.security_event_reviews) }
+    { name: 'security_event_reviews', exists: Boolean(schema?.security_event_reviews) },
+    { name: 'auth_sessions', exists: Boolean(schema?.auth_sessions) }
   ].filter((table) => !table.exists).map((table) => table.name);
   if (missing.length > 0) {
     throw new Error(`Required Active Defense/SOC tables are missing: ${missing.join(', ')}. Run npm run db:migrate before starting the API.`);

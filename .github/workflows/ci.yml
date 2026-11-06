@@ -2,9 +2,9 @@ name: NEXUS SHIELD AI - Build and Test
 
 on:
   push:
-    branches: ["main", "feature/**"]
+    branches: ["main", "feature/**", "feat/**"]
   pull_request:
-    branches: ["main"]
+    branches: ["main", "feat/**"]
 
 permissions:
   contents: read
@@ -63,13 +63,13 @@ jobs:
         run: |
           second_run="$(npm run db:migrate 2>&1)"
           echo "$second_run"
-          echo "$second_run" | grep -F "0 applied, 8 already current, 8 total"
+          echo "$second_run" | grep -F "0 applied, 9 already current, 9 total"
           npm run db:check
-          table="$(psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -Atqc "SELECT to_regclass('public.api_rate_limit_counters')")"
-          test "$table" = "api_rate_limit_counters"
+          tables="$(psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -Atqc "SELECT to_regclass('public.api_rate_limit_counters')::text || ',' || to_regclass('public.auth_sessions')::text")"
+          test "$tables" = "api_rate_limit_counters,auth_sessions"
           migration_count="$(psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -Atqc "SELECT COUNT(*) FROM nexus_schema_migrations")"
-          test "$migration_count" = "8"
-          echo "PostgreSQL connection verified and all 8 numbered migrations are recorded."
+          test "$migration_count" = "9"
+          echo "PostgreSQL connection verified and all 9 numbered migrations are recorded."
 
       - name: Build web and API workspaces
         run: npm run build
@@ -253,6 +253,11 @@ jobs:
           VALUES
             ('00000000-0000-4000-8000-000000000001', 'scan-admin@example.test', 'admin', NULL, TRUE),
             ('00000000-0000-4000-8000-000000000002', 'scan-viewer@example.test', 'viewer', NULL, TRUE);
+
+          INSERT INTO auth_sessions (id, user_id, expires_at)
+          VALUES
+            ('00000000-0000-4000-8000-000000000011', '00000000-0000-4000-8000-000000000001', NOW() + INTERVAL '30 minutes'),
+            ('00000000-0000-4000-8000-000000000022', '00000000-0000-4000-8000-000000000002', NOW() + INTERVAL '30 minutes');
           SQL
 
       - name: Start the API and Next.js web console
@@ -298,7 +303,7 @@ jobs:
         env:
           JWT_SECRET: nexus-ci-only-jwt-secret-never-reuse-123456789
         run: |
-          TOKEN="$(node -e "const jwt=require('jsonwebtoken'); process.stdout.write(jwt.sign({email:'scan-admin@example.test',role:'admin'}, process.env.JWT_SECRET, {algorithm:'HS256',subject:'00000000-0000-4000-8000-000000000001',issuer:'nexus-shield-ai',audience:'nexus-shield-ai-api',expiresIn:'15m'}))")"
+          TOKEN="$(node -e "const jwt=require('jsonwebtoken'); process.stdout.write(jwt.sign({jti:'00000000-0000-4000-8000-000000000011'}, process.env.JWT_SECRET, {algorithm:'HS256',subject:'00000000-0000-4000-8000-000000000001',issuer:'nexus-shield-ai',audience:'nexus-shield-ai-api',expiresIn:'15m'}))")"
           printf '%s\n' 'NEXUS SHIELD AI benign web gateway test fixture.' > /tmp/nexus-clean.txt
           HTTP_STATUS="$(curl --silent --show-error --output /tmp/nexus-clean-result.json --write-out '%{http_code}' \
             -H "Cookie: nexus_access_token=$TOKEN" \
@@ -314,7 +319,7 @@ jobs:
         env:
           JWT_SECRET: nexus-ci-only-jwt-secret-never-reuse-123456789
         run: |
-          TOKEN="$(node -e "const jwt=require('jsonwebtoken'); process.stdout.write(jwt.sign({email:'scan-admin@example.test',role:'admin'}, process.env.JWT_SECRET, {algorithm:'HS256',subject:'00000000-0000-4000-8000-000000000001',issuer:'nexus-shield-ai',audience:'nexus-shield-ai-api',expiresIn:'15m'}))")"
+          TOKEN="$(node -e "const jwt=require('jsonwebtoken'); process.stdout.write(jwt.sign({jti:'00000000-0000-4000-8000-000000000011'}, process.env.JWT_SECRET, {algorithm:'HS256',subject:'00000000-0000-4000-8000-000000000001',issuer:'nexus-shield-ai',audience:'nexus-shield-ai-api',expiresIn:'15m'}))")"
           printf '%s' 'X5O!P%@AP[4\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*' > /tmp/eicar.com
           curl --fail --silent --show-error \
             -H "Cookie: nexus_access_token=$TOKEN" \
@@ -327,8 +332,8 @@ jobs:
         env:
           JWT_SECRET: nexus-ci-only-jwt-secret-never-reuse-123456789
         run: |
-          ADMIN_TOKEN="$(node -e "const jwt=require('jsonwebtoken'); process.stdout.write(jwt.sign({email:'scan-admin@example.test',role:'admin'}, process.env.JWT_SECRET, {algorithm:'HS256',subject:'00000000-0000-4000-8000-000000000001',issuer:'nexus-shield-ai',audience:'nexus-shield-ai-api',expiresIn:'15m'}))")"
-          VIEWER_TOKEN="$(node -e "const jwt=require('jsonwebtoken'); process.stdout.write(jwt.sign({email:'scan-viewer@example.test',role:'viewer'}, process.env.JWT_SECRET, {algorithm:'HS256',subject:'00000000-0000-4000-8000-000000000002',issuer:'nexus-shield-ai',audience:'nexus-shield-ai-api',expiresIn:'15m'}))")"
+          ADMIN_TOKEN="$(node -e "const jwt=require('jsonwebtoken'); process.stdout.write(jwt.sign({jti:'00000000-0000-4000-8000-000000000011'}, process.env.JWT_SECRET, {algorithm:'HS256',subject:'00000000-0000-4000-8000-000000000001',issuer:'nexus-shield-ai',audience:'nexus-shield-ai-api',expiresIn:'15m'}))")"
+          VIEWER_TOKEN="$(node -e "const jwt=require('jsonwebtoken'); process.stdout.write(jwt.sign({jti:'00000000-0000-4000-8000-000000000022'}, process.env.JWT_SECRET, {algorithm:'HS256',subject:'00000000-0000-4000-8000-000000000002',issuer:'nexus-shield-ai',audience:'nexus-shield-ai-api',expiresIn:'15m'}))")"
           curl --fail --silent --show-error \
             -H "Cookie: nexus_access_token=$ADMIN_TOKEN" \
             http://127.0.0.1:3000/api/security/scan?limit=10 > /tmp/nexus-admin-history.json

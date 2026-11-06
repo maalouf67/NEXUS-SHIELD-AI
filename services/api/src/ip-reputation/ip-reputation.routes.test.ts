@@ -1,9 +1,12 @@
+import { randomUUID } from "node:crypto";
 import express from "express";
 import jwt from "jsonwebtoken";
 import request from "supertest";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { ipReputationRouter } from "./ip-reputation.routes.js";
+import { authTokenConfig } from "../auth/auth.middleware.js";
+import { registerTestAuthSession } from "../auth/auth-session.repository.js";
 
 const SECRET = "nexus-ip-reputation-test-secret-at-least-32";
 const USER = "550e8400-e29b-41d4-a716-446655440000";
@@ -13,13 +16,26 @@ const ORIGINAL = {
 };
 
 function token(role: "admin" | "analyst" | "viewer") {
-  return jwt.sign({ email: role + "@example.test", role }, SECRET, {
-    algorithm: "HS256",
-    subject: USER,
-    issuer: "nexus-shield-ai",
-    audience: "nexus-shield-ai-api",
-    expiresIn: "15m"
+  const userId = USER;
+  const email = role + "@example.test";
+  const sessionId = randomUUID();
+  registerTestAuthSession({
+    sessionId,
+    userId,
+    expiresAt: new Date(Date.now() + 15 * 60 * 1000),
+    testIdentity: { id: userId, email, role }
   });
+  return jwt.sign(
+    { jti: sessionId },
+    SECRET,
+    {
+      algorithm: 'HS256',
+      subject: userId,
+      issuer: authTokenConfig.issuer,
+      audience: authTokenConfig.audience,
+      expiresIn: '15m'
+    }
+  );
 }
 
 function appFor() {

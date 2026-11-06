@@ -34,12 +34,25 @@ export async function GET(request: NextRequest) {
     });
     const payload = await upstream.json().catch(() => null);
 
-    if (!upstream.ok) {
+    if (upstream.status === 401) {
+      // Clear the browser copy only when the API explicitly confirms that the
+      // session is unauthenticated, expired or revoked.
       const response = NextResponse.json(
         { error: 'UNAUTHENTICATED' },
         { status: 401 }
       );
       response.cookies.delete(SESSION_COOKIE);
+      response.headers.set('Cache-Control', 'no-store');
+      return response;
+    }
+
+    if (!upstream.ok) {
+      // Do not turn a temporary session-store/database outage into a local
+      // sign-out. Keep the HttpOnly cookie so the user can retry after recovery.
+      const response = NextResponse.json(
+        { error: 'AUTH_SERVICE_UNAVAILABLE' },
+        { status: 503 }
+      );
       response.headers.set('Cache-Control', 'no-store');
       return response;
     }

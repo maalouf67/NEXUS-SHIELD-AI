@@ -2,7 +2,7 @@ name: NEXUS SHIELD AI - Security Checks
 
 on:
   push:
-    branches: ["main", "feature/**"]
+    branches: ["main", "feature/**", "feat/**"]
   pull_request:
     branches: ["main", "feat/**"]
   schedule:

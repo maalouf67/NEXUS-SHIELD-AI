@@ -45,6 +45,7 @@ public final class MainActivity extends Activity {
     private EditText emailInput;
     private EditText passwordInput;
     private Button loginButton;
+    private Button logoutButton;
     private Button chooseButton;
     private Button scanButton;
     private Button historyButton;
@@ -131,6 +132,11 @@ public final class MainActivity extends Activity {
         statusText = text("Sign in to connect this app to your NEXUS SHIELD AI server.", 12, Color.rgb(186, 204, 224), false);
         statusText.setLineSpacing(dp(4), 1.0f);
         statusCard.addView(statusText);
+        logoutButton = button("Sign out and revoke session");
+        statusCard.addView(logoutButton);
+        logoutButton.setEnabled(false);
+        logoutButton.setAlpha(0.45f);
+        logoutButton.setOnClickListener(view -> signOut());
 
         addGap(page, 14);
         LinearLayout dnsCard = card(page);
@@ -233,6 +239,8 @@ public final class MainActivity extends Activity {
                 runOnUiThread(() -> {
                     passwordInput.setText("");
                     accountCanScan = "admin".equals(role) || "analyst".equals(role);
+                    logoutButton.setEnabled(true);
+                    logoutButton.setAlpha(1.0f);
                     scanButton.setEnabled(accountCanScan && selectedFileUri != null);
                     scanButton.setAlpha(scanButton.isEnabled() ? 1.0f : 0.45f);
                     setStatus("Signed in as " + role + ". Your short-lived token is held in memory and is not saved to disk.");
@@ -247,6 +255,46 @@ public final class MainActivity extends Activity {
             } finally {
                 if (connection != null) connection.disconnect();
             }
+        });
+    }
+
+    private void signOut() {
+        if (busy || accessToken == null || apiBaseUrl == null) return;
+
+        final String token = accessToken;
+        final String api = apiBaseUrl;
+        setBusy(true, "Revoking this server session…");
+
+        worker.execute(() -> {
+            boolean serverSessionInvalidated = false;
+            HttpURLConnection connection = null;
+            try {
+                connection = open(new URL(api + "/api/auth/logout"), "POST");
+                connection.setRequestProperty("Authorization", "Bearer " + token);
+                int status = connection.getResponseCode();
+                serverSessionInvalidated = status >= 200 && status < 300 || status == 401;
+            } catch (Exception ignored) {
+                // Local sign-out still proceeds. The UI must not claim that the
+                // server-side session was revoked when the API was unreachable.
+                serverSessionInvalidated = false;
+            } finally {
+                if (connection != null) connection.disconnect();
+            }
+
+            final boolean revoked = serverSessionInvalidated;
+            runOnUiThread(() -> {
+                accessToken = null;
+                accountCanScan = false;
+                scanButton.setEnabled(false);
+                scanButton.setAlpha(0.45f);
+                logoutButton.setEnabled(false);
+                logoutButton.setAlpha(0.45f);
+                historyText.setText("Sign in to view your saved scan history.");
+                setStatus(revoked
+                    ? "Signed out. The server session is no longer active."
+                    : "Signed out locally. The server could not confirm revocation; the old token may remain valid until its 15-minute expiry.");
+                setBusy(false, null);
+            });
         });
     }
 

@@ -9,7 +9,8 @@ NEXUS SHIELD AI is an actively developed cyber-defense platform foundation combi
 - The cost-incurring AI threat-analysis endpoint also requires the same server-side service token; the dashboard does not trigger AI requests automatically.
 - Dashboard incident, critical and mitigated totals are aggregated from PostgreSQL incident records. No calibrated AI score or live upstream threat telemetry is available by default; security-event records appear only when a trusted source submits them.
 - AI threat analysis evaluates information explicitly supplied to the API. It is not a system scan or incident confirmation.
-- API bearer authentication and admin/analyst/viewer role checks are implemented. The web dashboard includes an initial authenticated flow, team management, and incident/alert/event review. A normalized event ingestion endpoint is ready for trusted upstream sources, but provider-specific connectors, live source configuration, and automated response are not yet in place.
+- API bearer authentication uses 15-minute JWTs backed by PostgreSQL session records; server-side single-session logout and logout-all routes are implemented on the session-revocation feature branch. Current user activation and role state are checked on every authenticated request, and changes to role, account activation or password hash revoke active sessions. The web logout route and native Android sign-out flow attempt server revocation before clearing local credentials. The session-revocation branch remains under CI/review and is not merged or production-deployed.
+- The web dashboard includes an initial authenticated flow, team management, and incident/alert/event review. A normalized event ingestion endpoint is ready for trusted upstream sources, but provider-specific connectors, live source configuration, and automated response are not yet in place.
 - A PostgreSQL-backed asset inventory API now supports authenticated, transactional upserts and read-only analysis of stored relationships.
 
 Do not describe sample data or planned capabilities as active protection.
@@ -40,6 +41,19 @@ Do not describe sample data or planned capabilities as active protection.
 
 Never commit populated `.env`, `.env.local`, API keys, passwords, or service tokens.
 
+## Server-side access-session lifecycle
+
+The API issues 15-minute access JWTs with a random session identifier (jti). The corresponding row is stored in PostgreSQL; raw bearer tokens are not stored. Every protected API request verifies the token and checks that its session is unexpired, not revoked, and belongs to an active user. The role is loaded from the current user record rather than trusted from an old JWT claim.
+
+- POST /api/auth/logout revokes the current session.
+- POST /api/auth/logout-all revokes all active sessions belonging to the current user.
+- POST /api/auth/users/:userId/sessions/revoke-all allows an administrator to revoke a target user's active sessions.
+- A database trigger revokes active sessions when a user's role, active status or password hash changes.
+- If PostgreSQL session validation is unavailable, protected API routes fail closed with HTTP 503.
+- The browser and Android app always clear their local session after sign-out. The response/UI distinguishes successful server invalidation from local-only sign-out when the API cannot be reached.
+
+Migration 009 is additive. Applying it does not automatically change a live database: back up first, review the SQL, and use the approved migration procedure. Existing JWTs that have no server-side jti session row will be rejected after this change is deployed, so users will need to sign in again. React Native/iOS in the separate Draft PR #14 still needs to adopt these endpoints before that client is considered release-ready. See docs/SESSION-SECURITY.md.
+
 ## Local PostgreSQL
 
 Start the local database only after setting a strong `POSTGRES_PASSWORD` in the root `.env`:
@@ -57,7 +71,7 @@ npm run db:migrate
 npm run db:check
 ```
 
-The migration runner applies numbered files 001–008, uses a PostgreSQL advisory lock, records SHA-256 checksums, and refuses modified historical migrations. It is safe to re-run against a database whose schema is already present, provided the schema matches the repository migration files. Back up an existing or production database and inspect pending SQL before migration. See [Database migrations and connectivity](docs/DATABASE-MIGRATIONS.md).
+The migration runner applies numbered files 001–009, uses a PostgreSQL advisory lock, records SHA-256 checksums, and refuses modified historical migrations. It is safe to re-run against a database whose schema is already present, provided the schema matches the repository migration files. Back up an existing or production database and inspect pending SQL before migration. See [Database migrations and connectivity](docs/DATABASE-MIGRATIONS.md).
 
 The API database pool supports explicit local non-TLS mode and verified TLS mode. Supabase hosts use the bundled Supabase CA by default; other providers use Node's trusted system roots unless DATABASE_SSL_CA_PATH explicitly supplies a provider CA. Certificate verification remains enabled.
 

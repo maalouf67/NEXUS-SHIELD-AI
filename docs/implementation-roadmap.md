@@ -104,11 +104,17 @@ The documentation update that follows this snapshot must itself pass the workflo
 
 ### 8. Workspace isolation and session lifecycle — RELEASE BLOCKERS
 
-- [ ] Issue #24: define workspaces, memberships, active-workspace selection and tenant-scoped integration identities before adding tenant predicates.
+- [x] Issue #24 architecture baseline documented in separate Draft PR #30 on top of PR #19; it defines workspaces, memberships, scoped integration identities, composite ownership constraints, RLS sequencing and safe legacy-data handling.
+- [ ] Implement the workspace/membership schema, scoped middleware/repositories, two-workspace isolation tests and explicit legacy backfill; PR #19 remains blocked from multi-tenant release.
 - [ ] Scope asset inventory, evidence, relationships, incidents, alerts, security events, reviews, aggregates and audit records to validated server-side workspace membership.
 - [ ] Add two-workspace integration tests, row-level access checks and pooled-connection isolation tests; plan an explicit, reversible legacy-data backfill.
-- [ ] Issue #25: add random session identifiers and server-side session records/revocation, single-session logout, revoke-all, role-change/user-disable invalidation and fail-closed behavior.
-- [ ] Update web and native clients so sign-out attempts server revocation and always clears local credentials without falsely claiming remote revocation.
+- [x] Issue #25 core API implementation on `feat/server-session-revocation-issue-25`: random `jti`, PostgreSQL session rows, single-session logout, logout-all, admin revoke-all, fail-closed validation and current-user state checks.
+- [x] Migration 009 adds account role/active/password-hash change triggers that revoke existing sessions.
+- [x] Web logout and native Android sign-out call server revocation and always clear local credentials; they distinguish confirmed server invalidation from local-only sign-out.
+- [x] Build and Test #426 and Security Checks #376 passed on head `6a7a9f8`; PostgreSQL integration tests include expiry, stale credential, role/disablement, wrong-user, single-session and concurrent logout-all cases.
+- [x] Web `/auth/me` preserves the cookie on upstream 503 and clears it only after explicit 401; Android sign-out reports when remote revocation could not be confirmed.
+- [ ] Review/merge, production migration and rollout sign-off remain open. React Native/iOS in Draft PR #14 has not adopted these endpoints.
+- Compatibility note: tokens issued before migration 009 without a server session row will be rejected after deployment; coordinate a sign-in transition.
 - Release rule: PR #19's workspace-global inventory/SOC data must not be released as a multi-tenant product until issue #24 is accepted. Local token deletion is not server-side revocation.
 
 ### 9. Reverse-engineering lab — TOOLING DOCUMENTED; OPERATIONAL USE NOT VERIFIED

@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import express from 'express';
 import jwt from 'jsonwebtoken';
 import request from 'supertest';
@@ -9,19 +10,29 @@ vi.mock('../db/pool.js', () => ({
 
 import { pool } from '../db/pool.js';
 import { threatsRouter } from './threats.js';
+import { authTokenConfig } from '../auth/auth.middleware.js';
+import { registerTestAuthSession } from '../auth/auth-session.repository.js';
 
 const SECRET = 'nexus-threats-test-secret-at-least-thirty-two-characters';
 const ORIGINAL = process.env.JWT_SECRET;
 
 function token(role: 'admin' | 'analyst' | 'viewer' = 'analyst') {
+  const userId = '550e8400-e29b-41d4-a716-446655440000';
+  const sessionId = randomUUID();
+  registerTestAuthSession({
+    sessionId,
+    userId,
+    expiresAt: new Date(Date.now() + 15 * 60 * 1000),
+    testIdentity: { id: userId, email: 'analyst@example.test', role }
+  });
   return jwt.sign(
-    { email: 'analyst@example.test', role },
+    { jti: sessionId },
     SECRET,
     {
       algorithm: 'HS256',
-      subject: '550e8400-e29b-41d4-a716-446655440000',
-      issuer: 'nexus-shield-ai',
-      audience: 'nexus-shield-ai-api',
+      subject: userId,
+      issuer: authTokenConfig.issuer,
+      audience: authTokenConfig.audience,
       expiresIn: '15m'
     }
   );
