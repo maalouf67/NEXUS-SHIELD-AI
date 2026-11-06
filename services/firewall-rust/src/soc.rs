@@ -46,7 +46,8 @@ impl SocClient {
         }
         let mut token_header = HeaderValue::from_str(token.trim())
             .map_err(|_| SocError::InvalidToken)?;
-        token_header.set_sensitive(true);\n        let parsed = Url::parse(base_url)
+        token_header.set_sensitive(true);
+        let parsed = Url::parse(base_url)
             .map_err(|error| SocError::InvalidUrl(error.to_string()))?;
         if !parsed.username().is_empty()
             || parsed.password().is_some()
