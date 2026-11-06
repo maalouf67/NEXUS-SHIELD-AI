@@ -1,6 +1,6 @@
 use crate::SecurityEventInput;
 use reqwest::blocking::Client;
-use reqwest::StatusCode;
+use reqwest::{header::HeaderValue, StatusCode};
 use std::{net::IpAddr, thread, time::Duration};
 use url::Url;
 
@@ -35,7 +35,7 @@ impl std::error::Error for SocError {}
 
 pub struct SocClient {
     endpoint: String,
-    token: String,
+    token: HeaderValue,
     client: Client,
 }
 
@@ -44,7 +44,9 @@ impl SocClient {
         if token.trim().len() < 32 {
             return Err(SocError::InvalidToken);
         }
-        let mut token_header = HeaderValue::from_str(token.trim()).map_err(|_| SocError::InvalidToken)?;\n        token_header.set_sensitive(true);\n        let parsed = Url::parse(base_url)
+        let mut token_header = HeaderValue::from_str(token.trim())
+            .map_err(|_| SocError::InvalidToken)?;
+        token_header.set_sensitive(true);\n        let parsed = Url::parse(base_url)
             .map_err(|error| SocError::InvalidUrl(error.to_string()))?;
         if !parsed.username().is_empty()
             || parsed.password().is_some()
