@@ -52,9 +52,6 @@ impl FirewallPolicy {
         }
 
         let mut ports = BTreeSet::new();
-        output.push_str(
-            "  ct state established,related accept\n  ip protocol icmp accept\n  meta l4proto ipv6-icmp accept\n"
-        );
         for port in &self.allowed_tcp_ports {
             if *port == 0 {
                 return Err(PolicyError::InvalidPort(*port));
@@ -91,6 +88,9 @@ impl FirewallPolicy {
                 IpNet::V6(_) => output.push_str(&format!("  ip6 saddr {network} drop\n")),
             }
         }
+        output.push_str(
+            "  ct state established,related accept\n  ip protocol icmp accept\n  meta l4proto ipv6-icmp accept\n"
+        );
         for port in &self.allowed_tcp_ports {
             output.push_str(&format!("  tcp dport {port} ct state new accept\n"));
         }
