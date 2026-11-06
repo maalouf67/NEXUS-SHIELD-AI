@@ -36,6 +36,25 @@ Remote SOC connections require HTTPS. Plain HTTP is accepted only for localhost 
 
 The token is never placed in command-line arguments or event attributes. Do not commit it or expose it to the browser.
 
+## Safe nftables policy preview
+
+Validate a declarative policy and print candidate nftables rules without changing the host:
+
+~~~json
+{
+  "allowed_tcp_ports": [22, 443],
+  "denied_sources": ["192.0.2.0/24", "2001:db8::/32"]
+}
+~~~
+
+Save the JSON as `policy.json`, then run:
+
+~~~sh
+cargo run -- --policy-preview policy.json
+~~~
+
+This command validates ports and CIDR networks, then writes the candidate rules to stdout. It does **not** invoke `nft`, write firewall configuration, or change network state. The rendered policy uses a default-drop input chain; review management, SSH, DNS, DHCP, monitoring, and recovery access for the target host before any separately authorized deployment.
+
 ## Input and preview
 
 Each JSONL line must match this schema:
