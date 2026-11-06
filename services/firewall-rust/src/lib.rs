@@ -164,6 +164,7 @@ pub enum DetectionError {
     InvalidSourceIp(String),
     InvalidDestinationPort,
     TimestampOutOfRange,
+    FutureTimestamp,
     OutOfOrderObservation,
     CapacityExceeded,
     InvalidConfiguration,
@@ -175,6 +176,7 @@ impl std::fmt::Display for DetectionError {
             Self::InvalidSourceIp(ip) => write!(f, "invalid source IP address: {ip}"),
             Self::InvalidDestinationPort => write!(f, "destination port must be between 1 and 65535"),
             Self::TimestampOutOfRange => write!(f, "observation timestamp is outside supported range"),
+            Self::FutureTimestamp => write!(f, "observation timestamp is more than five minutes in the future"),
             Self::OutOfOrderObservation => write!(f, "source observations must arrive in nondecreasing event-time order"),
             Self::CapacityExceeded => write!(f, "network behavior detector capacity limit exceeded"),
             Self::InvalidConfiguration => write!(f, "network behavior detector configuration is invalid"),
@@ -245,6 +247,10 @@ impl NetworkBehaviorDetector {
         let observed_at = observation.observed_at_unix;
         if observed_at > i64::MAX as u64 {
             return Err(DetectionError::TimestampOutOfRange);
+        }
+        let now = u64::try_from(Utc::now().timestamp()).unwrap_or(0);
+        if observed_at > now.saturating_add(300) {
+            return Err(DetectionError::FutureTimestamp);
         }
 
         if let Some(existing) = self.windows.get(&source_ip) {
@@ -435,5 +441,12 @@ mod tests {
         assert_eq!(detector.observe(invalid), Err(DetectionError::InvalidSourceIp("not-an-ip".into())));
         assert!(detector.observe(flow(1_700_000_010, 443, FlowAction::Allowed)).unwrap().is_empty());
         assert_eq!(detector.observe(flow(1_700_000_009, 444, FlowAction::Allowed)), Err(DetectionError::OutOfOrderObservation));
+    }
+
+    #[test]
+    fn rejects_far_future_timestamps() {
+        let mut detector = NetworkBehaviorDetector::new(NetworkBehaviorConfig::default()).unwrap();
+        let future = u64::try_from(Utc::now().timestamp()).unwrap() + 600;
+        assert_eq!(detector.observe(flow(future, 443, FlowAction::Allowed)), Err(DetectionError::FutureTimestamp));
     }
 }
