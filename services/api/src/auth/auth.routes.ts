@@ -145,6 +145,9 @@ export function createAuthRouter(
     requireSessionAuth,
     requireRole('admin'),
     async (req, res) => {
+      if (!req.authUser) {
+        return res.status(401).json({ error: 'UNAUTHENTICATED' });
+      }
       const parsedUserId = USER_ID_SCHEMA.safeParse(req.params.userId);
       if (!parsedUserId.success) {
         return res.status(400).json({ error: 'INVALID_USER_ID' });
@@ -154,7 +157,7 @@ export function createAuthRouter(
         const revokedSessions = await sessions.revokeAllSessions(
           parsedUserId.data,
           'admin_revoke_all',
-          req.authUser?.id
+          req.authUser.id
         );
         res.setHeader('Cache-Control', 'no-store');
         return res.status(200).json({
