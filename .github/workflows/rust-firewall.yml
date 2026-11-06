@@ -1,0 +1,44 @@
+name: Rust Firewall Core
+
+on:
+  pull_request:
+    paths:
+      - "services/firewall-rust/**"
+      - ".github/workflows/rust-firewall.yml"
+  push:
+    branches: [main]
+    paths:
+      - "services/firewall-rust/**"
+      - ".github/workflows/rust-firewall.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rust-firewall-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Rust format, tests, and lint
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/firewall-rust
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: services/firewall-rust
+      - name: Check formatting
+        run: cargo fmt --check
+      - name: Unit tests
+        run: cargo test
+      - name: Clippy
+        run: cargo clippy --all-targets -- -D warnings
