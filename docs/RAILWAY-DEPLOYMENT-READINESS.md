@@ -69,8 +69,9 @@ The API startup preflight requires:
 - `api_rate_limit_counters`
 - `security_events`
 - `security_event_reviews`
+- `auth_sessions`
 
-The repository migration runner currently expects eight numbered SQL migrations. Before any production migration:
+The repository migration runner currently expects nine numbered SQL migrations (001–009), including the server-side `auth_sessions` table and account-security-change revocation trigger. Before any production migration:
 1. Confirm the target database identity using a protected operational process.
 2. Take a backup and verify that it can be restored.
 3. Review the pending numbered migrations.
@@ -79,6 +80,14 @@ The repository migration runner currently expects eight numbered SQL migrations.
 6. Re-run `npm run db:check` and authenticated readiness checks.
 
 Do not run CI or a developer terminal against the production `DATABASE_URL`. Do not assume Docker init scripts will rerun on an existing volume.
+
+## 5a. Server-side access-session state
+
+The API validates every bearer token against the PostgreSQL `auth_sessions` table. Apply migration 009 before deploying the session-enforcing API. The table is required by the API startup preflight; without it the API will refuse to bind its listener.
+
+The API does not persist raw bearer tokens. Migration 009 records a UUID session identifier, user ID, creation/expiry timestamps and revocation metadata. A database trigger revokes active sessions when a user's role, active state or password hash changes.
+
+Before rollout, expect existing JWTs without a corresponding `jti` row to stop working; coordinate a user sign-in transition. Do not apply migration 009 to production until a restorable backup and approved migration/rollback procedure are in place.
 
 ## 6. Health checks and service dependencies
 
@@ -96,7 +105,7 @@ Do not declare Active Defense production-ready until all applicable items have e
 - [ ] `RAILWAY_RUN_UID=0` is present on the custom PostgreSQL service when using its non-root Dockerfile with a Railway volume.
 - [ ] `TRUST_PROXY_HOPS` matches the verified proxy topology; forwarded-header spoofing is rejected.
 - [ ] The API connects to the intended database with TLS verification enabled.
-- [ ] All eight migrations are recorded with matching checksums.
+- [ ] All nine migrations are recorded with matching checksums, including migration 009 for server-side access sessions.
 - [ ] Authenticated readiness reports PostgreSQL as available.
 - [ ] Two API instances share rate-limit counters and SOC threshold events persist exactly once.
 - [ ] ClamAV connectivity and a benign/EICAR test are verified in the deployed environment.
