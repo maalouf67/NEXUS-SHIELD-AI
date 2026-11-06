@@ -107,8 +107,11 @@ The documentation update that follows this snapshot must itself pass the workflo
 - [ ] Issue #24: define workspaces, memberships, active-workspace selection and tenant-scoped integration identities before adding tenant predicates.
 - [ ] Scope asset inventory, evidence, relationships, incidents, alerts, security events, reviews, aggregates and audit records to validated server-side workspace membership.
 - [ ] Add two-workspace integration tests, row-level access checks and pooled-connection isolation tests; plan an explicit, reversible legacy-data backfill.
-- [ ] Issue #25: add random session identifiers and server-side session records/revocation, single-session logout, revoke-all, role-change/user-disable invalidation and fail-closed behavior.
-- [ ] Update web and native clients so sign-out attempts server revocation and always clears local credentials without falsely claiming remote revocation.
+- [x] Issue #25 core API implementation on `feat/server-session-revocation-issue-25`: random `jti`, PostgreSQL session rows, single-session logout, logout-all, admin revoke-all, fail-closed validation and current-user state checks.
+- [x] Migration 009 adds account role/active/password-hash change triggers that revoke existing sessions.
+- [x] Web logout and native Android sign-out call server revocation and always clear local credentials; they distinguish confirmed server invalidation from local-only sign-out.
+- [ ] Final CI/test evidence on the branch head, review of concurrent-session behavior and rollout sign-off remain open. React Native/iOS in Draft PR #14 has not yet adopted these endpoints.
+- Compatibility note: tokens issued before migration 009 without a server session row will be rejected after deployment; coordinate a sign-in transition.
 - Release rule: PR #19's workspace-global inventory/SOC data must not be released as a multi-tenant product until issue #24 is accepted. Local token deletion is not server-side revocation.
 
 ### 9. Reverse-engineering lab — TOOLING DOCUMENTED; OPERATIONAL USE NOT VERIFIED
