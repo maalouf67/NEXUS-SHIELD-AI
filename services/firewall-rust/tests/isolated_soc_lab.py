@@ -65,23 +65,24 @@ def main():
     environment["NEXUS_FIREWALL_FINGERPRINT_KEY"] = FINGERPRINT_KEY
 
     try:
-        result = subprocess.run(
-            [
-                "/usr/local/bin/nexus-firewall",
-                "--input", "/opt/nexus/network-flows.jsonl",
-                "--soc-url", f"http://127.0.0.1:{port}",
-            ],
-            env=environment,
-            text=True,
-            capture_output=True,
-            timeout=15,
-            check=False,
-        )
-        if result.returncode != 0:
-            raise RuntimeError(
-                f"firewall process failed ({result.returncode}): "
-                f"{result.stderr[-2000:]}"
+        for _ in range(2):
+            result = subprocess.run(
+                [
+                    "/usr/local/bin/nexus-firewall",
+                    "--input", "/opt/nexus/network-flows.jsonl",
+                    "--soc-url", f"http://127.0.0.1:{port}",
+                ],
+                env=environment,
+                text=True,
+                capture_output=True,
+                timeout=15,
+                check=False,
             )
+            if result.returncode != 0:
+                raise RuntimeError(
+                    f"firewall process failed ({result.returncode}): "
+                    f"{result.stderr[-2000:]}"
+                )
     finally:
         server.shutdown()
         server.server_close()
@@ -98,11 +99,16 @@ def main():
         raise RuntimeError(
             f"missing expected detections: {expected - event_types}; got {event_types}"
         )
-    if len(captured) != 2:
-        raise RuntimeError(f"expected exactly two de-duplicated alerts; got {len(captured)}")
+    if len(captured) != 4:
+        raise RuntimeError(f"expected two events on each replay; got {len(captured)}")
+    event_ids = [event["externalEventId"] for event in captured]
+    if event_ids[0] != event_ids[2] or event_ids[1] != event_ids[3]:
+        raise RuntimeError("replaying identical flow input did not preserve deterministic SOC event IDs")
+    if len(set(event_ids)) != 2:
+        raise RuntimeError("expected exactly two unique event IDs across duplicate delivery")
     print("ISOLATED_LAB_PASS")
-    print("Synthetic flow observations processed and two normalized events accepted by the mock SOC.")
-    print("No host firewall rules, packet capture, external network, or production SOC were used.")
+    print("Synthetic flows produced two alerts per replay and deterministic IDs across replay.")
+    print("The mock SOC validated schema and HMAC source privacy; no production SOC or host firewall was used.")
 
 if __name__ == "__main__":
     main()
