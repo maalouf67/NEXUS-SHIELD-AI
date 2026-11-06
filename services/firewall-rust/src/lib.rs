@@ -329,9 +329,8 @@ impl NetworkBehaviorDetector {
                 observed_at: observed.to_rfc3339_opts(SecondsFormat::Millis, true),
                 asset_id: None,
                 summary: format!(
-                    "{} from {} in a {} second observation window",
+                    "{} detected within a {} second observation window",
                     kind.event_type().replace('.', " "),
-                    source_ip,
                     window_seconds
                 ),
                 attributes,
