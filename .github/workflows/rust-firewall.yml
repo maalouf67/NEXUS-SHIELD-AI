@@ -1,0 +1,70 @@
+name: Rust Firewall Core
+
+on:
+  pull_request:
+    paths:
+      - "services/firewall-rust/**"
+      - ".github/workflows/rust-firewall.yml"
+  push:
+    branches: [main]
+    paths:
+      - "services/firewall-rust/**"
+      - ".github/workflows/rust-firewall.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rust-firewall-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust:
+    name: Rust format, tests, and lint
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/firewall-rust
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: services/firewall-rust
+      - name: Format and verify Rust sources
+        run: |
+          cargo fmt --all
+          cargo fmt --all -- --check
+          git diff --check
+      - name: Unit and SOC HTTP contract tests
+        run: cargo test
+      - name: Clippy
+        run: cargo clippy --all-targets -- -D warnings
+      - name: Exercise safe nftables policy preview CLI
+        run: cargo run -- --policy-preview tests/firewall-policy.example.json
+
+  isolated-soc-lab:
+    name: Isolated firewall-to-SOC container lab
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Build isolated lab image
+        run: docker build -f services/firewall-rust/Dockerfile -t nexus-firewall-lab services/firewall-rust
+      - name: Run without network access or Linux capabilities
+        run: |
+          docker run --rm \
+            --network none \
+            --cap-drop=ALL \
+            --security-opt no-new-privileges \
+            --read-only \
+            --tmpfs /tmp:rw,noexec,nosuid,size=16m \
+            --memory=256m \
+            --cpus=1 \
+            --pids-limit=64 \
+            nexus-firewall-lab

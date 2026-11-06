@@ -1,0 +1,17 @@
+[package]
+name = "nexus-firewall"
+version = "0.1.0"
+edition = "2021"
+description = "Rust network behavior detection and nftables policy preview for NEXUS SHIELD AI"
+license = "UNLICENSED"
+
+[dependencies]
+chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
+hmac = "0.12"
+ipnet = "2.11"
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+url = "2.5"
+uuid = { version = "1", features = ["v5", "serde"] }
