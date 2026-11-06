@@ -534,6 +534,31 @@ mod tests {
     }
 
     #[test]
+    fn detects_distinct_protocol_port_pairs_not_just_port_numbers() {
+        let config = NetworkBehaviorConfig {
+            port_scan_distinct_ports: 2,
+            connection_burst_count: 50,
+            blocked_attempt_count: 50,
+            ..NetworkBehaviorConfig::default()
+        };
+        let mut detector = NetworkBehaviorDetector::new(config).unwrap();
+        let tcp = flow(1_700_000_000, 443, FlowAction::Allowed);
+        assert!(detector.observe(tcp).unwrap().is_empty());
+
+        let udp = FlowObservation {
+            observed_at_unix: 1_700_000_001,
+            source_ip: "198.51.100.27".into(),
+            destination_port: 443,
+            protocol: NetworkProtocol::Udp,
+            action: FlowAction::Allowed,
+        };
+        let events = detector.observe(udp).unwrap();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].event_type, "network.port_scan_suspected");
+        assert_eq!(events[0].attributes["distinct_destination_ports"], "2");
+    }
+
+    #[test]
     fn rejects_far_future_timestamps() {
         let mut detector = NetworkBehaviorDetector::new(NetworkBehaviorConfig::default()).unwrap();
         let future = u64::try_from(Utc::now().timestamp()).unwrap() + 600;
