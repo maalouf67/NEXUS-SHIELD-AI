@@ -5,6 +5,7 @@ import request from "supertest";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createPhoneReputationRouter } from "./phone-reputation.routes.js";
+import { authTokenConfig } from "../auth/auth.middleware.js";
 import { registerTestAuthSession } from "../auth/auth-session.repository.js";
 import type { PhoneReputationResponse } from "./phone-reputation.orchestrator.js";
 
