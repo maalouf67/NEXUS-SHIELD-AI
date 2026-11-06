@@ -1,9 +1,11 @@
+import { randomUUID } from 'node:crypto';
 import express from 'express';
 import jwt from 'jsonwebtoken';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import request from 'supertest';
 
 import { authTokenConfig } from '../auth/auth.middleware.js';
+import { registerTestAuthSession } from '../auth/auth-session.repository.js';
 import { createSecurityEventsRouter } from '../security-events/security-events.routes.js';
 import type {
   IngestSecurityEventsResult,
@@ -68,8 +70,17 @@ function createRepository(
 }
 
 function token(userId: string, role: 'admin' | 'analyst' | 'viewer') {
+  const userId = userId;
+  const email = `${role}@example.com`;
+  const sessionId = randomUUID();
+  registerTestAuthSession({
+    sessionId,
+    userId,
+    expiresAt: new Date(Date.now() + 15 * 60 * 1000),
+    testIdentity: { id: userId, email, role }
+  });
   return jwt.sign(
-    { email: `${role}@example.com`, role },
+    { jti: sessionId },
     JWT_SECRET,
     {
       algorithm: 'HS256',
