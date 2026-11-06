@@ -25,23 +25,54 @@ export interface AuthSessionRepository {
 
 export class PostgresAuthSessionRepository implements AuthSessionRepository {
   async createSession(input: CreateAuthSessionInput): Promise<void> {
-    // Bound historical session metadata retention and serialize session
-    // creation against concurrent user disablement/password changes.
-    await pool.query(
-      "DELETE FROM auth_sessions WHERE expires_at < NOW() - INTERVAL '30 days'"
-    );
-    const result = await pool.query(
-      `INSERT INTO auth_sessions (id, user_id, expires_at)
-       SELECT $1, users.id, $3
-       FROM users
-       WHERE users.id = $2
-         AND users.is_active = TRUE
-         AND ($4::text IS NULL OR users.password_hash = $4)
-       RETURNING id`,
-      [input.sessionId, input.userId, input.expiresAt, input.expectedPasswordHash ?? null]
-    );
-    if ((result.rowCount ?? 0) !== 1) {
-      throw new Error('User security state changed before the session could be created.');
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // Lock the user row so a concurrent account-disablement, role update or
+      // password change cannot race with session insertion. The user-update
+      // trigger will wait for this transaction and then revoke the new session.
+      const user = await client.query(
+        `SELECT id
+         FROM users
+         WHERE id = $1
+           AND is_active = TRUE
+           AND ($2::text IS NULL OR password_hash = $2)
+         FOR UPDATE`,
+        [input.userId, input.expectedPasswordHash ?? null]
+      );
+      if ((user.rowCount ?? 0) !== 1) {
+        throw new Error('User security state changed before the session could be created.');
+      }
+
+      // Prune a bounded batch so a login cannot trigger an unbounded cleanup.
+      await client.query(
+        `WITH expired_sessions AS (
+           SELECT id
+           FROM auth_sessions
+           WHERE expires_at < NOW() - INTERVAL '30 days'
+           ORDER BY expires_at
+           LIMIT 1000
+         )
+         DELETE FROM auth_sessions
+         WHERE id IN (SELECT id FROM expired_sessions)`
+      );
+
+      await client.query(
+        `INSERT INTO auth_sessions (id, user_id, expires_at)
+         VALUES ($1, $2, $3)`,
+        [input.sessionId, input.userId, input.expiresAt]
+      );
+      await client.query('COMMIT');
+    } catch (error) {
+      try {
+        await client.query('ROLLBACK');
+      } catch {
+        // Preserve the original session-creation error.
+      }
+      throw error;
+    } finally {
+      client.release();
     }
   }
 
