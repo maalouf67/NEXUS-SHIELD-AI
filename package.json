@@ -19,7 +19,7 @@
     "db:check": "npm run db:check --workspace @nexus-shield/api"
   },
   "devDependencies": {
-    "concurrently": "^9.0.1",
+    "concurrently": "^10.0.6",
     "postcss": "^8.5.32"
   },
   "overrides": {
