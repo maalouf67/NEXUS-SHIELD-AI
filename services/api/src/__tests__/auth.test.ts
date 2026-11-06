@@ -1,5 +1,7 @@
 import express from 'express';
 import bcrypt from 'bcryptjs';
+import type { AuthSessionRepository } from '../auth/auth-session.repository.js';
+import { authSessionRepository } from '../auth/auth-session.repository.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import request from 'supertest';
 
@@ -58,10 +60,13 @@ function makeRepository(
   };
 }
 
-function createTestApp(repository: UserRepository) {
+function createTestApp(
+  repository: UserRepository,
+  sessions: AuthSessionRepository = authSessionRepository
+) {
   const app = express();
   app.use(express.json());
-  app.use('/api', createAuthRouter(repository));
+  app.use('/api', createAuthRouter(repository, undefined, sessions));
   app.use('/api', createUsersRouter(repository));
   return app;
 }
@@ -156,6 +161,92 @@ describe('NEXUS user authentication and RBAC', () => {
       email: 'admin@example.com',
       role: 'admin'
     });
+  });
+
+
+  it('revokes the current access token during server-side logout', async () => {
+    const passwordHash = await bcrypt.hash(TEST_PASSWORD, 4);
+    const repository = makeRepository({}, { ...adminUser, passwordHash });
+    const app = createTestApp(repository);
+    const token = await loginAs(repository, adminUser.email, TEST_PASSWORD);
+
+    const beforeLogout = await request(app)
+      .get('/api/auth/me')
+      .set('Authorization', `Bearer ${token}`);
+    expect(beforeLogout.status).toBe(200);
+
+    const logout = await request(app)
+      .post('/api/auth/logout')
+      .set('Authorization', `Bearer ${token}`);
+    expect(logout.status).toBe(200);
+    expect(logout.body.success).toBe(true);
+
+    const afterLogout = await request(app)
+      .get('/api/auth/me')
+      .set('Authorization', `Bearer ${token}`);
+    expect(afterLogout.status).toBe(401);
+    expect(afterLogout.body.error).toBe('INVALID_ACCESS_TOKEN');
+  });
+
+  it('revokes every active session for the current user on logout-all', async () => {
+    const passwordHash = await bcrypt.hash(TEST_PASSWORD, 4);
+    const repository = makeRepository({}, { ...adminUser, passwordHash });
+    const app = createTestApp(repository);
+    const firstToken = await loginAs(repository, adminUser.email, TEST_PASSWORD);
+    const secondToken = await loginAs(repository, adminUser.email, TEST_PASSWORD);
+
+    const logoutAll = await request(app)
+      .post('/api/auth/logout-all')
+      .set('Authorization', `Bearer ${firstToken}`);
+    expect(logoutAll.status).toBe(200);
+    expect(logoutAll.body.revoked_sessions).toBe(2);
+
+    for (const token of [firstToken, secondToken]) {
+      const response = await request(app)
+        .get('/api/auth/me')
+        .set('Authorization', `Bearer ${token}`);
+      expect(response.status).toBe(401);
+    }
+  });
+
+  it('fails closed when the session store cannot validate an access token', async () => {
+    const passwordHash = await bcrypt.hash(TEST_PASSWORD, 4);
+    const repository = makeRepository({}, { ...adminUser, passwordHash });
+    const unavailableSessions: AuthSessionRepository = {
+      async createSession() {},
+      async findActiveSession() {
+        throw new Error('simulated session database outage');
+      },
+      async revokeSession() {
+        throw new Error('simulated session database outage');
+      },
+      async revokeAllSessions() {
+        throw new Error('simulated session database outage');
+      }
+    };
+    const app = createTestApp(repository, unavailableSessions);
+    const login = await request(app)
+      .post('/api/auth/login')
+      .send({ email: adminUser.email, password: TEST_PASSWORD });
+
+    expect(login.status).toBe(200);
+    const response = await request(app)
+      .get('/api/auth/me')
+      .set('Authorization', `Bearer ${login.body.access_token}`);
+
+    expect(response.status).toBe(503);
+    expect(response.body.error).toBe('AUTH_SESSION_STORE_UNAVAILABLE');
+  });
+
+  it('requires a valid session identifier in every bearer token', async () => {
+    const passwordHash = await bcrypt.hash(TEST_PASSWORD, 4);
+    const repository = makeRepository({}, { ...adminUser, passwordHash });
+    const app = createTestApp(repository);
+    const token = await loginAs(repository, adminUser.email, TEST_PASSWORD);
+    const { default: jwt } = await import('jsonwebtoken');
+    const decoded = jwt.decode(token) as { jti?: string } | null;
+
+    expect(decoded?.jti).toMatch(/^[0-9a-f-]{36}$/i);
   });
 
   it('requires authentication before exposing the user directory', async () => {
