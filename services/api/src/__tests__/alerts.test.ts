@@ -58,7 +58,6 @@ function createRepository(
 }
 
 function token(userId: string, role: 'admin' | 'analyst' | 'viewer') {
-  const userId = userId;
   const email = `${role}@example.com`;
   const sessionId = randomUUID();
   registerTestAuthSession({
