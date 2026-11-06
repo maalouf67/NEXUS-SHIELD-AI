@@ -53,7 +53,9 @@ fn posts_normalized_event_to_the_existing_soc_contract() {
         assert_eq!(event["source"], "nexus-rust-firewall");
         assert_eq!(event["eventType"], "network.port_scan_suspected");
         assert_eq!(event["severity"], "high");
-        assert_eq!(event["attributes"]["source_ip"], "198.51.100.27");
+        assert!(event["attributes"].get("source_ip").is_none());
+        assert_eq!(event["attributes"]["source_fingerprint"].as_str().unwrap().len(), 64);
+        assert!(!event["summary"].as_str().unwrap().contains("198.51.100.27"));
 
         stream.write_all(
             b"HTTP/1.1 202 Accepted\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}"
@@ -77,6 +79,7 @@ fn posts_normalized_event_to_the_existing_soc_contract() {
     let client = SocClient::new(
         &format!("http://{address}"),
         "nexus-isolated-test-ingestion-token-123456".into(),
+        "nexus-isolated-fingerprint-key-material-123456".into(),
     ).unwrap();
     assert_eq!(client.ingest_events(&[event]).unwrap(), 1);
     server.join().unwrap();
@@ -87,6 +90,7 @@ fn refuses_plain_http_to_non_loopback_soc_hosts() {
     let result = SocClient::new(
         "http://192.0.2.10",
         "nexus-isolated-test-ingestion-token-123456".into(),
+        "nexus-isolated-fingerprint-key-material-123456".into(),
     );
     assert!(result.is_err());
 }
