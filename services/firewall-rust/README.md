@@ -29,7 +29,7 @@ Set these server-side environment variables:
 - NEXUS_SOC_API_URL — API origin only, for example https://api.example.com (do not include a path).
 - NEXUS_EVENT_INGESTION_TOKEN — dedicated ingestion token; at least 32 characters.
 
-Remote SOC connections require HTTPS. Plain HTTP is accepted only for localhost in the isolated lab. The adapter posts batches of up to 100 events, retries transient connection/time-out, 408, 429, and 5xx failures up to three attempts, and relies on source + externalEventId idempotency already enforced by the API.
+Remote SOC connections require HTTPS. Plain HTTP is accepted only for localhost in the isolated lab. The adapter posts batches of up to 100 events, retries transient connection/time-out, 408, 429, and 5xx failures up to three attempts, and generates deterministic event IDs from source, signal, and trigger timestamp so replayed input can use the API idempotency constraint. The ingestion header is marked sensitive in the HTTP client.
 
 The token is never placed in command-line arguments or event attributes. Do not commit it or expose it to the browser.
 
