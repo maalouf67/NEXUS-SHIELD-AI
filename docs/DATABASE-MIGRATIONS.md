@@ -32,7 +32,7 @@ npm run db:migrate
 
 The command reads numbered SQL files in database/init in filename order, acquires a PostgreSQL advisory lock, creates nexus_schema_migrations when needed, computes SHA-256 checksums, applies each missing migration in its own transaction and records the checksum only after the SQL commits. It skips a migration only when the recorded checksum matches the current file. If a previously applied file changes, it stops; create a new numbered migration instead.
 
-Current numbered migrations: 001 through 008. CI uses this same command against a disposable PostgreSQL 16 service, then verifies connectivity, the rate-limit table and all eight migration records.
+Current numbered migrations: 001 through 009. Migration 009 adds server-side access-session records and revokes active sessions automatically when a user's role, active state, or password hash changes. CI uses this same command against a disposable PostgreSQL 16 service, then verifies connectivity, both the rate-limit and authentication-session tables, and all nine migration records.
 
 ## Existing Docker volumes and production databases
 
