@@ -45,6 +45,8 @@ jobs:
         run: cargo test
       - name: Clippy
         run: cargo clippy --all-targets -- -D warnings
+      - name: Exercise safe nftables policy preview CLI
+        run: cargo run -- --policy-preview tests/firewall-policy.example.json
 
   isolated-soc-lab:
     name: Isolated firewall-to-SOC container lab
