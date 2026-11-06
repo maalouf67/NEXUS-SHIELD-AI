@@ -19,6 +19,8 @@ pub enum SocError {
     InsecureRemoteUrl,
     InvalidToken,
     InvalidFingerprintKey,
+    MissingSourceIp,
+    InvalidSourceIp(String),
     HttpClient(String),
     Transport(String),
     Rejected(StatusCode),
@@ -32,6 +34,8 @@ impl std::fmt::Display for SocError {
             Self::InsecureRemoteUrl => write!(f, "SOC URL must use HTTPS unless it targets localhost for an isolated test"),
             Self::InvalidToken => write!(f, "SOC ingestion token must contain at least 32 non-whitespace characters"),
             Self::InvalidFingerprintKey => write!(f, "firewall fingerprint key must contain at least 32 non-whitespace characters"),
+            Self::MissingSourceIp => write!(f, "SOC event must include a source_ip attribute for privacy-preserving forwarding"),
+            Self::InvalidSourceIp(ip) => write!(f, "SOC event contains an invalid source IP address: {ip}"),
             Self::HttpClient(error) => write!(f, "could not initialize SOC HTTP client: {error}"),
             Self::Transport(error) => write!(f, "SOC transport failed: {error}"),
             Self::Rejected(status) => write!(f, "SOC ingestion endpoint rejected the batch with HTTP {status}"),
@@ -81,9 +85,8 @@ impl SocClient {
         let client = Client::builder()
             .connect_timeout(Duration::from_secs(2))
             .timeout(Duration::from_secs(5))
-            .redirect(reqwest::redirect::Policy::none())
-            .https_only(false)
             .redirect(Policy::none())
+            .https_only(false)
             .build()
             .map_err(|error| SocError::HttpClient(error.to_string()))?;
         Ok(Self {
@@ -112,23 +115,28 @@ impl SocClient {
 
     fn redact_source_ip(&self, event: &SecurityEventInput) -> Result<SecurityEventInput, SocError> {
         let mut redacted = event.clone();
-        if let Some(source_ip) = redacted.attributes.remove("source_ip") {
-            redacted.summary = redacted.summary.replace(&source_ip, "[source redacted]");
-            let mut mac = HmacSha256::new_from_slice(&self.fingerprint_key)
-                .map_err(|_| SocError::InvalidFingerprintKey)?;
-            mac.update(source_ip.as_bytes());
-            let fingerprint = mac.finalize().into_bytes()
-                .iter()
-                .map(|byte| format!("{byte:02x}"))
-                .collect::<String>();
-            let id_material = format!(
-                "nexus-soc-event:v1:{}:{}:{}:{}",
-                redacted.source, redacted.event_type, redacted.observed_at, fingerprint
-            );
-            redacted.external_event_id =
-                Uuid::new_v5(&Uuid::NAMESPACE_OID, id_material.as_bytes()).to_string();
-            redacted.attributes.insert("source_fingerprint".into(), fingerprint);
-        }
+        let source_ip = redacted.attributes.remove("source_ip")
+            .ok_or(SocError::MissingSourceIp)?;
+        let parsed_ip = source_ip.parse::<IpAddr>()
+            .map_err(|_| SocError::InvalidSourceIp(source_ip.clone()))?;
+        let canonical_ip = parsed_ip.to_string();
+        redacted.summary = redacted.summary
+            .replace(&source_ip, "[source redacted]")
+            .replace(&canonical_ip, "[source redacted]");
+        let mut mac = HmacSha256::new_from_slice(&self.fingerprint_key)
+            .map_err(|_| SocError::InvalidFingerprintKey)?;
+        mac.update(canonical_ip.as_bytes());
+        let fingerprint = mac.finalize().into_bytes()
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>();
+        let id_material = format!(
+            "nexus-soc-event:v1:{}:{}:{}:{}",
+            redacted.source, redacted.event_type, redacted.observed_at, fingerprint
+        );
+        redacted.external_event_id =
+            Uuid::new_v5(&Uuid::NAMESPACE_OID, id_material.as_bytes()).to_string();
+        redacted.attributes.insert("source_fingerprint".into(), fingerprint);
         Ok(redacted)
     }
 
@@ -166,5 +174,37 @@ impl SocClient {
             thread::sleep(Duration::from_millis(200 * (1 << attempt)));
         }
         Err(SocError::Transport("retry budget exhausted".into()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const TOKEN: &str = "nexus-isolated-test-ingestion-token-123456";
+    const KEY: &str = "nexus-isolated-fingerprint-key-material-123456";
+
+    #[test]
+    fn rejects_soc_urls_with_paths_queries_fragments_or_credentials() {
+        for url in [
+            "https://example.com/api",
+            "https://example.com/?token=secret",
+            "https://example.com/#fragment",
+            "https://user:pass@example.com",
+        ] {
+            assert!(SocClient::new(url, TOKEN.into(), KEY.into()).is_err(), "accepted {url}");
+        }
+    }
+
+    #[test]
+    fn requires_long_separate_secrets() {
+        assert!(matches!(
+            SocClient::new("https://example.com", "short".into(), KEY.into()),
+            Err(SocError::InvalidToken)
+        ));
+        assert!(matches!(
+            SocClient::new("https://example.com", TOKEN.into(), "short".into()),
+            Err(SocError::InvalidFingerprintKey)
+        ));
     }
 }
