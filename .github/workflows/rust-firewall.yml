@@ -15,7 +15,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: rust-firewall-\${{ github.ref }}
+  group: rust-firewall-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
