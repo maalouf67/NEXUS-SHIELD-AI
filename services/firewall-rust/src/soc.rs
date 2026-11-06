@@ -44,7 +44,7 @@ impl SocClient {
         if token.trim().len() < 32 {
             return Err(SocError::InvalidToken);
         }
-        let parsed = Url::parse(base_url)
+        let mut token_header = HeaderValue::from_str(token.trim()).map_err(|_| SocError::InvalidToken)?;\n        token_header.set_sensitive(true);\n        let parsed = Url::parse(base_url)
             .map_err(|error| SocError::InvalidUrl(error.to_string()))?;
         if !parsed.username().is_empty()
             || parsed.password().is_some()
@@ -68,7 +68,7 @@ impl SocClient {
             .https_only(false)
             .build()
             .map_err(|error| SocError::HttpClient(error.to_string()))?;
-        Ok(Self { endpoint, token, client })
+        Ok(Self { endpoint, token: token_header, client })
     }
 
     pub fn ingest_events(&self, events: &[SecurityEventInput]) -> Result<usize, SocError> {
@@ -92,7 +92,7 @@ impl SocClient {
         for attempt in 0..3 {
             let response = self.client
                 .post(&self.endpoint)
-                .header("X-NEXUS-INGESTION-TOKEN", &self.token)
+                .header("X-NEXUS-INGESTION-TOKEN", self.token.clone())
                 .json(&payload)
                 .send();
 
