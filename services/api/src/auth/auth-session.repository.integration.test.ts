@@ -23,12 +23,18 @@ describe('PostgreSQL access-session lifecycle integration', () => {
       try {
         await pool.query(
           `INSERT INTO users (id, email, role, password_hash, is_active)
-           VALUES ($1, $2, 'analyst', NULL, TRUE)`,
+           VALUES ($1, $2, 'analyst', 'test-password-hash', TRUE)`,
           [userId, email]
         );
 
-        await repository.createSession({ sessionId: firstSessionId, userId, expiresAt });
-        await repository.createSession({ sessionId: secondSessionId, userId, expiresAt });
+        await repository.createSession({ sessionId: firstSessionId, userId, expiresAt, expectedPasswordHash: 'test-password-hash' });
+        await repository.createSession({ sessionId: secondSessionId, userId, expiresAt, expectedPasswordHash: 'test-password-hash' });
+        await expect(repository.createSession({
+          sessionId: randomUUID(),
+          userId,
+          expiresAt,
+          expectedPasswordHash: 'stale-password-hash'
+        })).rejects.toThrow('User security state changed');
 
         expect(await repository.findActiveSession(firstSessionId, userId)).toEqual({
           id: userId,
@@ -48,6 +54,12 @@ describe('PostgreSQL access-session lifecycle integration', () => {
         expect((await repository.findActiveSession(thirdSessionId, userId))?.role).toBe('viewer');
         expect(await repository.revokeSession(thirdSessionId, userId, 'test_logout')).toBe(true);
         expect(await repository.findActiveSession(thirdSessionId, userId)).toBeNull();
+        const revokeAudit = await pool.query(
+          'SELECT revoked_by_user_id, revocation_reason FROM auth_sessions WHERE id = $1',
+          [thirdSessionId]
+        );
+        expect(revokeAudit.rows[0].revoked_by_user_id).toBe(userId);
+        expect(revokeAudit.rows[0].revocation_reason).toBe('test_logout');
         expect(await repository.revokeSession(thirdSessionId, userId, 'test_logout')).toBe(false);
 
         const fourthSessionId = randomUUID();
