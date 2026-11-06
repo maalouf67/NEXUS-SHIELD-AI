@@ -45,6 +45,11 @@ fn run() -> Result<(), String> {
     if stdout_only && soc_url.is_some() {
         return Err("choose either --stdout-only or SOC forwarding, not both".into());
     }
+    let soc_url = if stdout_only {
+        None
+    } else {
+        soc_url.or_else(|| env::var("NEXUS_SOC_API_URL").ok())
+    };
 
     let reader: Box<dyn BufRead> = if input == "-" {
         Box::new(BufReader::new(io::stdin()))
