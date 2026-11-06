@@ -2,7 +2,7 @@ name: NEXUS SHIELD AI - Build and Test
 
 on:
   push:
-    branches: ["main", "feature/**"]
+    branches: ["main", "feature/**", "feat/**"]
   pull_request:
     branches: ["main"]
 
