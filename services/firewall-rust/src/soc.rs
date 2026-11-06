@@ -6,6 +6,7 @@ use reqwest::{header::HeaderValue, StatusCode};
 use sha2::Sha256;
 use std::{net::IpAddr, thread, time::Duration};
 use url::Url;
+use uuid::Uuid;
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -78,7 +79,9 @@ impl SocClient {
 
         let endpoint = format!("{}{}", base_url.trim_end_matches('/'), INGEST_PATH);
         let client = Client::builder()
+            .connect_timeout(Duration::from_secs(2))
             .timeout(Duration::from_secs(5))
+            .redirect(reqwest::redirect::Policy::none())
             .https_only(false)
             .redirect(Policy::none())
             .build()
@@ -118,6 +121,12 @@ impl SocClient {
                 .iter()
                 .map(|byte| format!("{byte:02x}"))
                 .collect::<String>();
+            let id_material = format!(
+                "nexus-soc-event:v1:{}:{}:{}:{}",
+                redacted.source, redacted.event_type, redacted.observed_at, fingerprint
+            );
+            redacted.external_event_id =
+                Uuid::new_v5(&Uuid::NAMESPACE_OID, id_material.as_bytes()).to_string();
             redacted.attributes.insert("source_fingerprint".into(), fingerprint);
         }
         Ok(redacted)
