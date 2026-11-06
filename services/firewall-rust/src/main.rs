@@ -25,7 +25,7 @@ fn usage() {
 fn run() -> Result<(), String> {
     let mut args = env::args().skip(1);
     let mut input: Option<String> = None;
-    let mut soc_url = env::var("NEXUS_SOC_API_URL").ok();
+    let mut soc_url: Option<String> = None;
     let mut stdout_only = false;
 
     while let Some(arg) = args.next() {
