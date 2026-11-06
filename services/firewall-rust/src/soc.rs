@@ -1,8 +1,12 @@
 use crate::SecurityEventInput;
+use hmac::{Hmac, Mac};
 use reqwest::blocking::Client;
 use reqwest::{header::HeaderValue, StatusCode};
+use sha2::Sha256;
 use std::{net::IpAddr, thread, time::Duration};
 use url::Url;
+
+type HmacSha256 = Hmac<Sha256>;
 
 const INGEST_PATH: &str = "/api/integrations/security-events";
 const MAX_BATCH_SIZE: usize = 100;
@@ -12,6 +16,7 @@ pub enum SocError {
     InvalidUrl(String),
     InsecureRemoteUrl,
     InvalidToken,
+    InvalidFingerprintKey,
     HttpClient(String),
     Transport(String),
     Rejected(StatusCode),
@@ -24,6 +29,7 @@ impl std::fmt::Display for SocError {
             Self::InvalidUrl(error) => write!(f, "invalid SOC base URL: {error}"),
             Self::InsecureRemoteUrl => write!(f, "SOC URL must use HTTPS unless it targets localhost for an isolated test"),
             Self::InvalidToken => write!(f, "SOC ingestion token must contain at least 32 non-whitespace characters"),
+            Self::InvalidFingerprintKey => write!(f, "firewall fingerprint key must contain at least 32 non-whitespace characters"),
             Self::HttpClient(error) => write!(f, "could not initialize SOC HTTP client: {error}"),
             Self::Transport(error) => write!(f, "SOC transport failed: {error}"),
             Self::Rejected(status) => write!(f, "SOC ingestion endpoint rejected the batch with HTTP {status}"),
@@ -36,15 +42,19 @@ impl std::error::Error for SocError {}
 pub struct SocClient {
     endpoint: String,
     token: HeaderValue,
+    fingerprint_key: Vec<u8>,
     client: Client,
 }
 
 impl SocClient {
-    pub fn new(base_url: &str, token: String) -> Result<Self, SocError> {
+    pub fn new(base_url: &str, token: String, fingerprint_key: String) -> Result<Self, SocError> {
         if token.trim().len() < 32 {
             return Err(SocError::InvalidToken);
         }
-        let mut token_header = HeaderValue::from_str(token.trim())
+        if fingerprint_key.trim().len() < 32 {
+            return Err(SocError::InvalidFingerprintKey);
+        }
+        let mut token_header = HeaderValue::try_from(token.trim())
             .map_err(|_| SocError::InvalidToken)?;
         token_header.set_sensitive(true);
         let parsed = Url::parse(base_url)
@@ -71,7 +81,12 @@ impl SocClient {
             .https_only(false)
             .build()
             .map_err(|error| SocError::HttpClient(error.to_string()))?;
-        Ok(Self { endpoint, token: token_header, client })
+        Ok(Self {
+            endpoint,
+            token: token_header,
+            fingerprint_key: fingerprint_key.trim().as_bytes().to_vec(),
+            client,
+        })
     }
 
     pub fn ingest_events(&self, events: &[SecurityEventInput]) -> Result<usize, SocError> {
@@ -80,10 +95,30 @@ impl SocClient {
         }
         let mut accepted = 0usize;
         for batch in events.chunks(MAX_BATCH_SIZE) {
-            self.send_batch(batch)?;
+            let safe_batch = batch
+                .iter()
+                .map(|event| self.redact_source_ip(event))
+                .collect::<Result<Vec<_>, _>>()?;
+            self.send_batch(&safe_batch)?;
             accepted += batch.len();
         }
         Ok(accepted)
+    }
+
+    fn redact_source_ip(&self, event: &SecurityEventInput) -> Result<SecurityEventInput, SocError> {
+        let mut redacted = event.clone();
+        if let Some(source_ip) = redacted.attributes.remove("source_ip") {
+            redacted.summary = redacted.summary.replace(&source_ip, "[source redacted]");
+            let mut mac = HmacSha256::new_from_slice(&self.fingerprint_key)
+                .map_err(|_| SocError::InvalidFingerprintKey)?;
+            mac.update(source_ip.as_bytes());
+            let fingerprint = mac.finalize().into_bytes()
+                .iter()
+                .map(|byte| format!("{byte:02x}"))
+                .collect::<String>();
+            redacted.attributes.insert("source_fingerprint".into(), fingerprint);
+        }
+        Ok(redacted)
     }
 
     fn send_batch(&self, events: &[SecurityEventInput]) -> Result<(), SocError> {
