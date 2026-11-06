@@ -1,9 +1,9 @@
 # NEXUS SHIELD AI — server-side access-session security
 
-**Tracked work:** Issue #25 / Draft PR #29  
+**Tracked work:** Issue #25 / PR #29  
 **Implementation branch:** `feat/server-session-revocation-issue-25`  
-**Latest fully tested head:** `6a7a9f8a69b937374035a54d0cfc0e20869cac01`  
-**Status:** implementation and CI validation passed; review, merge and production rollout remain open.
+**Latest verified branch head before this document update:** `2103fc2c9173e3ef8034a7dd153ecdad46d9353e`  
+**Status:** implementation and CI validation passed; PR review and production rollout remain open.
 
 ## Session model
 
@@ -35,17 +35,17 @@ Expired session metadata is removed in bounded batches during login; expiry inde
 
 ## Validation evidence
 
-On head `6a7a9f8a69b937374035a54d0cfc0e20869cac01` (2026-11-06):
-- Build and Test run #426: **PASSED** — web/API build, API tests, PostgreSQL schema/migration idempotency, PostgreSQL session lifecycle integration, Python 3.11/3.13, Android debug build/unit tests, MASVS/MASTG register completeness, and Docker/ClamAV/web upload integration.
-- Security Checks run #376: **PASSED** — Trivy filesystem, dependency, secret and PostgreSQL/AI/ClamAV runtime-image scans, Dependency Review, gosu upstream parity/reachability checks and root-owned-volume PostgreSQL startup test.
-- Session integration tests cover active, unknown, expired, revoked and wrong-user identifiers; disabled accounts; role/password-hash changes; session audit actor/reason; stale credentials; and concurrent session creation and logout-all revocation.
-- Unit tests cover single logout, logout-all, administrator revocation, JWT session identifiers and fail-closed handling when session storage is unavailable.
+On the PR #29 branch before this documentation-only conflict resolution:
+- Build and Test run #434: **PASSED** — web/API build, API tests, PostgreSQL migration/idempotency and session-lifecycle integration, Python 3.11/3.13, Android debug build/unit tests, MASVS/MASTG register completeness, and Docker/ClamAV/web upload integration.
+- Security Checks run #383: **PASSED** — Trivy filesystem, dependency, secret and PostgreSQL/AI/ClamAV runtime-image scans, Dependency Review, gosu upstream parity/reachability checks and root-owned-volume PostgreSQL startup test.
+- Session integration tests cover active, unknown, expired, revoked and wrong-user identifiers; disabled accounts; role/password-hash changes; single-session revoke; concurrent logout-all; audit actor/reason; and credential-change races.
+- Unit tests cover login-issued session identifiers, single logout, logout-all, administrator revocation and fail-closed handling when session storage is unavailable.
 
-These are CI results for this exact branch head. They are not evidence of a live Railway migration, production session-store availability, a physical-device security certification or a merged release.
+These are CI results for the code head listed above. A documentation-only update changes the PR head and must pass CI again. These results do not prove a live Railway migration, production session-store availability, physical-device security certification or a merged release.
 
 ## Migration and compatibility
 
-Migration 009 is additive. It has not been applied to a production database by this branch.
+Migration 009 is additive. It has not been applied to a production database by this branch. CI applies it to a disposable PostgreSQL database and verifies idempotency.
 
 Before production rollout:
 1. Verify the intended database identity and take a backup with a tested restore path.
@@ -54,6 +54,7 @@ Before production rollout:
 4. Deploy the API and web client in a coordinated maintenance window.
 5. Verify login, single-session logout, logout-all, admin revocation, role-change revocation, password-change revocation, account-disable revocation and session-store outage behavior.
 6. Confirm all clients handle the forced sign-in transition.
+7. Approve and document the rollback procedure before the migration window.
 
 **Compatibility impact:** previously issued JWTs without a corresponding `jti` session row are rejected after enforcement is deployed. Users will need to sign in again. This is intentional fail-closed behavior, not a silent fallback to legacy token-only authentication.
 
@@ -61,8 +62,10 @@ No refresh-token flow is introduced. Password reset/change UI is not part of thi
 
 ## Remaining release gates
 
-- [ ] Complete review of PR #29 and merge its base dependency PR #26 first.
+- [ ] Complete final review of PR #29 against `main` and obtain passing checks on its final head.
 - [ ] Update or formally exclude the React Native/iOS client from the release scope.
 - [ ] Complete web/Android offline-sign-out and device-loss tests on release artifacts.
 - [ ] Approve the production migration, backup/restore and rollback procedure.
-- [ ] Validate the feature on the actual hosted PostgreSQL/session store after deployment.
+- [ ] Validate the feature on the actual hosted PostgreSQL/session store after an explicitly approved deployment.
+
+No production database, secrets, Railway configuration or OVH server were changed by this work.
