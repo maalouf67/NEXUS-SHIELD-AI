@@ -5,6 +5,7 @@ import request from "supertest";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { ipReputationRouter } from "./ip-reputation.routes.js";
+import { authTokenConfig } from "../auth/auth.middleware.js";
 import { registerTestAuthSession } from "../auth/auth-session.repository.js";
 
 const SECRET = "nexus-ip-reputation-test-secret-at-least-32";
