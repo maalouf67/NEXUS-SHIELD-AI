@@ -91,7 +91,7 @@ describe('PostgreSQL access-session lifecycle integration', () => {
           expiresAt: new Date(Date.now() + 15 * 60 * 1000)
         });
         await pool.query(
-          'UPDATE auth_sessions SET expires_at = NOW() - INTERVAL \'1 second\' WHERE id = $1',
+          'UPDATE auth_sessions SET created_at = NOW() - INTERVAL \'2 seconds\', expires_at = NOW() - INTERVAL \'1 second\' WHERE id = $1',
           [expirySessionId]
         );
         expect(await repository.findActiveSession(expirySessionId, userId)).toBeNull();
