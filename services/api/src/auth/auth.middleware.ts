@@ -29,7 +29,7 @@ const JWT_AUDIENCE = 'nexus-shield-ai-api';
 const AccessTokenClaimsSchema = z.object({
   sub: z.string().uuid(),
   jti: z.string().uuid()
-}).strict();
+});
 
 /**
  * Verifies the signed access token, then checks its random jti against the
