@@ -10,6 +10,8 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::net::IpAddr;
 use uuid::Uuid;
 
+pub mod soc;
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct FirewallPolicy {
     pub allowed_tcp_ports: Vec<u16>,
@@ -93,7 +95,7 @@ impl FirewallPolicy {
     }
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[serde(rename_all = "lowercase")]
 pub enum NetworkProtocol {
     Tcp,
@@ -255,7 +257,7 @@ impl NetworkBehaviorDetector {
         self.windows.retain(|_, values| {
             values.back().is_some_and(|last| last.observed_at_unix.saturating_add(window_seconds) >= observed_at)
         });
-        self.last_emitted.retain(|(_, _), last| {
+        self.last_emitted.retain(|_, last| {
             last.saturating_add(self.config.alert_cooldown_seconds) >= observed_at
         });
 
