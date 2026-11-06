@@ -52,7 +52,7 @@ describe('PostgreSQL access-session lifecycle integration', () => {
 
         await pool.query('UPDATE users SET password_hash = $2 WHERE id = $1', [userId, 'updated-password-hash']);
         // Credential changes also revoke existing sessions.
-        expect(await repository.createSession({
+        await expect(repository.createSession({
           sessionId: randomUUID(),
           userId,
           expiresAt,
