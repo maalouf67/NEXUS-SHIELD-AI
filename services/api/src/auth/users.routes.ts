@@ -1,10 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import { Router } from 'express';
+import type { RequestHandler } from 'express';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 
 import { requireAuth, requireRole } from './auth.middleware.js';
 import { userRepository, type UserRepository } from './user.repository.js';
+import { sessionRepository, type SessionRepository } from './session.repository.js';
 
 const CreateUserRequestSchema = z.object({
   email: z.string().email().max(254).transform((value) => value.trim().toLowerCase()),
@@ -19,10 +21,14 @@ function databaseErrorCode(error: unknown): string | null {
   return null;
 }
 
-export function createUsersRouter(repository: UserRepository = userRepository) {
+export function createUsersRouter(
+  repository: UserRepository = userRepository,
+  sessions: SessionRepository = sessionRepository,
+  authMiddleware: RequestHandler = requireAuth
+) {
   const router = Router();
 
-  router.get('/users', requireAuth, requireRole('admin'), async (_req, res) => {
+  router.get('/users', authMiddleware, requireRole('admin'), async (_req, res) => {
     try {
       const users = await repository.listUsers();
       return res.status(200).json({ users });
@@ -31,7 +37,22 @@ export function createUsersRouter(repository: UserRepository = userRepository) {
     }
   });
 
-  router.post('/users', requireAuth, requireRole('admin'), async (req, res) => {
+  router.post('/users/:userId/sessions/revoke-all', authMiddleware, requireRole('admin'), async (req, res) => {
+    const parsedUserId = z.string().uuid().safeParse(req.params.userId);
+    if (!parsedUserId.success) {
+      return res.status(400).json({ error: 'INVALID_REQUEST' });
+    }
+
+    try {
+      const revokedSessions = await sessions.revokeAllSessions(parsedUserId.data);
+      // Return only the count; do not reveal whether a target user account exists.
+      return res.status(200).json({ revoked_sessions: revokedSessions });
+    } catch {
+      return res.status(503).json({ error: 'AUTH_STORE_UNAVAILABLE' });
+    }
+  });
+
+  router.post('/users', authMiddleware, requireRole('admin'), async (req, res) => {
     const parsed = CreateUserRequestSchema.safeParse(req.body);
 
     if (!parsed.success) {
