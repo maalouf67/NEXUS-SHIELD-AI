@@ -3,7 +3,7 @@ import express from 'express';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import type { AuthSessionRepository } from '../auth/auth-session.repository.js';
-import { authSessionRepository } from '../auth/auth-session.repository.js';
+import { authSessionRepository, InMemoryAuthSessionRepository } from '../auth/auth-session.repository.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import request from 'supertest';
 
@@ -75,8 +75,13 @@ function createTestApp(
   return app;
 }
 
-async function loginAs(repository: UserRepository, email: string, password: string) {
-  const response = await request(createTestApp(repository))
+async function loginAs(
+  repository: UserRepository,
+  email: string,
+  password: string,
+  sessions: AuthSessionRepository = authSessionRepository
+) {
+  const response = await request(createTestApp(repository, sessions))
     .post('/api/auth/login')
     .send({ email, password });
 
@@ -195,9 +200,10 @@ describe('NEXUS user authentication and RBAC', () => {
   it('revokes every active session for the current user on logout-all', async () => {
     const passwordHash = await bcrypt.hash(TEST_PASSWORD, 4);
     const repository = makeRepository({}, { ...adminUser, passwordHash });
-    const app = createTestApp(repository);
-    const firstToken = await loginAs(repository, adminUser.email, TEST_PASSWORD);
-    const secondToken = await loginAs(repository, adminUser.email, TEST_PASSWORD);
+    const sessions = new InMemoryAuthSessionRepository();
+    const app = createTestApp(repository, sessions);
+    const firstToken = await loginAs(repository, adminUser.email, TEST_PASSWORD, sessions);
+    const secondToken = await loginAs(repository, adminUser.email, TEST_PASSWORD, sessions);
 
     const logoutAll = await request(app)
       .post('/api/auth/logout-all')
