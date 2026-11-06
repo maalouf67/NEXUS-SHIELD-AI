@@ -7,9 +7,7 @@ This checklist separates CI evidence from settings that must be checked in the a
 
 ## 1. API service network binding
 
-The API currently defaults to `HOST=127.0.0.1` in `services/api/src/server.ts`. That is appropriate for local-only development, but a Railway service exposed through Railway's proxy must listen on the container interface.
-
-Set the API service variable:
+The API now defaults to `HOST=0.0.0.0` when `NODE_ENV=production`, while retaining `127.0.0.1` for local development. An explicit `HOST` variable overrides this default. For Railway, set the API service variable explicitly so the deployment intent is visible:
 
 ```text
 HOST=0.0.0.0
@@ -93,7 +91,7 @@ Do not run CI or a developer terminal against the production `DATABASE_URL`. Do 
 
 Do not declare Active Defense production-ready until all applicable items have evidence from the actual deployment:
 
-- [ ] API binds to `0.0.0.0` and is reachable through the Railway proxy.
+- [ ] API binds to `0.0.0.0` and is reachable through the Railway proxy (production code default plus an explicit service variable).
 - [ ] PostgreSQL volume survives a restart and the database process runs as the non-root `postgres` user after initialization.
 - [ ] `RAILWAY_RUN_UID=0` is present on the custom PostgreSQL service when using its non-root Dockerfile with a Railway volume.
 - [ ] `TRUST_PROXY_HOPS` matches the verified proxy topology; forwarded-header spoofing is rejected.
