@@ -1,38 +1,84 @@
-# NEXUS SHIELD AI — Rust Firewall Policy Core
+# NEXUS SHIELD AI — Rust Firewall and Network Behavior Engine
 
-This component adds a Rust policy-validation and nftables preview core for Linux host/server ingress protection.
+This component adds a Rust policy-preview engine, bounded network-behavior heuristics, and an authenticated event adapter for the existing NEXUS SOC ingestion API.
 
-## Why Rust
-Rust provides memory safety without a garbage collector and strong compile-time checks. Linux kernel nftables performs packet filtering; this package validates policies and renders candidate rules.
+## Architecture
 
-## Current scope
-- Validate allowed TCP ports and denied IPv4/IPv6 CIDR sources.
-- Reject duplicate ports/networks and malformed CIDR values.
-- Generate an nftables inet table with loopback and established/related allowances, source-deny rules, explicit TCP allow ports, and default-drop ingress.
-- CLI preview from JSON and unit tests.
+- Rust validates a declarative nftables policy and renders a candidate Linux ingress ruleset.
+- A trusted upstream sensor supplies normalized JSON Lines observations (source IP, destination port, TCP/UDP protocol, allowed/blocked result, and event time).
+- A bounded sliding-window detector looks for suspected port scans, connection bursts, and repeated blocked probes.
+- Detections are serialized to the existing SOC contract and sent to POST /api/integrations/security-events with X-NEXUS-INGESTION-TOKEN.
+- The API stores normalized events for analyst review. Its existing contract does not create incidents, alerts, or automated containment.
 
-## Safety boundary
-- Does not execute nft, invoke a shell, alter host networking, install a service, or apply rules.
-- A default-drop ruleset can lock out SSH, management, health probes, or other services if the allow-list is incomplete. Review against host requirements and recovery access.
-- Test only in a disposable VM/container with console access and rollback plan. Production apply requires operator approval and a separately reviewed integration.
-- Server firewall groundwork only; not an Android VPN firewall, endpoint agent, full IDS/IPS signature engine, or evidence of production protection.
+## Detection behavior
 
-## Build and test
-~~~sh
-cargo fmt --check
-cargo test
-cargo clippy --all-targets -- -D warnings
-~~~
+Default thresholds, configurable in code and covered by tests:
 
-## Example policy
+| Signal | Threshold | Severity |
+| --- | ---: | --- |
+| Suspected port scan | 12 distinct protocol/port pairs in 60 seconds | high |
+| Connection burst | 100 observations from one source in 60 seconds | medium |
+| Repeated blocked probes | 15 blocked observations from one source in 60 seconds | medium |
+
+A per-source/per-signal five-minute cooldown limits duplicate events. Event-time ordering is required per source. The detector bounds tracked sources and observations per source, rejects invalid IPs/port zero, and does not infer compromise from a heuristic.
+
+## SOC connector
+
+Set these server-side environment variables:
+
+- NEXUS_SOC_API_URL — API origin only, for example https://api.example.com (do not include a path).
+- NEXUS_EVENT_INGESTION_TOKEN — dedicated ingestion token; at least 32 characters.
+
+Remote SOC connections require HTTPS. Plain HTTP is accepted only for localhost in the isolated lab. The adapter posts batches of up to 100 events, retries transient connection/time-out, 408, 429, and 5xx failures up to three attempts, and relies on source + externalEventId idempotency already enforced by the API.
+
+The token is never placed in command-line arguments or event attributes. Do not commit it or expose it to the browser.
+
+## Input and preview
+
+Each JSONL line must match this schema:
+
 ~~~json
 {
-  "allowed_tcp_ports": [22, 443],
-  "denied_sources": ["192.0.2.0/24", "2001:db8::/32"]
+  "observed_at_unix": 1700000000,
+  "source_ip": "198.51.100.27",
+  "destination_port": 443,
+  "protocol": "tcp",
+  "action": "blocked"
 }
 ~~~
 
-Preview with:
+Run a safe offline preview:
+
 ~~~sh
-cargo run -- --policy policy.json
+cargo run -- --input tests/network-flows.jsonl --stdout-only
 ~~~
+
+Forward detections to the SOC (only from a trusted host with configured secrets):
+
+~~~sh
+NEXUS_SOC_API_URL=https://api.example.com \
+NEXUS_EVENT_INGESTION_TOKEN="$NEXUS_EVENT_INGESTION_TOKEN" \
+cargo run -- --input /var/log/nexus/normalized-flows.jsonl
+~~~
+
+## Isolated integration lab
+
+The lab image runs as a non-root user, with no network namespace access beyond its own loopback, no Linux capabilities, a read-only root filesystem, a small memory/PID limit, synthetic documentation-range IP addresses, and a local mock SOC endpoint. It verifies the actual HTTP path, ingestion header, event schema, and expected detections without connecting to the real SOC or changing host networking.
+
+~~~sh
+docker build -f Dockerfile -t nexus-firewall-lab .
+docker run --rm --network none --cap-drop=ALL \
+  --security-opt no-new-privileges --read-only \
+  --tmpfs /tmp:rw,noexec,nosuid,size=16m \
+  --memory=256m --cpus=1 --pids-limit=64 nexus-firewall-lab
+~~~
+
+The GitHub Actions workflow runs formatting, unit tests, Clippy with warnings denied, and this isolated container lab.
+
+## Safety and production boundary
+
+- This engine analyzes normalized observations; it does not capture packets or discover network interfaces. A real sensor/connector must be implemented, configured, and validated separately.
+- It does not execute nft, invoke a shell, alter host networking, or apply firewall rules.
+- A rendered default-drop ruleset can lock out SSH, management, DNS, DHCP, monitoring, or health probes if the host-specific allow-list is incomplete. Review a complete policy, test with console recovery, and prepare rollback before any privileged apply integration.
+- Heuristic detections are leads for analyst review, not confirmed attacks. No automatic block, quarantine, incident creation, or containment is performed.
+- This is server-side groundwork; it is not Android VPN filtering, a full endpoint agent, or a production-certified IPS.
