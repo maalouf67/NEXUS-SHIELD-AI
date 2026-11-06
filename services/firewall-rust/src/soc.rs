@@ -1,6 +1,7 @@
 use crate::SecurityEventInput;
 use hmac::{Hmac, Mac};
 use reqwest::blocking::Client;
+use reqwest::redirect::Policy;
 use reqwest::{header::HeaderValue, StatusCode};
 use sha2::Sha256;
 use std::{net::IpAddr, thread, time::Duration};
@@ -79,6 +80,7 @@ impl SocClient {
         let client = Client::builder()
             .timeout(Duration::from_secs(5))
             .https_only(false)
+            .redirect(Policy::none())
             .build()
             .map_err(|error| SocError::HttpClient(error.to_string()))?;
         Ok(Self {
