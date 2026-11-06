@@ -64,6 +64,81 @@ export function createSecurityEventsRouter(
 ) {
   const router = Router();
 
+  // The Android DNS companion reports only protection state and resolver failures.
+  // Domain names, DNS payloads, device IPs, and other browsing details are never accepted.
+  router.post(
+    '/security-events/mobile',
+    requireAuth,
+    async (req, res) => {
+      const parsed = z.object({
+        eventId: z.string().uuid(),
+        eventType: z.enum([
+          'dns.protection.started',
+          'dns.protection.stopped',
+          'dns.resolver.unavailable',
+          'dns.queue.saturated'
+        ])
+      }).strict().safeParse(req.body);
+
+      if (!parsed.success) {
+        return res.status(400).json({
+          error: 'INVALID_REQUEST',
+          details: parsed.error.flatten()
+        });
+      }
+
+      const eventDefinitions = {
+        'dns.protection.started': {
+          severity: 'informational' as const,
+          summary: 'Android DNS-only protection started. Encrypted DNS-over-TLS is in use.'
+        },
+        'dns.protection.stopped': {
+          severity: 'informational' as const,
+          summary: 'Android DNS-only protection stopped.'
+        },
+        'dns.resolver.unavailable': {
+          severity: 'medium' as const,
+          summary: 'The encrypted DNS resolver was unavailable; DNS requests failed closed without plaintext fallback.'
+        },
+        'dns.queue.saturated': {
+          severity: 'low' as const,
+          summary: 'The local DNS work queue reached its configured safety limit; excess requests received SERVFAIL.'
+        }
+      };
+      const definition = eventDefinitions[parsed.data.eventType];
+
+      try {
+        const result = await repository.ingestBatch([{
+          source: 'android-dns',
+          externalEventId: parsed.data.eventId,
+          eventType: parsed.data.eventType,
+          severity: definition.severity,
+          observedAt: new Date().toISOString(),
+          summary: definition.summary,
+          attributes: {
+            client: 'android',
+            transport: 'dns-over-tls',
+            resolver: 'quad9',
+            telemetry_scope: 'status-only'
+          }
+        }]);
+        return res.status(202).json({
+          status: 'accepted',
+          ...result,
+          source: 'android-dns',
+          telemetry_scope: 'status-only',
+          domain_names_collected: false,
+          automated_response_performed: false
+        });
+      } catch {
+        return res.status(503).json({
+          error: 'SECURITY_EVENT_STORE_UNAVAILABLE',
+          message: 'The Android security event could not be committed.'
+        });
+      }
+    }
+  );
+
   router.post(
     '/integrations/security-events',
     requireEventIngestionToken,

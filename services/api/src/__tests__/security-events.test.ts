@@ -245,4 +245,68 @@ describe('Normalized security event API', () => {
     expect(response.body.status).toBe('already_reviewed');
     expect(response.body.audit_recorded).toBe(false);
   });
+  it('accepts authenticated Android DNS status events without collecting DNS content', async () => {
+    let ingested: SecurityEventInput[] = [];
+    const repository = createRepository({
+      async ingestBatch(events) {
+        ingested = events;
+        return { inserted: events.length, duplicates: 0 };
+      }
+    });
+
+    const response = await request(createTestApp(repository))
+      .post('/api/security-events/mobile')
+      .set('Authorization', `Bearer ${token(ANALYST_ID, 'analyst')}`)
+      .send({ eventId: EVENT_ID, eventType: 'dns.protection.started' });
+
+    expect(response.status).toBe(202);
+    expect(response.body.telemetry_scope).toBe('status-only');
+    expect(response.body.domain_names_collected).toBe(false);
+    expect(response.body.automated_response_performed).toBe(false);
+    expect(ingested).toHaveLength(1);
+    expect(ingested[0]).toMatchObject({
+      source: 'android-dns',
+      externalEventId: EVENT_ID,
+      eventType: 'dns.protection.started',
+      severity: 'informational'
+    });
+    expect(ingested[0].attributes).toEqual({
+      client: 'android',
+      transport: 'dns-over-tls',
+      resolver: 'quad9',
+      telemetry_scope: 'status-only'
+    });
+    expect(JSON.stringify(ingested[0])).not.toMatch(/domain|dnsPayload|clientIp/i);
+  });
+
+  it('allows an authenticated viewer to report only their bounded DNS protection status', async () => {
+    const response = await request(createTestApp(createRepository()))
+      .post('/api/security-events/mobile')
+      .set('Authorization', `Bearer ${token(VIEWER_ID, 'viewer')}`)
+      .send({ eventId: EVENT_ID, eventType: 'dns.protection.started' });
+
+    expect(response.status).toBe(202);
+    expect(response.body.telemetry_scope).toBe('status-only');
+    expect(response.body.domain_names_collected).toBe(false);
+  });
+
+  it('rejects any Android telemetry payload containing domain details', async () => {
+    let called = false;
+    const repository = createRepository({
+      async ingestBatch(events) {
+        called = true;
+        return { inserted: events.length, duplicates: 0 };
+      }
+    });
+
+    const response = await request(createTestApp(repository))
+      .post('/api/security-events/mobile')
+      .set('Authorization', `Bearer ${token(ANALYST_ID, 'analyst')}`)
+      .send({ eventId: EVENT_ID, eventType: 'dns.protection.started', domain: 'example.com' });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toBe('INVALID_REQUEST');
+    expect(called).toBe(false);
+  });
+
 });

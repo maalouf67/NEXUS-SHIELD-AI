@@ -1,12 +1,17 @@
 import express from 'express';
+import jwt from 'jsonwebtoken';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import request from 'supertest';
 
 import type { AssetInventorySnapshot, AssetInventoryStore } from '../assets/asset-inventory.service.js';
+import { authTokenConfig } from '../auth/auth.middleware.js';
 import { createAssetInventoryRouter } from '../assets/asset-inventory.routes.js';
 
 const serviceToken = 'nexus-inventory-test-token'.padEnd(48, 'x');
 const originalToken = process.env.NEXUS_SERVICE_API_TOKEN;
+const JWT_SECRET = 'nexus-asset-inventory-test-jwt-secret-at-least-32';
+const originalJwtSecret = process.env.JWT_SECRET;
+const ANALYST_ID = '550e8400-e29b-41d4-a716-446655440001';
 
 const sampleInventory: AssetInventorySnapshot = {
   assets: [
@@ -47,6 +52,14 @@ const sampleInventory: AssetInventorySnapshot = {
   }]
 };
 
+function userToken(role: 'admin' | 'analyst' | 'viewer' = 'analyst') {
+  return jwt.sign(
+    { email: `${role}@example.com`, role },
+    JWT_SECRET,
+    { algorithm: 'HS256', subject: ANALYST_ID, issuer: authTokenConfig.issuer, audience: authTokenConfig.audience, expiresIn: '15m' }
+  );
+}
+
 function createTestApp(store: AssetInventoryStore) {
   const app = express();
   app.use(express.json({ limit: '1mb' }));
@@ -75,6 +88,7 @@ function createStore(overrides: Partial<AssetInventoryStore> = {}): AssetInvento
 describe('Persistent asset inventory API', () => {
   beforeEach(() => {
     process.env.NEXUS_SERVICE_API_TOKEN = serviceToken;
+    process.env.JWT_SECRET = JWT_SECRET;
   });
 
   afterEach(() => {
@@ -83,20 +97,22 @@ describe('Persistent asset inventory API', () => {
     } else {
       process.env.NEXUS_SERVICE_API_TOKEN = originalToken;
     }
+    if (originalJwtSecret === undefined) delete process.env.JWT_SECRET;
+    else process.env.JWT_SECRET = originalJwtSecret;
   });
 
-  it('requires the service token before reading inventory', async () => {
+  it('requires user authentication before reading inventory', async () => {
     const response = await request(createTestApp(createStore()))
       .get('/api/assets/inventory');
 
     expect(response.status).toBe(401);
-    expect(response.body.error).toBe('UNAUTHORIZED');
+    expect(response.body.error).toBe('UNAUTHENTICATED');
   });
 
   it('returns the stored graph as database-sourced inventory', async () => {
     const response = await request(createTestApp(createStore()))
       .get('/api/assets/inventory')
-      .set('Authorization', `Bearer ${serviceToken}`);
+      .set('Authorization', `Bearer ${userToken()}`);
 
     expect(response.status).toBe(200);
     expect(response.body.data_source).toBe('postgresql');
@@ -148,7 +164,7 @@ describe('Persistent asset inventory API', () => {
   it('analyzes the persisted graph without changing it', async () => {
     const response = await request(createTestApp(createStore()))
       .post('/api/attack-paths/analyze-inventory')
-      .set('Authorization', `Bearer ${serviceToken}`)
+      .set('Authorization', `Bearer ${userToken('viewer')}`)
       .send({ startAssetId: 'identity-1', maxDepth: 3, maxPaths: 10 });
 
     expect(response.status).toBe(200);
@@ -169,7 +185,7 @@ describe('Persistent asset inventory API', () => {
 
     const response = await request(createTestApp(store))
       .get('/api/assets/inventory')
-      .set('Authorization', `Bearer ${serviceToken}`);
+      .set('Authorization', `Bearer ${userToken()}`);
 
     expect(response.status).toBe(503);
     expect(response.body.error).toBe('DATABASE_UNAVAILABLE');

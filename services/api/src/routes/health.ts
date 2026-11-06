@@ -43,6 +43,9 @@ healthRouter.get("/ready", readyRouteLimiter, requireAuth, async (_req, res) => 
     },
     ip_reputation_provider_credentials: {
       abuseipdb: Boolean(process.env.ABUSEIPDB_API_KEY?.trim())
+    },
+    event_ingestion: {
+      configured: Boolean(process.env.NEXUS_EVENT_INGESTION_TOKEN?.trim())
     }
   };
   const ready = database === "ok";

@@ -11,12 +11,19 @@ import android.net.VpnService;
 import android.os.Build;
 import android.os.ParcelFileDescriptor;
 
+import org.json.JSONObject;
+
 import ai.nexusshield.mobile.security.Ipv4DnsPacketCodec;
 import ai.nexusshield.mobile.security.Quad9DnsOverTlsResolver;
 
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
+import java.util.UUID;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.RejectedExecutionException;
@@ -27,6 +34,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public final class DnsProtectionService extends VpnService {
     public static final String ACTION_START = "ai.nexusshield.mobile.action.START_DNS_PROTECTION";
     public static final String ACTION_STOP = "ai.nexusshield.mobile.action.STOP_DNS_PROTECTION";
+    public static final String EXTRA_API_BASE_URL = "ai.nexusshield.mobile.extra.API_BASE_URL";
+    public static final String EXTRA_ACCESS_TOKEN = "ai.nexusshield.mobile.extra.ACCESS_TOKEN";
     private static final String CHANNEL_ID = "nexus_dns_protection";
     private static final int NOTIFICATION_ID = 5107;
     private static final String PREFS = "nexus_dns_protection";
@@ -36,6 +45,11 @@ public final class DnsProtectionService extends VpnService {
     private static final int MAX_PENDING_DNS_REQUESTS = 64;
 
     private final AtomicBoolean running = new AtomicBoolean(false);
+    private final AtomicBoolean resolverFailureReported = new AtomicBoolean(false);
+    private final AtomicBoolean queueSaturationReported = new AtomicBoolean(false);
+    // Short-lived user access token is memory-only and is never written to preferences.
+    private volatile String apiBaseUrl;
+    private volatile String accessToken;
     // A bounded queue prevents a burst of DNS traffic from growing memory without limit.
     // When the queue is full, the reader returns DNS SERVFAIL instead of silently dropping work.
     private final ExecutorService dnsWorkers = new ThreadPoolExecutor(
@@ -62,9 +76,21 @@ public final class DnsProtectionService extends VpnService {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
+        if (intent != null) {
+            String suppliedApi = intent.getStringExtra(EXTRA_API_BASE_URL);
+            String suppliedToken = intent.getStringExtra(EXTRA_ACCESS_TOKEN);
+            if (suppliedApi != null && suppliedApi.startsWith("https://") &&
+                    suppliedToken != null && !suppliedToken.trim().isEmpty()) {
+                apiBaseUrl = suppliedApi;
+                accessToken = suppliedToken;
+            }
+        }
+
         String action = intent == null ? ACTION_START : intent.getAction();
         if (ACTION_STOP.equals(action)) {
+            boolean wasRunning = running.get();
             stopTunnel();
+            if (wasRunning) reportStatusEvent("dns.protection.stopped");
             stopForeground(STOP_FOREGROUND_REMOVE);
             stopSelf();
             return START_NOT_STICKY;
@@ -99,8 +125,11 @@ public final class DnsProtectionService extends VpnService {
             tunnelInput = new FileInputStream(tunnel.getFileDescriptor());
             tunnelOutput = new FileOutputStream(tunnel.getFileDescriptor());
             running.set(true);
+            resolverFailureReported.set(false);
+            queueSaturationReported.set(false);
             preferences().edit().putBoolean("active", true).putString("last_error", "").apply();
             startPacketReader();
+            reportStatusEvent("dns.protection.started");
         } catch (Exception error) {
             preferences().edit().putBoolean("active", false)
                     .putString("last_error", safeMessage(error)).apply();
@@ -134,6 +163,9 @@ public final class DnsProtectionService extends VpnService {
                     } catch (RejectedExecutionException overloaded) {
                         long rejected = prefs.getLong("queue_overflow_count", 0L) + 1L;
                         prefs.edit().putLong("queue_overflow_count", rejected).apply();
+                        if (queueSaturationReported.compareAndSet(false, true)) {
+                            reportStatusEvent("dns.queue.saturated");
+                        }
                         // Fail closed under load: do not forward this query over plaintext DNS.
                         writeResponse(query, Ipv4DnsPacketCodec.buildServFail(query));
                     }
@@ -172,9 +204,62 @@ public final class DnsProtectionService extends VpnService {
             // Fail closed: do not retry over unencrypted DNS. Return SERVFAIL.
             response = Ipv4DnsPacketCodec.buildServFail(query);
             preferences().edit().putString("last_error", "Secure DNS resolver temporarily unavailable; no plaintext fallback was used.").apply();
+            if (resolverFailureReported.compareAndSet(false, true)) {
+                reportStatusEvent("dns.resolver.unavailable");
+            }
         }
 
         writeResponse(query, response);
+    }
+
+    // Reports only bounded protection-state codes. No DNS payload, queried domain,
+    // destination address, or packet metadata is transmitted to the API.
+    private void reportStatusEvent(String eventType) {
+        String base = apiBaseUrl;
+        String token = accessToken;
+        if (base == null || token == null) {
+            preferences().edit().putString("last_telemetry_status", "not sent: sign in to NEXUS in the Android app").apply();
+            return;
+        }
+
+        Thread reporter = new Thread(() -> {
+            HttpURLConnection connection = null;
+            try {
+                URL endpoint = new URL(base + "/api/security-events/mobile");
+                if (!"https".equalsIgnoreCase(endpoint.getProtocol())) {
+                    throw new IOException("Telemetry requires HTTPS.");
+                }
+                connection = (HttpURLConnection) endpoint.openConnection();
+                connection.setRequestMethod("POST");
+                connection.setConnectTimeout(10000);
+                connection.setReadTimeout(10000);
+                connection.setDoOutput(true);
+                connection.setRequestProperty("Authorization", "Bearer " + token);
+                connection.setRequestProperty("Content-Type", "application/json; charset=utf-8");
+                connection.setRequestProperty("Accept", "application/json");
+
+                JSONObject payload = new JSONObject();
+                payload.put("eventId", UUID.randomUUID().toString());
+                payload.put("eventType", eventType);
+                byte[] body = payload.toString().getBytes(StandardCharsets.UTF_8);
+                connection.setFixedLengthStreamingMode(body.length);
+                try (OutputStream output = connection.getOutputStream()) {
+                    output.write(body);
+                }
+
+                int status = connection.getResponseCode();
+                String result = status == 202
+                        ? "accepted by NEXUS API"
+                        : "not accepted by NEXUS API (HTTP " + status + ")";
+                preferences().edit().putString("last_telemetry_status", result).apply();
+            } catch (Exception error) {
+                preferences().edit().putString("last_telemetry_status", "unavailable: status event was not delivered").apply();
+            } finally {
+                if (connection != null) connection.disconnect();
+            }
+        }, "nexus-status-telemetry");
+        reporter.setDaemon(true);
+        reporter.start();
     }
 
     private void writeResponse(Ipv4DnsPacketCodec.Query query, byte[] dnsResponse) {
