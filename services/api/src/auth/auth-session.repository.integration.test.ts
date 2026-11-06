@@ -36,20 +36,27 @@ describe('PostgreSQL access-session lifecycle integration', () => {
           role: 'analyst'
         });
 
-        await pool.query('UPDATE users SET role = $2 WHERE id = $1', [userId, 'viewer']);
-        expect((await repository.findActiveSession(firstSessionId, userId))?.role).toBe('viewer');
-
         expect(await repository.findActiveSession(firstSessionId, randomUUID())).toBeNull();
         expect(await repository.findActiveSession(randomUUID(), userId)).toBeNull();
 
-        expect(await repository.revokeSession(firstSessionId, userId, 'test_logout')).toBe(true);
+        await pool.query('UPDATE users SET role = $2 WHERE id = $1', [userId, 'viewer']);
+        // A role change revokes every previously issued access session.
         expect(await repository.findActiveSession(firstSessionId, userId)).toBeNull();
-        expect(await repository.revokeSession(firstSessionId, userId, 'test_logout')).toBe(false);
+        expect(await repository.findActiveSession(secondSessionId, userId)).toBeNull();
 
         await repository.createSession({ sessionId: thirdSessionId, userId, expiresAt });
-        expect(await repository.revokeAllSessions(userId, 'test_revoke_all')).toBe(2);
-        expect(await repository.findActiveSession(secondSessionId, userId)).toBeNull();
+        expect((await repository.findActiveSession(thirdSessionId, userId))?.role).toBe('viewer');
+        expect(await repository.revokeSession(thirdSessionId, userId, 'test_logout')).toBe(true);
         expect(await repository.findActiveSession(thirdSessionId, userId)).toBeNull();
+        expect(await repository.revokeSession(thirdSessionId, userId, 'test_logout')).toBe(false);
+
+        const fourthSessionId = randomUUID();
+        const fifthSessionId = randomUUID();
+        await repository.createSession({ sessionId: fourthSessionId, userId, expiresAt });
+        await repository.createSession({ sessionId: fifthSessionId, userId, expiresAt });
+        expect(await repository.revokeAllSessions(userId, 'test_revoke_all')).toBe(2);
+        expect(await repository.findActiveSession(fourthSessionId, userId)).toBeNull();
+        expect(await repository.findActiveSession(fifthSessionId, userId)).toBeNull();
 
         const disabledSessionId = randomUUID();
         await repository.createSession({ sessionId: disabledSessionId, userId, expiresAt });
