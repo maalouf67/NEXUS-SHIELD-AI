@@ -84,6 +84,40 @@ describe('PostgreSQL access-session lifecycle integration', () => {
         expect(await repository.findActiveSession(fourthSessionId, userId)).toBeNull();
         expect(await repository.findActiveSession(fifthSessionId, userId)).toBeNull();
 
+        const expirySessionId = randomUUID();
+        await repository.createSession({
+          sessionId: expirySessionId,
+          userId,
+          expiresAt: new Date(Date.now() + 15 * 60 * 1000)
+        });
+        await pool.query(
+          'UPDATE auth_sessions SET expires_at = NOW() - INTERVAL \'1 second\' WHERE id = $1',
+          [expirySessionId]
+        );
+        expect(await repository.findActiveSession(expirySessionId, userId)).toBeNull();
+
+        const concurrentSessionIds = Array.from({ length: 8 }, () => randomUUID());
+        await Promise.all(concurrentSessionIds.map((sessionId) =>
+          repository.createSession({
+            sessionId,
+            userId,
+            expiresAt: new Date(Date.now() + 15 * 60 * 1000)
+          })
+        ));
+        const concurrentResults = await Promise.all(concurrentSessionIds.map((sessionId) =>
+          repository.findActiveSession(sessionId, userId)
+        ));
+        expect(concurrentResults.every((session) => session?.id === userId)).toBe(true);
+
+        const concurrentRevokes = await Promise.all([
+          repository.revokeAllSessions(userId, 'test_concurrent_revoke'),
+          repository.revokeAllSessions(userId, 'test_concurrent_revoke')
+        ]);
+        expect(concurrentRevokes.reduce((total, count) => total + count, 0)).toBe(8);
+        for (const sessionId of concurrentSessionIds) {
+          expect(await repository.findActiveSession(sessionId, userId)).toBeNull();
+        }
+
         const disabledSessionId = randomUUID();
         await repository.createSession({ sessionId: disabledSessionId, userId, expiresAt });
         await pool.query('UPDATE users SET is_active = FALSE WHERE id = $1', [userId]);
