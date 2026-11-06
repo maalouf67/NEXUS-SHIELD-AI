@@ -15,11 +15,11 @@ permissions:
   contents: read
 
 concurrency:
-  group: rust-firewall-${{ github.ref }}
+  group: rust-firewall-\${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  test:
+  rust:
     name: Rust format, tests, and lint
     runs-on: ubuntu-latest
     defaults:
@@ -38,7 +38,28 @@ jobs:
           workspaces: services/firewall-rust
       - name: Check formatting
         run: cargo fmt --check
-      - name: Unit tests
+      - name: Unit and SOC HTTP contract tests
         run: cargo test
       - name: Clippy
         run: cargo clippy --all-targets -- -D warnings
+
+  isolated-soc-lab:
+    name: Isolated firewall-to-SOC container lab
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Build isolated lab image
+        run: docker build -f services/firewall-rust/Dockerfile -t nexus-firewall-lab services/firewall-rust
+      - name: Run without network access or Linux capabilities
+        run: |
+          docker run --rm \
+            --network none \
+            --cap-drop=ALL \
+            --security-opt no-new-privileges \
+            --read-only \
+            --tmpfs /tmp:rw,noexec,nosuid,size=16m \
+            --memory=256m \
+            --cpus=1 \
+            --pids-limit=64 \
+            nexus-firewall-lab
