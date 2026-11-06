@@ -52,6 +52,9 @@ impl FirewallPolicy {
         }
 
         let mut ports = BTreeSet::new();
+        output.push_str(
+            "  ct state established,related accept\n  ip protocol icmp accept\n  meta l4proto ipv6-icmp accept\n"
+        );
         for port in &self.allowed_tcp_ports {
             if *port == 0 {
                 return Err(PolicyError::InvalidPort(*port));
@@ -64,7 +67,8 @@ impl FirewallPolicy {
         let mut networks = BTreeSet::new();
         let mut parsed = Vec::with_capacity(self.denied_sources.len());
         for source in &self.denied_sources {
-            let network = source.parse::<IpNet>()
+            let network = source
+                .parse::<IpNet>()
                 .map_err(|_| PolicyError::InvalidCidr(source.clone()))?;
             let canonical = network.to_string();
             if !networks.insert(canonical.clone()) {
@@ -79,7 +83,7 @@ impl FirewallPolicy {
     pub fn render_nftables(&self) -> Result<String, PolicyError> {
         let networks = self.validate()?;
         let mut output = String::from(
-            "table inet nexus_shield {\n chain input {\n  type filter hook input priority 0; policy drop;\n  iifname \"lo\" accept\n  ct state established,related accept\n"
+            "table inet nexus_shield {\n chain input {\n  type filter hook input priority 0; policy drop;\n  iifname \"lo\" accept\n  ct state invalid drop\n"
         );
         for network in networks {
             match network {
@@ -174,12 +178,26 @@ impl std::fmt::Display for DetectionError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::InvalidSourceIp(ip) => write!(f, "invalid source IP address: {ip}"),
-            Self::InvalidDestinationPort => write!(f, "destination port must be between 1 and 65535"),
-            Self::TimestampOutOfRange => write!(f, "observation timestamp is outside supported range"),
-            Self::FutureTimestamp => write!(f, "observation timestamp is more than five minutes in the future"),
-            Self::OutOfOrderObservation => write!(f, "source observations must arrive in nondecreasing event-time order"),
-            Self::CapacityExceeded => write!(f, "network behavior detector capacity limit exceeded"),
-            Self::InvalidConfiguration => write!(f, "network behavior detector configuration is invalid"),
+            Self::InvalidDestinationPort => {
+                write!(f, "destination port must be between 1 and 65535")
+            }
+            Self::TimestampOutOfRange => {
+                write!(f, "observation timestamp is outside supported range")
+            }
+            Self::FutureTimestamp => write!(
+                f,
+                "observation timestamp is more than five minutes in the future"
+            ),
+            Self::OutOfOrderObservation => write!(
+                f,
+                "source observations must arrive in nondecreasing event-time order"
+            ),
+            Self::CapacityExceeded => {
+                write!(f, "network behavior detector capacity limit exceeded")
+            }
+            Self::InvalidConfiguration => {
+                write!(f, "network behavior detector configuration is invalid")
+            }
         }
     }
 }
@@ -238,8 +256,13 @@ impl NetworkBehaviorDetector {
         })
     }
 
-    pub fn observe(&mut self, observation: FlowObservation) -> Result<Vec<SecurityEventInput>, DetectionError> {
-        let source_ip = observation.source_ip.parse::<IpAddr>()
+    pub fn observe(
+        &mut self,
+        observation: FlowObservation,
+    ) -> Result<Vec<SecurityEventInput>, DetectionError> {
+        let source_ip = observation
+            .source_ip
+            .parse::<IpAddr>()
             .map_err(|_| DetectionError::InvalidSourceIp(observation.source_ip.clone()))?;
         if observation.destination_port == 0 {
             return Err(DetectionError::InvalidDestinationPort);
@@ -254,20 +277,25 @@ impl NetworkBehaviorDetector {
         }
 
         if let Some(existing) = self.windows.get(&source_ip) {
-            if existing.back().is_some_and(|last| last.observed_at_unix > observed_at) {
+            if existing
+                .back()
+                .is_some_and(|last| last.observed_at_unix > observed_at)
+            {
                 return Err(DetectionError::OutOfOrderObservation);
             }
         }
 
         let window_seconds = self.config.window_seconds;
-        self.windows.retain(|_, values| {
-            values.back().is_some_and(|last| last.observed_at_unix.saturating_add(window_seconds) >= observed_at)
-        });
-        self.last_emitted.retain(|_, last| {
-            last.saturating_add(self.config.alert_cooldown_seconds) >= observed_at
+        // Prune cooldown entries only for the current source. Observations from
+        // different sources may be interleaved in event-time order.
+        self.last_emitted.retain(|(ip, _), last| {
+            *ip != source_ip
+                || last.saturating_add(self.config.alert_cooldown_seconds) >= observed_at
         });
 
-        if !self.windows.contains_key(&source_ip) && self.windows.len() >= self.config.max_tracked_sources {
+        if !self.windows.contains_key(&source_ip)
+            && self.windows.len() >= self.config.max_tracked_sources
+        {
             return Err(DetectionError::CapacityExceeded);
         }
 
@@ -286,7 +314,8 @@ impl NetworkBehaviorDetector {
             .iter()
             .map(|item| (item.protocol, item.destination_port))
             .collect();
-        let blocked_count = values.iter()
+        let blocked_count = values
+            .iter()
             .filter(|item| item.action == FlowAction::Blocked)
             .count();
         let observation_count = values.len();
@@ -296,10 +325,18 @@ impl NetworkBehaviorDetector {
             candidates.push((DetectionKind::PortScan, distinct_ports.len(), blocked_count));
         }
         if observation_count >= self.config.connection_burst_count {
-            candidates.push((DetectionKind::ConnectionBurst, distinct_ports.len(), blocked_count));
+            candidates.push((
+                DetectionKind::ConnectionBurst,
+                distinct_ports.len(),
+                blocked_count,
+            ));
         }
         if blocked_count >= self.config.blocked_attempt_count {
-            candidates.push((DetectionKind::RepeatedBlockedProbes, distinct_ports.len(), blocked_count));
+            candidates.push((
+                DetectionKind::RepeatedBlockedProbes,
+                distinct_ports.len(),
+                blocked_count,
+            ));
         }
 
         let mut emitted = Vec::new();
@@ -364,6 +401,13 @@ mod tests {
         assert!(rules.contains("policy drop"));
         assert!(rules.contains("iifname \"lo\" accept"));
         assert!(rules.contains("ct state established,related accept"));
+        assert!(rules.contains("ct state invalid drop"));
+        assert!(rules.contains("ip protocol icmp accept"));
+        assert!(rules.contains("meta l4proto ipv6-icmp accept"));
+        assert!(
+            rules.find("ip saddr 192.0.2.0/24 drop").unwrap()
+                < rules.find("ct state established,related accept").unwrap()
+        );
         assert!(rules.contains("ip saddr 192.0.2.0/24 drop"));
         assert!(rules.contains("ip6 saddr 2001:db8::/32 drop"));
         assert!(rules.contains("tcp dport 443 ct state new accept"));
@@ -371,10 +415,19 @@ mod tests {
 
     #[test]
     fn rejects_duplicate_ports_and_invalid_cidr() {
-        let duplicate = FirewallPolicy { allowed_tcp_ports: vec![443, 443], denied_sources: vec![] };
+        let duplicate = FirewallPolicy {
+            allowed_tcp_ports: vec![443, 443],
+            denied_sources: vec![],
+        };
         assert_eq!(duplicate.validate(), Err(PolicyError::DuplicatePort(443)));
-        let invalid = FirewallPolicy { allowed_tcp_ports: vec![], denied_sources: vec!["not-a-network".into()] };
-        assert_eq!(invalid.validate(), Err(PolicyError::InvalidCidr("not-a-network".into())));
+        let invalid = FirewallPolicy {
+            allowed_tcp_ports: vec![],
+            denied_sources: vec!["not-a-network".into()],
+        };
+        assert_eq!(
+            invalid.validate(),
+            Err(PolicyError::InvalidCidr("not-a-network".into()))
+        );
     }
 
     #[test]
@@ -383,8 +436,14 @@ mod tests {
             allowed_tcp_ports: vec![],
             denied_sources: vec!["192.0.2.0/24".into(), "192.0.2.0/24".into()],
         };
-        assert_eq!(duplicate.validate(), Err(PolicyError::DuplicateNetwork("192.0.2.0/24".into())));
-        let zero = FirewallPolicy { allowed_tcp_ports: vec![0], denied_sources: vec![] };
+        assert_eq!(
+            duplicate.validate(),
+            Err(PolicyError::DuplicateNetwork("192.0.2.0/24".into()))
+        );
+        let zero = FirewallPolicy {
+            allowed_tcp_ports: vec![0],
+            denied_sources: vec![],
+        };
         assert_eq!(zero.validate(), Err(PolicyError::InvalidPort(0)));
     }
 
@@ -393,13 +452,23 @@ mod tests {
         let mut detector = NetworkBehaviorDetector::new(NetworkBehaviorConfig::default()).unwrap();
         let mut events = Vec::new();
         for index in 0..13 {
-            events.extend(detector.observe(flow(1_700_000_000 + index, 1000 + index as u16, FlowAction::Allowed)).unwrap());
+            events.extend(
+                detector
+                    .observe(flow(
+                        1_700_000_000 + index,
+                        1000 + index as u16,
+                        FlowAction::Allowed,
+                    ))
+                    .unwrap(),
+            );
         }
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].event_type, "network.port_scan_suspected");
         assert_eq!(events[0].severity, "high");
         assert_eq!(events[0].attributes["distinct_destination_ports"], "12");
-        let next = detector.observe(flow(1_700_000_020, 3000, FlowAction::Allowed)).unwrap();
+        let next = detector
+            .observe(flow(1_700_000_020, 3000, FlowAction::Allowed))
+            .unwrap();
         assert!(next.is_empty());
     }
 
@@ -408,7 +477,11 @@ mod tests {
         let mut detector = NetworkBehaviorDetector::new(NetworkBehaviorConfig::default()).unwrap();
         let mut events = Vec::new();
         for index in 0..15 {
-            events.extend(detector.observe(flow(1_700_000_000 + index, 443, FlowAction::Blocked)).unwrap());
+            events.extend(
+                detector
+                    .observe(flow(1_700_000_000 + index, 443, FlowAction::Blocked))
+                    .unwrap(),
+            );
         }
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].event_type, "network.repeated_blocked_probes");
@@ -426,7 +499,11 @@ mod tests {
         let mut detector = NetworkBehaviorDetector::new(config).unwrap();
         let mut events = Vec::new();
         for index in 0..3 {
-            events.extend(detector.observe(flow(1_700_000_000 + index, 443, FlowAction::Allowed)).unwrap());
+            events.extend(
+                detector
+                    .observe(flow(1_700_000_000 + index, 443, FlowAction::Allowed))
+                    .unwrap(),
+            );
         }
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].event_type, "network.connection_burst_suspected");
@@ -437,15 +514,27 @@ mod tests {
         let mut detector = NetworkBehaviorDetector::new(NetworkBehaviorConfig::default()).unwrap();
         let mut invalid = flow(1_700_000_000, 443, FlowAction::Allowed);
         invalid.source_ip = "not-an-ip".into();
-        assert_eq!(detector.observe(invalid), Err(DetectionError::InvalidSourceIp("not-an-ip".into())));
-        assert!(detector.observe(flow(1_700_000_010, 443, FlowAction::Allowed)).unwrap().is_empty());
-        assert_eq!(detector.observe(flow(1_700_000_009, 444, FlowAction::Allowed)), Err(DetectionError::OutOfOrderObservation));
+        assert_eq!(
+            detector.observe(invalid),
+            Err(DetectionError::InvalidSourceIp("not-an-ip".into()))
+        );
+        assert!(detector
+            .observe(flow(1_700_000_010, 443, FlowAction::Allowed))
+            .unwrap()
+            .is_empty());
+        assert_eq!(
+            detector.observe(flow(1_700_000_009, 444, FlowAction::Allowed)),
+            Err(DetectionError::OutOfOrderObservation)
+        );
     }
 
     #[test]
     fn rejects_far_future_timestamps() {
         let mut detector = NetworkBehaviorDetector::new(NetworkBehaviorConfig::default()).unwrap();
         let future = u64::try_from(Utc::now().timestamp()).unwrap() + 600;
-        assert_eq!(detector.observe(flow(future, 443, FlowAction::Allowed)), Err(DetectionError::FutureTimestamp));
+        assert_eq!(
+            detector.observe(flow(future, 443, FlowAction::Allowed)),
+            Err(DetectionError::FutureTimestamp)
+        );
     }
 }
