@@ -66,6 +66,30 @@ export function createPrivacyRequestsRouter() {
     } catch { return res.status(503).json({ error: 'PRIVACY_STORE_UNAVAILABLE' }); }
   });
 
+  router.get('/privacy/requests/:requestId', requireAuth, async (req, res) => {
+    if (!req.authUser) return res.status(401).json({ error: 'UNAUTHENTICATED' });
+    const id = z.string().uuid().safeParse(req.params.requestId);
+    if (!id.success) return res.status(400).json({ error: 'INVALID_REQUEST_ID' });
+    try {
+      const result = await pool.query(
+        `SELECT id, request_type, status, scope_categories, received_at, verified_at, due_at, closed_at
+         FROM privacy_requests
+         WHERE id = $1 AND subject_user_id = $2
+         LIMIT 1`,
+        [id.data, req.authUser.id]
+      );
+      if (!result.rowCount) return res.status(404).json({ error: 'REQUEST_NOT_FOUND' });
+      const events = await pool.query(
+        `SELECT event_code, from_status, to_status, reason_code, created_at
+         FROM privacy_request_events
+         WHERE request_id = $1
+         ORDER BY created_at ASC`,
+        [id.data]
+      );
+      return res.status(200).json({ request: result.rows[0], events: events.rows });
+    } catch { return res.status(503).json({ error: 'PRIVACY_STORE_UNAVAILABLE' }); }
+  });
+
   router.get('/admin/privacy/requests', requireAuth, requireRole('admin'), async (_req, res) => {
     try {
       const result = await pool.query(
