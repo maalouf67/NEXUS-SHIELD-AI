@@ -80,6 +80,12 @@ describe.skipIf(!enabled)('Privacy request API PostgreSQL ownership integration'
     const otherHistory = await request(app)
       .get('/api/privacy/requests')
       .set('Authorization', `Bearer ${otherToken}`);
+    const ownerDetail = await request(app)
+      .get(`/api/privacy/requests/${submitted.body.request.id}`)
+      .set('Authorization', `Bearer ${ownerToken}`);
+    const otherDetail = await request(app)
+      .get(`/api/privacy/requests/${submitted.body.request.id}`)
+      .set('Authorization', `Bearer ${otherToken}`);
     const forbiddenQueue = await request(app)
       .get('/api/admin/privacy/requests')
       .set('Authorization', `Bearer ${otherToken}`);
@@ -91,6 +97,9 @@ describe.skipIf(!enabled)('Privacy request API PostgreSQL ownership integration'
     expect(ownerHistory.body.requests.map((item: { id: string }) => item.id)).toContain(submitted.body.request.id);
     expect(otherHistory.status).toBe(200);
     expect(otherHistory.body.requests).toHaveLength(0);
+    expect(ownerDetail.status).toBe(200);
+    expect(ownerDetail.body.events.map((event: { event_code: string }) => event.event_code)).toContain('request_submitted');
+    expect(otherDetail.status).toBe(404);
     expect(forbiddenQueue.status).toBe(403);
     expect(adminQueue.status).toBe(200);
     expect(adminQueue.body.requests.some((item: { id: string }) => item.id === submitted.body.request.id)).toBe(true);
