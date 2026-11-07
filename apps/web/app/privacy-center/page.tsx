@@ -36,6 +36,10 @@ export default function PrivacyCenterPage() {
   const status = session?.status ?? 'checking';
   const [requests, setRequests] = useState<PrivacyRequest[]>([]);
   const [adminRequests, setAdminRequests] = useState<PrivacyRequest[]>([]);
+  const [requestDetail, setRequestDetail] = useState<{
+    request: PrivacyRequest;
+    events: { event_code: string; from_status?: string | null; to_status?: string | null; reason_code?: string | null; created_at: string }[];
+  } | null>(null);
   const [requestType, setRequestType] = useState<(typeof requestTypes)[number][0]>('access');
   const [selected, setSelected] = useState<string[]>(['account','authentication']);
   const [note, setNote] = useState('');
@@ -53,6 +57,23 @@ export default function PrivacyCenterPage() {
   }, [user]);
 
   useEffect(() => { void load().catch(() => setMessage('Privacy service is currently unavailable.')); }, [load]);
+
+  async function showDetails(id: string) {
+    if (requestDetail?.request.id === id) {
+      setRequestDetail(null);
+      return;
+    }
+    setBusy(true);
+    try {
+      const detail = await apiRequest<{
+        request: PrivacyRequest;
+        events: { event_code: string; from_status?: string | null; to_status?: string | null; reason_code?: string | null; created_at: string }[];
+      }>(`/api/nexus/privacy/requests/${id}`);
+      setRequestDetail(detail);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Request details could not be loaded.');
+    } finally { setBusy(false); }
+  }
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -118,7 +139,14 @@ export default function PrivacyCenterPage() {
       </section>
       <section className="trust-card">
         <h2>My requests</h2>
-        {requests.length === 0 ? <p>No privacy requests yet.</p> : <div className="trust-table"><table><thead><tr><th>Request</th><th>Type</th><th>Status</th><th>Received</th></tr></thead><tbody>{requests.map((item) => <tr key={item.id}><td>{item.id.slice(0,8)}</td><td>{readable(item.request_type)}</td><td>{readable(item.status)}</td><td>{new Date(item.received_at).toLocaleDateString()}</td></tr>)}</tbody></table></div>}
+        {requests.length === 0 ? <p>No privacy requests yet.</p> : <div className="trust-table"><table><thead><tr><th>Request</th><th>Type</th><th>Status</th><th>Received</th></tr></thead><tbody>{requests.map((item) => <tr key={item.id}><td><button type="button" onClick={() => void showDetails(item.id)}>{item.id.slice(0,8)}</button></td><td>{readable(item.request_type)}</td><td>{readable(item.status)}</td><td>{new Date(item.received_at).toLocaleDateString()}</td></tr>)}</tbody></table></div>}
+        {requestDetail && <div className="trust-request">
+          <strong>Request timeline · {requestDetail.request.id.slice(0,8)}</strong>
+          {requestDetail.events.length === 0 ? <p>No recorded events.</p> : <ol>{requestDetail.events.map((event, index) => <li key={`${event.event_code}-${index}`}>
+            {readable(event.event_code)} · {new Date(event.created_at).toLocaleString()}
+            {event.to_status && <span> · {readable(event.to_status)}</span>}
+          </li>)}</ol>}
+        </div>}
       </section>
       {user.role === 'admin' && <section className="trust-card">
         <h2>Privacy operations queue</h2>
