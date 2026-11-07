@@ -126,7 +126,7 @@ export default function PrivacyCenterPage() {
         {adminRequests.length === 0 ? <p>No requests in queue.</p> : adminRequests.map((item) => <article className="trust-request" key={item.id}>
           <strong>{item.subject_email ?? 'Account no longer available'}</strong><span>{readable(item.request_type)} · {readable(item.status)}</span><small>{item.id}</small>
           <div className="trust-actions">
-            {item.status === 'received' && <button disabled={busy} onClick={() => void review(item.id,'verify_identity','identity_verified')}>Verify identity</button>}
+            {item.status === 'received' && <button disabled={busy} onClick={() => void review(item.id,'verify_identity','identity_verified')}>Record identity verification</button>}
             {['verified','received'].includes(item.status) && <button disabled={busy} onClick={() => void review(item.id,'start_review')}>Start review</button>}
             {!['completed','rejected','withdrawn'].includes(item.status) && <button disabled={busy} onClick={() => void review(item.id,'block','ownership_ambiguous')}>Block / escalate</button>}
             {!['completed','rejected','withdrawn','processing'].includes(item.status) && <button disabled={busy} onClick={() => void review(item.id,'approve','approved_for_processing')}>Approve processing</button>}
