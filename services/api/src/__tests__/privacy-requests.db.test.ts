@@ -42,9 +42,6 @@ describe.skipIf(!enabled)('Privacy request API PostgreSQL ownership integration'
   }
 
   afterAll(async () => {
-    if (createdRequestIds.length) {
-      await pool.query('DELETE FROM privacy_requests WHERE id = ANY($1::uuid[])', [createdRequestIds]);
-    }
     await pool.query('DELETE FROM users WHERE id = ANY($1::uuid[])', [[ownerId, otherId, adminId]]);
   });
 
