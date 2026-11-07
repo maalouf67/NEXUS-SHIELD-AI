@@ -10,7 +10,9 @@ const ALLOWED_ROOTS = new Set([
   'security-events',
   'phone-reputation',
   'ip-reputation',
-  'health'
+  'health',
+  'privacy',
+  'admin'
 ]);
 const MAX_BODY_BYTES = 1024 * 1024;
 
