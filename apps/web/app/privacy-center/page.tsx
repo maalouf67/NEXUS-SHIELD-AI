@@ -1,7 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
-import { useSession } from '../../context/session-context';
+import { useCallback, useContext, useEffect, useState } from 'react';
+import { SessionContext } from '../../context/session-context';
 import { apiRequest } from '../../api/client';
 
 type PrivacyRequest = {
@@ -31,7 +31,9 @@ function readable(value: string) {
 }
 
 export default function PrivacyCenterPage() {
-  const { user, status } = useSession();
+  const session = useContext(SessionContext);
+  const user = session?.user ?? null;
+  const status = session?.status ?? 'checking';
   const [requests, setRequests] = useState<PrivacyRequest[]>([]);
   const [adminRequests, setAdminRequests] = useState<PrivacyRequest[]>([]);
   const [requestType, setRequestType] = useState<(typeof requestTypes)[number][0]>('access');
