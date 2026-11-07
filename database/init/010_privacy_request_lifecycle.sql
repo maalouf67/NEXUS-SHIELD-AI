@@ -25,7 +25,7 @@ CREATE INDEX IF NOT EXISTS idx_privacy_requests_status_received
 CREATE TABLE IF NOT EXISTS privacy_request_events (
   id UUID PRIMARY KEY,
   request_id UUID NOT NULL REFERENCES privacy_requests(id) ON DELETE RESTRICT,
-  actor_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  actor_user_id UUID, -- immutable actor reference; no cascading user-delete update of audit history
   event_code VARCHAR(48) NOT NULL,
   from_status VARCHAR(32),
   to_status VARCHAR(32),
