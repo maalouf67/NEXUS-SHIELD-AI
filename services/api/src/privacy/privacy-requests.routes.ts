@@ -90,6 +90,108 @@ export function createPrivacyRequestsRouter() {
     } catch { return res.status(503).json({ error: 'PRIVACY_STORE_UNAVAILABLE' }); }
   });
 
+  // Direct, subject-scoped access/portability export. This deliberately exports
+  // only records with an unambiguous user foreign key and never includes secrets.
+  router.get('/privacy/requests/:requestId/export', requireAuth, async (req, res) => {
+    if (!req.authUser) return res.status(401).json({ error: 'UNAUTHENTICATED' });
+    const id = z.string().uuid().safeParse(req.params.requestId);
+    if (!id.success) return res.status(400).json({ error: 'INVALID_REQUEST_ID' });
+
+    const client = await pool.connect().catch(() => null);
+    if (!client) return res.status(503).json({ error: 'PRIVACY_STORE_UNAVAILABLE' });
+    try {
+      await client.query('BEGIN');
+      const requestResult = await client.query(
+        `SELECT id, request_type, status, scope_categories, verified_at
+         FROM privacy_requests
+         WHERE id = $1 AND subject_user_id = $2
+         FOR UPDATE`,
+        [id.data, req.authUser.id]
+      );
+      if (!requestResult.rowCount) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ error: 'REQUEST_NOT_FOUND' });
+      }
+      const privacyRequest = requestResult.rows[0] as {
+        id: string;
+        request_type: string;
+        status: string;
+        scope_categories: string[];
+        verified_at: Date | string | null;
+      };
+      if (!['access', 'portability'].includes(privacyRequest.request_type)) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ error: 'EXPORT_NOT_APPLICABLE_TO_REQUEST_TYPE' });
+      }
+      if (!privacyRequest.verified_at || privacyRequest.status !== 'processing') {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ error: 'REQUEST_NOT_APPROVED_FOR_EXPORT' });
+      }
+
+      const requested = new Set(privacyRequest.scope_categories);
+      const exported: Record<string, unknown> = {};
+      const excluded: { category: string; reason: string }[] = [];
+      if (requested.has('account')) {
+        const account = await client.query(
+          `SELECT id, email, role, is_active, created_at
+           FROM users WHERE id = $1 LIMIT 1`,
+          [req.authUser.id]
+        );
+        exported.account = account.rows[0] ?? null;
+      }
+      if (requested.has('authentication')) {
+        const sessions = await client.query(
+          `SELECT created_at, expires_at, revoked_at, revocation_reason
+           FROM auth_sessions WHERE user_id = $1
+           ORDER BY created_at DESC LIMIT 500`,
+          [req.authUser.id]
+        );
+        exported.authentication = { sessions: sessions.rows };
+      }
+      if (requested.has('malware_scans')) {
+        const scans = await client.query(
+          `SELECT s.sha256, s.size_bytes, s.created_at AS sample_created_at,
+                  s.expires_at AS sample_expires_at, s.storage_deleted_at,
+                  r.verdict, r.scanner, r.error_code, r.scanned_at, r.created_at AS scan_created_at
+           FROM malware_samples s
+           LEFT JOIN malware_scan_runs r ON r.sample_record_id = s.id
+           WHERE s.owner_user_id = $1
+           ORDER BY s.created_at DESC, r.created_at DESC
+           LIMIT 1000`,
+          [req.authUser.id]
+        );
+        exported.malware_scans = { records: scans.rows };
+      }
+
+      for (const category of privacyRequest.scope_categories) {
+        if (['assets', 'incidents', 'alerts', 'security_events'].includes(category)) {
+          excluded.push({ category, reason: 'ownership_not_verified_for_subject_export' });
+        } else if (category === 'preferences') {
+          excluded.push({ category, reason: 'preferences_are_browser_local_and_not_stored_in_account_database' });
+        }
+      }
+
+      await client.query(
+        `INSERT INTO privacy_request_events (id, request_id, actor_user_id, event_code, reason_code)
+         VALUES ($1, $2, $3, 'subject_export_generated', 'scoped_direct_json_export')`,
+        [randomUUID(), id.data, req.authUser.id]
+      );
+      await client.query('COMMIT');
+      res.setHeader('Content-Disposition', `attachment; filename="nexus-privacy-export-${id.data}.json"`);
+      return res.status(200).json({
+        export_status: excluded.length > 0 ? 'partial' : 'generated',
+        request_id: id.data,
+        generated_at: new Date().toISOString(),
+        data: exported,
+        excluded_categories: excluded,
+        security_notice: 'This response contains only subject-owned records with verified ownership. Password hashes, tokens, secrets, uploaded files, and globally scoped SOC records are excluded. A partial export is not completion of the full request.'
+      });
+    } catch {
+      await client.query('ROLLBACK').catch(() => undefined);
+      return res.status(503).json({ error: 'PRIVACY_EXPORT_UNAVAILABLE' });
+    } finally { client.release(); }
+  });
+
   router.post('/privacy/requests/:requestId/withdraw', requireAuth, async (req, res) => {
     if (!req.authUser) return res.status(401).json({ error: 'UNAUTHENTICATED' });
     const id = z.string().uuid().safeParse(req.params.requestId);
