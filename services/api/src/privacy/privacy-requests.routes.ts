@@ -93,8 +93,15 @@ export function createPrivacyRequestsRouter() {
       reject: { status: 'rejected', event: 'request_rejected' }
     };
     const next = transitions[parsed.data.action];
-    if ((parsed.data.action === 'block' || parsed.data.action === 'reject') && !parsed.data.reason_code) {
+    const requiredReason: Record<string, string> = {
+      verify_identity: 'identity_verified',
+      approve: 'approved_for_processing'
+    };
+    if (['block', 'reject', 'verify_identity', 'approve'].includes(parsed.data.action) && !parsed.data.reason_code) {
       return res.status(400).json({ error: 'REASON_REQUIRED' });
+    }
+    if (requiredReason[parsed.data.action] && parsed.data.reason_code !== requiredReason[parsed.data.action]) {
+      return res.status(400).json({ error: 'INVALID_REASON_FOR_ACTION' });
     }
     const client = await pool.connect().catch(() => null);
     if (!client) return res.status(503).json({ error: 'PRIVACY_STORE_UNAVAILABLE' });
@@ -108,6 +115,17 @@ export function createPrivacyRequestsRouter() {
         return res.status(404).json({ error: 'REQUEST_NOT_FOUND' });
       }
       const fromStatus = current.rows[0].status as string;
+      const allowedFrom: Record<string, string[]> = {
+        verify_identity: ['received', 'identity_verification_required'],
+        start_review: ['verified'],
+        block: ['received', 'identity_verification_required', 'verified', 'in_review', 'processing'],
+        approve: ['verified', 'in_review'],
+        reject: ['received', 'identity_verification_required', 'verified', 'in_review', 'blocked']
+      };
+      if (!allowedFrom[parsed.data.action].includes(fromStatus)) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ error: 'INVALID_STATUS_TRANSITION', current_status: fromStatus });
+      }
       if (['completed','rejected','withdrawn'].includes(fromStatus)) {
         await client.query('ROLLBACK');
         return res.status(409).json({ error: 'REQUEST_ALREADY_CLOSED' });
