@@ -19,7 +19,6 @@ describe.skipIf(!enabled)('Privacy request API PostgreSQL ownership integration'
   const ownerSessionId = randomUUID();
   const otherSessionId = randomUUID();
   const adminSessionId = randomUUID();
-  const createdRequestIds: string[] = [];
 
   function bearer(userId: string, sessionId: string) {
     registerTestAuthSession({
@@ -69,7 +68,6 @@ describe.skipIf(!enabled)('Privacy request API PostgreSQL ownership integration'
 
     expect(submitted.status).toBe(201);
     expect(submitted.body.request.status).toBe('received');
-    createdRequestIds.push(submitted.body.request.id);
 
     const ownerHistory = await request(app)
       .get('/api/privacy/requests')
