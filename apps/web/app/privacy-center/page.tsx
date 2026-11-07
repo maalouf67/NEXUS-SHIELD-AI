@@ -157,7 +157,7 @@ export default function PrivacyCenterPage() {
       <section className="trust-hero">
         <div className="eyebrow">NEXUS · TRUST &amp; GOVERNANCE</div>
         <h1>Privacy &amp; Data Protection Center</h1>
-        <p>Submit and track privacy requests. Actions are authenticated and recorded; fulfilment is not automated yet.</p>
+        <p>Submit and track privacy requests. Verified access and portability exports cover only records with confirmed ownership; erasure, rectification, restriction and processor-side fulfilment are not automated yet.</p>
       </section>
       <section className="trust-card">
         <h2>Data protection overview</h2>
