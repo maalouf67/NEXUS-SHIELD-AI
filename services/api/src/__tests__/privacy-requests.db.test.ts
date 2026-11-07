@@ -100,6 +100,14 @@ describe.skipIf(!enabled)('Privacy request API PostgreSQL ownership integration'
     expect(ownerDetail.status).toBe(200);
     expect(ownerDetail.body.events.map((event: { event_code: string }) => event.event_code)).toContain('request_submitted');
     expect(otherDetail.status).toBe(404);
+    await expect(pool.query(
+      "UPDATE privacy_request_events SET reason_code = 'tamper_attempt' WHERE request_id = $1",
+      [submitted.body.request.id]
+    )).rejects.toThrow('append-only');
+    await expect(pool.query(
+      "DELETE FROM privacy_request_events WHERE request_id = $1",
+      [submitted.body.request.id]
+    )).rejects.toThrow('append-only');
     expect(forbiddenQueue.status).toBe(403);
     expect(adminQueue.status).toBe(200);
     expect(adminQueue.body.requests.some((item: { id: string }) => item.id === submitted.body.request.id)).toBe(true);
