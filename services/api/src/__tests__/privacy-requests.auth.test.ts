@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import request from 'supertest';
 import { app } from '../index.js';
 
+process.env.JWT_SECRET ??= 'privacy-request-test-secret-at-least-32-bytes';
+
 describe('Privacy request authorization boundary', () => {
   it('requires an authenticated session to create a privacy request', async () => {
     const response = await request(app).post('/api/privacy/requests').send({
