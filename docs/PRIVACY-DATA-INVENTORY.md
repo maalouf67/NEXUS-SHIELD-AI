@@ -72,7 +72,13 @@ Repository source does not establish which credentials are present in a live env
 
 These are source-code observations, not proof that scheduled cleanup runs reliably in production.
 
-## 6. Phase 1 evidence still required from the deployment owner
+## 6. Additional source-level retention verification
+
+The cleanup implementation is in `services/api/src/malware-scans/malware-scan-retention.ts`, started by `services/api/src/server.ts`. It is attempted once after the API starts and then every six hours. It requires `AI_BASE_URL` and a service token of at least 32 characters, processes up to 250 expired samples per run, sends an authenticated deletion request to the private quarantine, and marks the database row deleted only after HTTP success or 404. Other HTTP failures stop the run and leave remaining work for a later retry. The script can also be run manually through `npm run cleanup:malware-scans`.
+
+**Remaining operational gap:** source inspection does not prove that the API process stays alive, that the timer runs in the target hosting platform, that multiple API replicas coordinate safely, or that object deletion and metadata purge are monitored. Production evidence must include scheduler heartbeat, last-success timestamp, expired backlog/age, deletion failures, and a synthetic object lifecycle test. The current code does not expose a dedicated cleanup heartbeat/metrics endpoint in the inspected paths.
+
+## 7. Phase 1 evidence still required from the deployment owner
 
 Before designing destructive workflows, obtain and review:
 
@@ -85,7 +91,7 @@ Before designing destructive workflows, obtain and review:
 7. Workspace ownership and data lineage design from PR #30, plus a decision on legacy global assets/events/incidents. No guessed backfill is acceptable.
 8. Operational proof that malware cleanup executes on schedule, retries failures, and verifies object deletion.
 
-## 7. Recommended rights-request architecture (design only; no migration yet)
+## 8. Recommended rights-request architecture (design only; no migration yet)
 
 A future additive implementation should model:
 - `privacy_requests`: opaque request ID, subject account reference where available, request type, authenticated verification state, received/due timestamps, status, assigned reviewer, decision code, response timestamp.
@@ -97,7 +103,7 @@ Use asynchronous, idempotent workers with per-target completion. A request is no
 
 No schema or destructive operation is authorized by this design document. Each later migration and behavior change must be separately reviewed and tested.
 
-## 8. Phase 1 exit criteria
+## 9. Phase 1 exit criteria
 
 - [x] Enumerate current numbered migrations (001–009).
 - [x] Identify primary account/session, asset, SOC, security-event, malware, rate-limit and privacy-scan source paths.
