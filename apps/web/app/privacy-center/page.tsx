@@ -1,0 +1,138 @@
+'use client';
+
+import { useCallback, useEffect, useState } from 'react';
+import { useSession } from '../../context/session-context';
+import { apiRequest } from '../../api/client';
+
+type PrivacyRequest = {
+  id: string;
+  request_type: string;
+  status: string;
+  scope_categories: string[];
+  received_at: string;
+  verified_at?: string | null;
+  due_at?: string | null;
+  closed_at?: string | null;
+  subject_email?: string | null;
+};
+
+const requestTypes = [
+  ['access','Access / copy of my data'],
+  ['rectification','Correct my data'],
+  ['erasure','Request erasure'],
+  ['restriction','Restrict processing'],
+  ['objection','Object to processing'],
+  ['portability','Data portability']
+] as const;
+const categories = ['account','authentication','assets','incidents','alerts','security_events','malware_scans','preferences'] as const;
+
+function readable(value: string) {
+  return value.replaceAll('_',' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+export default function PrivacyCenterPage() {
+  const { user, status } = useSession();
+  const [requests, setRequests] = useState<PrivacyRequest[]>([]);
+  const [adminRequests, setAdminRequests] = useState<PrivacyRequest[]>([]);
+  const [requestType, setRequestType] = useState<(typeof requestTypes)[number][0]>('access');
+  const [selected, setSelected] = useState<string[]>(['account','authentication']);
+  const [note, setNote] = useState('');
+  const [message, setMessage] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(async () => {
+    if (!user) return;
+    const own = await apiRequest<{requests: PrivacyRequest[]}>('/api/nexus/privacy/requests');
+    setRequests(own.requests);
+    if (user.role === 'admin') {
+      const admin = await apiRequest<{requests: PrivacyRequest[]}>('/api/nexus/admin/privacy/requests');
+      setAdminRequests(admin.requests);
+    }
+  }, [user]);
+
+  useEffect(() => { void load().catch(() => setMessage('Privacy service is currently unavailable.')); }, [load]);
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    setBusy(true); setMessage('');
+    try {
+      await apiRequest('/api/nexus/privacy/requests', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({request_type:requestType,scope_categories:selected,subject_note:note.trim() || undefined})
+      });
+      setNote('');
+      setMessage('Your request was submitted. Identity verification and review may be required.');
+      await load();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Request could not be submitted.');
+    } finally { setBusy(false); }
+  }
+
+  async function review(id: string, action: string, reason_code?: string) {
+    setBusy(true); setMessage('');
+    try {
+      await apiRequest(`/api/nexus/admin/privacy/requests/${id}`, {
+        method:'PATCH',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({action,reason_code})
+      });
+      await load();
+      setMessage('Request status updated. No data has been erased or exported by this action.');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Review action failed.');
+    } finally { setBusy(false); }
+  }
+
+  if (status === 'checking') return <main className="trust-center"><section className="trust-hero"><h1>Privacy &amp; Data Protection Center</h1><p>Checking your secure session…</p></section></main>;
+  if (!user) return <main className="trust-center"><section className="trust-hero"><h1>Privacy &amp; Data Protection Center</h1><p>Please sign in to manage privacy requests.</p><a href="/login">Sign in</a></section></main>;
+
+  return (
+    <main className="trust-center">
+      <header className="trust-header"><a className="trust-brand" href="/">◈ NEXUS SHIELD AI</a><a href="/settings">Settings</a></header>
+      <section className="trust-hero">
+        <div className="eyebrow">NEXUS · TRUST &amp; GOVERNANCE</div>
+        <h1>Privacy &amp; Data Protection Center</h1>
+        <p>Submit and track privacy requests. Actions are authenticated and recorded; fulfilment is not automated yet.</p>
+      </section>
+      <section className="trust-card">
+        <h2>Data protection overview</h2>
+        <div className="trust-grid">
+          <article><strong>{requests.length}</strong><span>Your requests</span></article>
+          <article><strong>{requests.filter((item) => !['completed','rejected','withdrawn'].includes(item.status)).length}</strong><span>Open requests</span></article>
+          <article><strong>{requests.filter((item) => item.status === 'blocked').length}</strong><span>Needs attention</span></article>
+        </div>
+        <p className="trust-muted">The inventory and retention details are documented separately. Production data flows and ownership for some SOC records still require verification.</p>
+      </section>
+      <section className="trust-card">
+        <h2>Submit a privacy request</h2>
+        <form onSubmit={submit}>
+          <label>Request type<select value={requestType} onChange={(e) => setRequestType(e.target.value as typeof requestType)}>{requestTypes.map(([value,label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+          <fieldset><legend>Data categories in scope</legend>{categories.map((category) => <label className="trust-toggle" key={category}><span>{readable(category)}</span><input type="checkbox" checked={selected.includes(category)} onChange={(e) => setSelected((old) => e.target.checked ? [...old,category] : old.filter((item) => item !== category))}/></label>)}</fieldset>
+          <label>Additional context (optional)<textarea maxLength={500} value={note} onChange={(e) => setNote(e.target.value)} /></label>
+          <button type="submit" disabled={busy || selected.length === 0}>{busy ? 'Submitting…' : 'Submit request'}</button>
+        </form>
+        {message && <p role="status">{message}</p>}
+      </section>
+      <section className="trust-card">
+        <h2>My requests</h2>
+        {requests.length === 0 ? <p>No privacy requests yet.</p> : <div className="trust-table"><table><thead><tr><th>Request</th><th>Type</th><th>Status</th><th>Received</th></tr></thead><tbody>{requests.map((item) => <tr key={item.id}><td>{item.id.slice(0,8)}</td><td>{readable(item.request_type)}</td><td>{readable(item.status)}</td><td>{new Date(item.received_at).toLocaleDateString()}</td></tr>)}</tbody></table></div>}
+      </section>
+      {user.role === 'admin' && <section className="trust-card">
+        <h2>Privacy operations queue</h2>
+        <p className="trust-muted">Administrative review only. Approval moves a request to processing; it does not trigger data deletion or export.</p>
+        {adminRequests.length === 0 ? <p>No requests in queue.</p> : adminRequests.map((item) => <article className="trust-request" key={item.id}>
+          <strong>{item.subject_email ?? 'Account no longer available'}</strong><span>{readable(item.request_type)} · {readable(item.status)}</span><small>{item.id}</small>
+          <div className="trust-actions">
+            {item.status === 'received' && <button disabled={busy} onClick={() => void review(item.id,'verify_identity','identity_verified')}>Verify identity</button>}
+            {['verified','received'].includes(item.status) && <button disabled={busy} onClick={() => void review(item.id,'start_review')}>Start review</button>}
+            {!['completed','rejected','withdrawn'].includes(item.status) && <button disabled={busy} onClick={() => void review(item.id,'block','ownership_ambiguous')}>Block / escalate</button>}
+            {!['completed','rejected','withdrawn','processing'].includes(item.status) && <button disabled={busy} onClick={() => void review(item.id,'approve','approved_for_processing')}>Approve processing</button>}
+            {!['completed','rejected','withdrawn'].includes(item.status) && <button disabled={busy} onClick={() => void review(item.id,'reject','request_out_of_scope')}>Reject</button>}
+          </div>
+        </article>)}
+      </section>}
+      <section className="trust-card"><h2>Important safeguards</h2><ul><li>Only your authenticated account can create and view its own requests.</li><li>Administrative actions require the existing admin role.</li><li>Global or ambiguous SOC records are not automatically exported or erased.</li><li>Approval does not perform destructive actions. Each target needs verified ownership and confirmed completion.</li></ul><p><a href="/privacy">Read the current privacy policy</a></p></section>
+    </main>
+  );
+}
