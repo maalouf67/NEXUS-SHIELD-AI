@@ -5,7 +5,8 @@ import request from 'supertest';
 
 import { app } from '../index.js';
 import { pool } from '../db/pool.js';
-import { authTokenConfig, registerTestAuthSession } from '../auth/auth.middleware.js';
+import { authTokenConfig } from '../auth/auth.middleware.js';
+import { registerTestAuthSession } from '../auth/auth-session.repository.js';
 
 const enabled = process.env.NEXUS_RUN_DB_INTEGRATION === 'true';
 const secret = process.env.JWT_SECRET ?? 'privacy-request-integration-secret-at-least-32-bytes';
