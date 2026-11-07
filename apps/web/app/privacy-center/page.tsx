@@ -104,6 +104,35 @@ export default function PrivacyCenterPage() {
     } finally { setBusy(false); }
   }
 
+  async function downloadExport(id: string) {
+    setBusy(true); setMessage('');
+    try {
+      const response = await fetch(`/api/nexus/privacy/requests/${id}/export`, {
+        method: 'GET',
+        credentials: 'same-origin',
+        cache: 'no-store',
+        headers: { Accept: 'application/json' }
+      });
+      if (!response.ok) {
+        const failure = await response.json().catch(() => ({}));
+        throw new Error(typeof failure.error === 'string' ? failure.error : 'Export could not be generated.');
+      }
+      const blob = new Blob([JSON.stringify(await response.json(), null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `nexus-privacy-export-${id}.json`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      setMessage('A scoped export was generated. Check the excluded categories in the file; this may be a partial export.');
+      await load();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Export could not be generated.');
+    } finally { setBusy(false); }
+  }
+
   async function review(id: string, action: string, reason_code?: string) {
     setBusy(true); setMessage('');
     try {
@@ -151,7 +180,10 @@ export default function PrivacyCenterPage() {
       </section>
       <section className="trust-card">
         <h2>My requests</h2>
-        {requests.length === 0 ? <p>No privacy requests yet.</p> : <div className="trust-table"><table><thead><tr><th>Request</th><th>Type</th><th>Status</th><th>Received</th><th>Action</th></tr></thead><tbody>{requests.map((item) => <tr key={item.id}><td><button type="button" onClick={() => void showDetails(item.id)}>{item.id.slice(0,8)}</button></td><td>{readable(item.request_type)}</td><td>{readable(item.status)}</td><td>{new Date(item.received_at).toLocaleDateString()}</td><td>{['received','identity_verification_required','verified','in_review','blocked'].includes(item.status) && <button type="button" disabled={busy} onClick={() => void withdraw(item.id)}>Withdraw</button>}</td></tr>)}</tbody></table></div>}
+        {requests.length === 0 ? <p>No privacy requests yet.</p> : <div className="trust-table"><table><thead><tr><th>Request</th><th>Type</th><th>Status</th><th>Received</th><th>Action</th></tr></thead><tbody>{requests.map((item) => <tr key={item.id}><td><button type="button" onClick={() => void showDetails(item.id)}>{item.id.slice(0,8)}</button></td><td>{readable(item.request_type)}</td><td>{readable(item.status)}</td><td>{new Date(item.received_at).toLocaleDateString()}</td><td>
+              {['received','identity_verification_required','verified','in_review','blocked'].includes(item.status) && <button type="button" disabled={busy} onClick={() => void withdraw(item.id)}>Withdraw</button>}
+              {['access','portability'].includes(item.request_type) && item.status === 'processing' && item.verified_at && <button type="button" disabled={busy} onClick={() => void downloadExport(item.id)}>Download scoped export</button>}
+            </td></tr>)}</tbody></table></div>}
         {requestDetail && <div className="trust-request">
           <strong>Request timeline · {requestDetail.request.id.slice(0,8)}</strong>
           {requestDetail.events.length === 0 ? <p>No recorded events.</p> : <ol>{requestDetail.events.map((event, index) => <li key={`${event.event_code}-${index}`}>
