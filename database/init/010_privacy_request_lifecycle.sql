@@ -24,7 +24,7 @@ CREATE INDEX IF NOT EXISTS idx_privacy_requests_status_received
 
 CREATE TABLE IF NOT EXISTS privacy_request_events (
   id UUID PRIMARY KEY,
-  request_id UUID NOT NULL REFERENCES privacy_requests(id) ON DELETE CASCADE,
+  request_id UUID NOT NULL REFERENCES privacy_requests(id) ON DELETE RESTRICT,
   actor_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
   event_code VARCHAR(48) NOT NULL,
   from_status VARCHAR(32),
@@ -54,3 +54,16 @@ CREATE TABLE IF NOT EXISTS privacy_request_targets (
 );
 CREATE INDEX IF NOT EXISTS idx_privacy_request_targets_request_status
   ON privacy_request_targets (request_id, status);
+
+-- Preserve the privacy audit trail: events may be appended but never rewritten or deleted.
+CREATE OR REPLACE FUNCTION prevent_privacy_request_event_mutation()
+RETURNS TRIGGER AS $$
+BEGIN
+  RAISE EXCEPTION 'privacy request events are append-only';
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_privacy_request_events_append_only ON privacy_request_events;
+CREATE TRIGGER trg_privacy_request_events_append_only
+BEFORE UPDATE OR DELETE ON privacy_request_events
+FOR EACH ROW EXECUTE FUNCTION prevent_privacy_request_event_mutation();
