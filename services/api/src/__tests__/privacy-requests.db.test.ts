@@ -81,6 +81,12 @@ describe.skipIf(!enabled)('Privacy request API PostgreSQL ownership integration'
     const otherDetail = await request(app)
       .get(`/api/privacy/requests/${submitted.body.request.id}`)
       .set('Authorization', `Bearer ${otherToken}`);
+    const otherWithdraw = await request(app)
+      .post(`/api/privacy/requests/${submitted.body.request.id}/withdraw`)
+      .set('Authorization', `Bearer ${otherToken}`);
+    const ownerWithdraw = await request(app)
+      .post(`/api/privacy/requests/${submitted.body.request.id}/withdraw`)
+      .set('Authorization', `Bearer ${ownerToken}`);
     const forbiddenQueue = await request(app)
       .get('/api/admin/privacy/requests')
       .set('Authorization', `Bearer ${otherToken}`);
@@ -95,6 +101,9 @@ describe.skipIf(!enabled)('Privacy request API PostgreSQL ownership integration'
     expect(ownerDetail.status).toBe(200);
     expect(ownerDetail.body.events.map((event: { event_code: string }) => event.event_code)).toContain('request_submitted');
     expect(otherDetail.status).toBe(404);
+    expect(otherWithdraw.status).toBe(404);
+    expect(ownerWithdraw.status).toBe(200);
+    expect(ownerWithdraw.body.request.status).toBe('withdrawn');
     await expect(pool.query(
       "UPDATE privacy_request_events SET reason_code = 'tamper_attempt' WHERE request_id = $1",
       [submitted.body.request.id]
