@@ -63,13 +63,13 @@ jobs:
         run: |
           second_run="$(npm run db:migrate 2>&1)"
           echo "$second_run"
-          echo "$second_run" | grep -F "0 applied, 9 already current, 9 total"
+          echo "$second_run" | grep -F "0 applied, 10 already current, 10 total"
           npm run db:check
           tables="$(psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -Atqc "SELECT to_regclass('public.api_rate_limit_counters')::text || ',' || to_regclass('public.auth_sessions')::text")"
           test "$tables" = "api_rate_limit_counters,auth_sessions"
           migration_count="$(psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -Atqc "SELECT COUNT(*) FROM nexus_schema_migrations")"
-          test "$migration_count" = "9"
-          echo "PostgreSQL connection verified and all 9 numbered migrations are recorded."
+          test "$migration_count" = "10"
+          echo "PostgreSQL connection verified and all 10 numbered migrations are recorded."
 
       - name: Build web and API workspaces
         run: npm run build

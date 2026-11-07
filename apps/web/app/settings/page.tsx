@@ -55,6 +55,7 @@ export default function SettingsPage() {
       </section>
       <section className="trust-card">
         <h2>{t.privacy}</h2>
+        <p><a href="/privacy-center">Open Privacy &amp; Data Protection Center</a></p>
         <label className="trust-toggle"><span>{t.updates}</span><input type="checkbox" checked={preferences.productUpdates} onChange={(event) => { setPreferences((old) => ({ ...old, productUpdates: event.target.checked })); setSaved(false); }} /></label>
         <label className="trust-toggle"><span>{t.analytics}</span><input type="checkbox" checked={preferences.optionalAnalytics} onChange={(event) => { setPreferences((old) => ({ ...old, optionalAnalytics: event.target.checked })); setSaved(false); }} /></label>
         <p className="trust-muted">{t.note}</p><button className="primary-button" onClick={savePreferences}>{t.save}</button>
