@@ -90,6 +90,46 @@ export function createPrivacyRequestsRouter() {
     } catch { return res.status(503).json({ error: 'PRIVACY_STORE_UNAVAILABLE' }); }
   });
 
+  router.post('/privacy/requests/:requestId/withdraw', requireAuth, async (req, res) => {
+    if (!req.authUser) return res.status(401).json({ error: 'UNAUTHENTICATED' });
+    const id = z.string().uuid().safeParse(req.params.requestId);
+    if (!id.success) return res.status(400).json({ error: 'INVALID_REQUEST_ID' });
+    const client = await pool.connect().catch(() => null);
+    if (!client) return res.status(503).json({ error: 'PRIVACY_STORE_UNAVAILABLE' });
+    try {
+      await client.query('BEGIN');
+      const current = await client.query(
+        'SELECT status FROM privacy_requests WHERE id = $1 AND subject_user_id = $2 FOR UPDATE',
+        [id.data, req.authUser.id]
+      );
+      if (!current.rowCount) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ error: 'REQUEST_NOT_FOUND' });
+      }
+      const fromStatus = current.rows[0].status as string;
+      if (!['received', 'identity_verification_required', 'verified', 'in_review', 'blocked'].includes(fromStatus)) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ error: 'REQUEST_CANNOT_BE_WITHDRAWN', current_status: fromStatus });
+      }
+      const updated = await client.query(
+        `UPDATE privacy_requests SET status = 'withdrawn', closed_at = NOW(), updated_at = NOW()
+         WHERE id = $1 AND subject_user_id = $2
+         RETURNING id, request_type, status, received_at, closed_at`,
+        [id.data, req.authUser.id]
+      );
+      await client.query(
+        `INSERT INTO privacy_request_events (id, request_id, actor_user_id, event_code, from_status, to_status, reason_code)
+         VALUES ($1, $2, $3, 'request_withdrawn', $4, 'withdrawn', 'subject_requested_withdrawal')`,
+        [randomUUID(), id.data, req.authUser.id, fromStatus]
+      );
+      await client.query('COMMIT');
+      return res.status(200).json({ request: updated.rows[0] });
+    } catch {
+      await client.query('ROLLBACK').catch(() => undefined);
+      return res.status(503).json({ error: 'PRIVACY_STORE_UNAVAILABLE' });
+    } finally { client.release(); }
+  });
+
   router.get('/admin/privacy/requests', requireAuth, requireRole('admin'), async (_req, res) => {
     try {
       const result = await pool.query(
