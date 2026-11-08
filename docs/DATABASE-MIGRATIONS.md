@@ -32,7 +32,11 @@ npm run db:migrate
 
 The command reads numbered SQL files in database/init in filename order, acquires a PostgreSQL advisory lock, creates nexus_schema_migrations when needed, computes SHA-256 checksums, applies each missing migration in its own transaction and records the checksum only after the SQL commits. It skips a migration only when the recorded checksum matches the current file. If a previously applied file changes, it stops; create a new numbered migration instead.
 
-Current numbered migrations: 001 through 009. Migration 009 adds server-side access-session records and revokes active sessions automatically when a user's role, active state, or password hash changes. CI uses this same command against a disposable PostgreSQL 16 service, then verifies connectivity, both the rate-limit and authentication-session tables, and all nine migration records.
+Current numbered migrations: 001 through 011. Migration 009 adds server-side access-session records and revokes active sessions when a user's global role, active state, or password hash changes. Migration 010 adds the privacy request lifecycle. Migration 011 adds workspace identities, active memberships, per-workspace integration credentials, nullable ownership columns for SOC and asset inventory records, and composite foreign keys that prevent newly scoped child records from linking across workspaces.
+
+Legacy data policy: rows created before workspace ownership existed remain unassigned (workspace_id IS NULL). Customer workspace APIs must not expose them, and no owner may be inferred from the first login or record creator. Any backfill requires a reviewed ownership report, an explicit owner mapping, a dry run, row-count and relationship validation, and a separately approved change window.
+
+CI uses this same command against a disposable PostgreSQL 16 service, verifies migration idempotency and required tables, and runs database integration tests. CI never targets production.
 
 ## Existing Docker volumes and production databases
 
@@ -52,7 +56,7 @@ Do not point CI or a local development terminal at production. Do not run migrat
 ## Migration authoring rules
 
 - Never edit a numbered migration after it has been applied in an environment.
-- Add a new sequential file such as 009_add_example_index.sql for future changes.
+- Add a new sequential file such as 012_add_example_index.sql for future changes.
 - Prefer idempotent DDL where practical, but do not use IF NOT EXISTS to conceal incompatible schema drift.
 - Keep data backfills bounded and separately reviewed.
 - Avoid long table locks on high-volume tables; use an online migration strategy where required.
