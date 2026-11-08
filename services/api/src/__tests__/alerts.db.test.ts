@@ -12,6 +12,7 @@ describe.skipIf(!enabled)('PostgreSQL alert audit integration', () => {
   const incidents = new PostgresIncidentRepository();
   const actorId = randomUUID();
   const workspaceId = randomUUID();
+  const otherWorkspaceId = randomUUID();
 
   beforeAll(async () => {
     await pool.query(
@@ -23,15 +24,53 @@ describe.skipIf(!enabled)('PostgreSQL alert audit integration', () => {
       'INSERT INTO workspaces (id, name, slug, created_by_user_id) VALUES ($1, $2, $3, $4)',
       [workspaceId, 'Alert CI workspace', `alert-ci-${workspaceId.slice(0, 8)}`, actorId]
     );
+    await pool.query(
+      'INSERT INTO workspaces (id, name, slug, created_by_user_id) VALUES ($1, $2, $3, $4)',
+      [otherWorkspaceId, 'Other Alert CI workspace', `alert-other-${otherWorkspaceId.slice(0, 8)}`, actorId]
+    );
   });
 
   afterAll(async () => {
     await pool.query('DELETE FROM incident_activity WHERE workspace_id = $1', [workspaceId]);
     await pool.query('DELETE FROM alerts WHERE workspace_id = $1', [workspaceId]);
     await pool.query('DELETE FROM incidents WHERE workspace_id = $1', [workspaceId]);
-    await pool.query('DELETE FROM workspaces WHERE id = $1', [workspaceId]);
+    await pool.query('DELETE FROM workspaces WHERE id = ANY($1::uuid[])', [[workspaceId, otherWorkspaceId]]);
     await pool.query('DELETE FROM users WHERE id = $1', [actorId]);
     await pool.end();
+  });
+
+  it('does not list or update an alert from another workspace', async () => {
+    const incident = await incidents.create({
+      workspaceId,
+      id: randomUUID(),
+      title: 'Tenant isolation alert test',
+      severity: 'high',
+      actorUserId: actorId
+    });
+    const alert = await alerts.create({
+      workspaceId,
+      id: randomUUID(),
+      incidentId: incident.id,
+      type: 'tenant-isolation-test',
+      riskScore: 80,
+      actorUserId: actorId
+    });
+    if (!alert) throw new Error('Expected test alert to be created.');
+
+    const otherList = await alerts.list(otherWorkspaceId, { limit: 100, offset: 0 });
+    expect(otherList.alerts.some((item) => item.id === alert.id)).toBe(false);
+
+    const attemptedUpdate = await alerts.updateStatus({
+      workspaceId: otherWorkspaceId,
+      alertId: alert.id,
+      status: 'acknowledged',
+      actorUserId: actorId,
+      actorRole: 'admin'
+    });
+    expect(attemptedUpdate.outcome).toBe('not_found');
+
+    const original = await alerts.list(workspaceId, { limit: 100, offset: 0 });
+    expect(original.alerts.find((item) => item.id === alert.id)?.status).toBe('active');
   });
 
   it('records an alert and every status change in the incident audit history', async () => {

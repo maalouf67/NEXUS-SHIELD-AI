@@ -10,6 +10,7 @@ describe.skipIf(!enabled)('PostgreSQL incident management integration', () => {
   const repository = new PostgresIncidentRepository();
   const actorId = randomUUID();
   const workspaceId = randomUUID();
+  const otherWorkspaceId = randomUUID();
 
   beforeAll(async () => {
     await pool.query(
@@ -21,12 +22,16 @@ describe.skipIf(!enabled)('PostgreSQL incident management integration', () => {
       'INSERT INTO workspaces (id, name, slug, created_by_user_id) VALUES ($1, $2, $3, $4)',
       [workspaceId, 'Incident CI workspace', `incident-ci-${workspaceId.slice(0, 8)}`, actorId]
     );
+    await pool.query(
+      'INSERT INTO workspaces (id, name, slug, created_by_user_id) VALUES ($1, $2, $3, $4)',
+      [otherWorkspaceId, 'Other Incident CI workspace', `incident-other-${otherWorkspaceId.slice(0, 8)}`, actorId]
+    );
   });
 
   afterAll(async () => {
     await pool.query('DELETE FROM incident_activity WHERE workspace_id = $1', [workspaceId]);
     await pool.query('DELETE FROM incidents WHERE workspace_id = $1', [workspaceId]);
-    await pool.query('DELETE FROM workspaces WHERE id = $1', [workspaceId]);
+    await pool.query('DELETE FROM workspaces WHERE id = ANY($1::uuid[])', [[workspaceId, otherWorkspaceId]]);
     await pool.query('DELETE FROM users WHERE id = $1', [actorId]);
     await pool.end();
   });
@@ -74,6 +79,32 @@ describe.skipIf(!enabled)('PostgreSQL incident management integration', () => {
       offset: 0
     });
     expect(list.incidents.some((item) => item.id === incident.id)).toBe(true);
+  });
+
+  it('does not return or update an incident from another workspace', async () => {
+    const incident = await repository.create({
+      workspaceId,
+      id: randomUUID(),
+      title: 'Tenant isolation incident',
+      severity: 'high',
+      actorUserId: actorId
+    });
+
+    expect(await repository.getById(incident.id, otherWorkspaceId)).toBeNull();
+    const otherList = await repository.list(otherWorkspaceId, { limit: 100, offset: 0 });
+    expect(otherList.incidents.some((item) => item.id === incident.id)).toBe(false);
+
+    const attemptedUpdate = await repository.updateStatus({
+      workspaceId: otherWorkspaceId,
+      incidentId: incident.id,
+      status: 'investigating',
+      actorUserId: actorId,
+      actorRole: 'admin'
+    });
+    expect(attemptedUpdate.outcome).toBe('not_found');
+
+    const original = await repository.getById(incident.id, workspaceId);
+    expect(original?.status).toBe('open');
   });
 
   it('requires an admin to reopen a resolved incident', async () => {

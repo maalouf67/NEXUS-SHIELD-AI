@@ -10,6 +10,7 @@ describe.skipIf(!enabled)('PostgreSQL security event ingestion integration', () 
   const repository = new PostgresSecurityEventRepository();
   const actorId = randomUUID();
   const workspaceId = randomUUID();
+  const otherWorkspaceId = randomUUID();
   const source = `ci-event-${actorId}`;
 
   beforeAll(async () => {
@@ -22,14 +23,40 @@ describe.skipIf(!enabled)('PostgreSQL security event ingestion integration', () 
       'INSERT INTO workspaces (id, name, slug, created_by_user_id) VALUES ($1, $2, $3, $4)',
       [workspaceId, 'Event CI workspace', `event-ci-${workspaceId.slice(0, 8)}`, actorId]
     );
+    await pool.query(
+      'INSERT INTO workspaces (id, name, slug, created_by_user_id) VALUES ($1, $2, $3, $4)',
+      [otherWorkspaceId, 'Other Event CI workspace', `event-other-${otherWorkspaceId.slice(0, 8)}`, actorId]
+    );
   });
 
   afterAll(async () => {
-    await pool.query('DELETE FROM security_event_reviews WHERE workspace_id = $1', [workspaceId]);
-    await pool.query('DELETE FROM security_events WHERE workspace_id = $1', [workspaceId]);
-    await pool.query('DELETE FROM workspaces WHERE id = $1', [workspaceId]);
+    await pool.query('DELETE FROM security_event_reviews WHERE workspace_id = ANY($1::uuid[])', [[workspaceId, otherWorkspaceId]]);
+    await pool.query('DELETE FROM security_events WHERE workspace_id = ANY($1::uuid[])', [[workspaceId, otherWorkspaceId]]);
+    await pool.query('DELETE FROM workspaces WHERE id = ANY($1::uuid[])', [[workspaceId, otherWorkspaceId]]);
     await pool.query('DELETE FROM users WHERE id = $1', [actorId]);
     await pool.end();
+  });
+
+  it('isolates identical upstream event identifiers across workspaces', async () => {
+    const event = {
+      source,
+      externalEventId: `shared-${randomUUID()}`,
+      eventType: 'tenant-isolation-test',
+      severity: 'medium' as const,
+      observedAt: new Date().toISOString(),
+      summary: 'Synthetic cross-workspace event test.',
+      attributes: { environment: 'ci' }
+    };
+
+    expect(await repository.ingestBatch(workspaceId, [event])).toMatchObject({ inserted: 1, duplicates: 0 });
+    expect(await repository.ingestBatch(otherWorkspaceId, [event])).toMatchObject({ inserted: 1, duplicates: 0 });
+
+    const primary = await repository.list(workspaceId, { source, limit: 100, offset: 0 });
+    const secondary = await repository.list(otherWorkspaceId, { source, limit: 100, offset: 0 });
+    expect(primary.events.some((item) => item.externalEventId === event.externalEventId)).toBe(true);
+    expect(secondary.events.some((item) => item.externalEventId === event.externalEventId)).toBe(true);
+    expect(primary.events.find((item) => item.externalEventId === event.externalEventId)?.id)
+      .not.toBe(secondary.events.find((item) => item.externalEventId === event.externalEventId)?.id);
   });
 
   it('deduplicates source events and records analyst review history', async () => {
