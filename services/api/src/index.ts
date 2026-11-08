@@ -1,6 +1,9 @@
-import express from 'express';
+import { createRequire } from 'node:module';
+import express, { type RequestHandler } from 'express';
 import cors from 'cors';
-import helmet from 'helmet';
+// Load Helmet's CommonJS export explicitly to avoid NodeNext declaration
+// resolution differences between the monorepo and Vercel's isolated project build.
+const helmet = createRequire(import.meta.url)('helmet') as () => RequestHandler;
 
 import { healthRouter } from './routes/health.js';
 import { threatsRouter } from './routes/threats.js';
