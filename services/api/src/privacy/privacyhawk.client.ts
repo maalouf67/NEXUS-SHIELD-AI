@@ -72,7 +72,7 @@ export class PrivacyHawkClient {
     const basic = Buffer.from(this.clientId + ':' + this.clientSecret, 'utf8').toString('base64');
     let response: Response;
     try {
-      response = await this.fetchImpl(this.origin() + '/token', {
+      response = await this.fetchImpl('https://privacyapi.privacyhawk.com/token', {
         method: 'POST',
         headers: {
           Authorization: 'Basic ' + basic,

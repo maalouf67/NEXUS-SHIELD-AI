@@ -27,6 +27,7 @@ describe('PrivacyHawk partner API client', () => {
     expect(created.status).toBe('created');
     expect(current.status).toBe('completed');
     expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(String(fetchMock.mock.calls[0][0])).toBe('https://privacyapi.privacyhawk.com/token');
     expect(String(fetchMock.mock.calls[1][0])).toBe('https://privacyapi-sandbox.privacyhawk.com/v1/scans');
   });
 });

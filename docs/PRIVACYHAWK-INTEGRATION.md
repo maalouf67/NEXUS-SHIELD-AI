@@ -5,7 +5,7 @@
 
 ## Scope in this implementation slice
 
-- Server-side OAuth 2.0 client-credentials adapter; secrets and bearer tokens stay in the Express API process.
+- Server-side OAuth 2.0 client-credentials adapter; secrets and bearer tokens stay in the Express API process. The published partner specification documents the token endpoint at https://privacyapi.privacyhawk.com/token; resource requests use the selected sandbox or production API host.
 - Explicit per-scan consent before sending a profile to PrivacyHawk.
 - Authenticated, subject-scoped scan creation, scan history, status refresh, broker catalog and record retrieval.
 - Provider records are allow-listed before returning to the browser; relatives and unrelated fields are not returned.
