@@ -117,8 +117,13 @@ ALTER TABLE incident_activity
   FOREIGN KEY (workspace_id, alert_id)
   REFERENCES alerts (workspace_id, id);
 
+-- Preserve the existing global idempotency rule for legacy rows that remain
+-- unassigned, while allowing the same upstream identifier in separate workspaces.
 ALTER TABLE security_events
   DROP CONSTRAINT IF EXISTS uq_security_event_source_external_id;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_security_event_legacy_source_external
+  ON security_events (source, external_event_id)
+  WHERE workspace_id IS NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS uq_security_event_workspace_source_external
   ON security_events (workspace_id, source, external_event_id)
   WHERE workspace_id IS NOT NULL;
