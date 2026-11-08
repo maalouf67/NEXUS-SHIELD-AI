@@ -103,7 +103,7 @@ export class PostgresSecurityEventRepository implements SecurityEventRepository 
             (id, source, external_event_id, event_type, severity, observed_at,
              asset_id, summary, attributes)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::JSONB)
-           ON CONFLICT (source, external_event_id) DO NOTHING
+           ON CONFLICT (source, external_event_id) WHERE workspace_id IS NULL DO NOTHING
            RETURNING id`,
           [
             randomUUID(),
