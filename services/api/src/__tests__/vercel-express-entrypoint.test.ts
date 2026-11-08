@@ -13,5 +13,6 @@ describe('Vercel Express entrypoint', () => {
       ok: true
     });
     expect(response.headers['cache-control']).toContain('no-store');
+    expect(response.headers['x-content-type-options']).toBe('nosniff');
   });
 });
