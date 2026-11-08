@@ -57,7 +57,6 @@ export type ReviewSecurityEventResult =
 
 export interface SecurityEventRepository {
   ingestBatch(workspaceId: string, events: SecurityEventInput[]): Promise<IngestSecurityEventsResult>;
-  ingestSystemBatch(events: SecurityEventInput[]): Promise<IngestSecurityEventsResult>;
   list(workspaceId: string, filters: SecurityEventListFilters): Promise<{ events: SecurityEvent[]; total: number }>;
   review(workspaceId: string, eventId: string, actorUserId: string, note?: string): Promise<ReviewSecurityEventResult>;
 }

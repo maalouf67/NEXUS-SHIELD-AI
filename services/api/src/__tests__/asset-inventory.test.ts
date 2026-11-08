@@ -1,12 +1,12 @@
-import express from 'express';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import express, { type RequestHandler } from 'express';
+import { describe, expect, it } from 'vitest';
 import request from 'supertest';
 
 import type { AssetInventorySnapshot, AssetInventoryStore } from '../assets/asset-inventory.service.js';
 import { createAssetInventoryRouter } from '../assets/asset-inventory.routes.js';
 
-const serviceToken = 'nexus-inventory-test-token'.padEnd(48, 'x');
-const originalToken = process.env.NEXUS_SERVICE_API_TOKEN;
+const integrationToken = 'nexus-inventory-test-token'.padEnd(48, 'x');
+const TEST_WORKSPACE_ID = '550e8400-e29b-41d4-a716-446655440099';
 
 const sampleInventory: AssetInventorySnapshot = {
   assets: [
@@ -47,10 +47,17 @@ const sampleInventory: AssetInventorySnapshot = {
   }]
 };
 
+function integrationAccess(permission: 'assets:read' | 'assets:write'): RequestHandler {
+  return (req, res, next) => {
+    if (req.header('x-nexus-integration-token') !== integrationToken) return res.status(401).json({ error: 'INVALID_INTEGRATION_CREDENTIALS' });
+    req.workspaceIntegration = { id: '550e8400-e29b-41d4-a716-446655440098', workspaceId: TEST_WORKSPACE_ID, name: 'Test integration', permissions: [permission] };
+    return next();
+  };
+}
 function createTestApp(store: AssetInventoryStore) {
   const app = express();
   app.use(express.json({ limit: '1mb' }));
-  app.use('/api', createAssetInventoryRouter(store));
+  app.use('/api', createAssetInventoryRouter(store, integrationAccess('assets:read'), integrationAccess('assets:write')));
   return app;
 }
 
@@ -59,7 +66,7 @@ function createStore(overrides: Partial<AssetInventoryStore> = {}): AssetInvento
     async getInventory() {
       return sampleInventory;
     },
-    async upsertInventory(input) {
+    async upsertInventory(_workspaceId, input) {
       return {
         assetsUpserted: input.assets.length,
         relationshipsUpserted: input.relationships.length,
@@ -73,17 +80,7 @@ function createStore(overrides: Partial<AssetInventoryStore> = {}): AssetInvento
 }
 
 describe('Persistent asset inventory API', () => {
-  beforeEach(() => {
-    process.env.NEXUS_SERVICE_API_TOKEN = serviceToken;
-  });
 
-  afterEach(() => {
-    if (originalToken === undefined) {
-      delete process.env.NEXUS_SERVICE_API_TOKEN;
-    } else {
-      process.env.NEXUS_SERVICE_API_TOKEN = originalToken;
-    }
-  });
 
   it('requires the service token before reading inventory', async () => {
     const response = await request(createTestApp(createStore()))
@@ -96,7 +93,7 @@ describe('Persistent asset inventory API', () => {
   it('returns the stored graph as database-sourced inventory', async () => {
     const response = await request(createTestApp(createStore()))
       .get('/api/assets/inventory')
-      .set('Authorization', `Bearer ${serviceToken}`);
+      .set('X-NEXUS-INTEGRATION-TOKEN', integrationToken);
 
     expect(response.status).toBe(200);
     expect(response.body.data_source).toBe('postgresql');
@@ -107,7 +104,7 @@ describe('Persistent asset inventory API', () => {
   it('validates and upserts an inventory batch', async () => {
     const response = await request(createTestApp(createStore()))
       .post('/api/assets/inventory/import')
-      .set('Authorization', `Bearer ${serviceToken}`)
+      .set('X-NEXUS-INTEGRATION-TOKEN', integrationToken)
       .send(sampleInventory);
 
     expect(response.status).toBe(200);
@@ -121,7 +118,7 @@ describe('Persistent asset inventory API', () => {
   it('rejects duplicate identifiers before calling the store', async () => {
     let storeCalled = false;
     const store = createStore({
-      async upsertInventory(input) {
+      async upsertInventory(_workspaceId, input) {
         storeCalled = true;
         return {
           assetsUpserted: input.assets.length,
@@ -137,7 +134,7 @@ describe('Persistent asset inventory API', () => {
 
     const response = await request(createTestApp(store))
       .post('/api/assets/inventory/import')
-      .set('Authorization', `Bearer ${serviceToken}`)
+      .set('X-NEXUS-INTEGRATION-TOKEN', integrationToken)
       .send(duplicateInventory);
 
     expect(response.status).toBe(400);
@@ -148,7 +145,7 @@ describe('Persistent asset inventory API', () => {
   it('analyzes the persisted graph without changing it', async () => {
     const response = await request(createTestApp(createStore()))
       .post('/api/attack-paths/analyze-inventory')
-      .set('Authorization', `Bearer ${serviceToken}`)
+      .set('X-NEXUS-INTEGRATION-TOKEN', integrationToken)
       .send({ startAssetId: 'identity-1', maxDepth: 3, maxPaths: 10 });
 
     expect(response.status).toBe(200);
@@ -169,7 +166,7 @@ describe('Persistent asset inventory API', () => {
 
     const response = await request(createTestApp(store))
       .get('/api/assets/inventory')
-      .set('Authorization', `Bearer ${serviceToken}`);
+      .set('X-NEXUS-INTEGRATION-TOKEN', integrationToken);
 
     expect(response.status).toBe(503);
     expect(response.body.error).toBe('DATABASE_UNAVAILABLE');

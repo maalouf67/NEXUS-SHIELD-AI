@@ -1,7 +1,7 @@
 import { Router, type RequestHandler } from 'express';
 import { z } from 'zod';
 
-import { requireAuth, requireRole } from '../auth/auth.middleware.js';
+import { requireAuth } from '../auth/auth.middleware.js';
 import { createRequireWorkspace, createRequireWorkspaceIntegration, requireWorkspaceRole } from '../workspaces/workspace.middleware.js';
 import {
   securityEventRepository,
