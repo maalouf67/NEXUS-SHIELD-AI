@@ -9,6 +9,7 @@ import { createPrivacyHawkRouter, type PrivacyHawkProvider } from '../privacy/pr
 
 const USER_ID = '00000000-0000-4000-8000-000000000011';
 const SECRET = 'nexus-privacyhawk-route-test-secret-at-least-32-bytes';
+process.env.JWT_SECRET = SECRET;
 
 function makeToken() {
   const sessionId = '00000000-0000-4000-8000-000000000012';
