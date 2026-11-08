@@ -75,3 +75,6 @@ app.get('/', (_req, res) => {
     status: 'ok'
   });
 });
+
+// Vercel's Express runtime discovers the default export and serves it as a Function.
+export default app;
