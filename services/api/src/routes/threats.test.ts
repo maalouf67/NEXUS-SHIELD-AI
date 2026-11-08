@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import express from 'express';
+import express, { type RequestHandler } from 'express';
 import jwt from 'jsonwebtoken';
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -9,7 +9,7 @@ vi.mock('../db/pool.js', () => ({
 }));
 
 import { pool } from '../db/pool.js';
-import { threatsRouter } from './threats.js';
+import { createThreatsRouter } from './threats.js';
 import { authTokenConfig } from '../auth/auth.middleware.js';
 import { registerTestAuthSession } from '../auth/auth-session.repository.js';
 
@@ -38,9 +38,19 @@ function token(role: 'admin' | 'analyst' | 'viewer' = 'analyst') {
   );
 }
 
+const testWorkspaceAccess: RequestHandler = (req, _res, next) => {
+  req.workspaceContext = {
+    id: '550e8400-e29b-41d4-a716-446655440099',
+    name: 'Test workspace',
+    slug: 'test-workspace',
+    role: 'viewer'
+  };
+  next();
+};
+
 function appForThreats() {
   const app = express();
-  app.use('/api', threatsRouter);
+  app.use('/api', createThreatsRouter(testWorkspaceAccess));
   return app;
 }
 

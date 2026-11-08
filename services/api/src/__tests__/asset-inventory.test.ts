@@ -87,7 +87,7 @@ describe('Persistent asset inventory API', () => {
       .get('/api/assets/inventory');
 
     expect(response.status).toBe(401);
-    expect(response.body.error).toBe('UNAUTHORIZED');
+    expect(response.body.error).toBe('INVALID_INTEGRATION_CREDENTIALS');
   });
 
   it('returns the stored graph as database-sourced inventory', async () => {

@@ -136,7 +136,7 @@ describe('Normalized security event API', () => {
       .send({ events: [sampleInput] });
 
     expect(response.status).toBe(401);
-    expect(response.body.error).toBe('UNAUTHORIZED');
+    expect(response.body.error).toBe('INVALID_INTEGRATION_CREDENTIALS');
   });
 
   it('accepts normalized events and reports an idempotent batch result', async () => {

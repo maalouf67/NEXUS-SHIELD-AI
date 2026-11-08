@@ -42,7 +42,6 @@ describe.skipIf(!enabled)('PostgreSQL asset inventory integration', () => {
     const assetId = `asset-${randomUUID()}`;
     const targetId = `target-${randomUUID()}`;
     const relationshipId = `relationship-${randomUUID()}`;
-    createdAssetIds.push(assetId, targetId);
 
     const input: AssetInventoryImportRequest = {
       assets: [
@@ -134,7 +133,6 @@ describe.skipIf(!enabled)('PostgreSQL asset inventory integration', () => {
 
   it('rolls back the complete batch when a relationship violates a foreign key', async () => {
     const assetId = `rollback-asset-${randomUUID()}`;
-    createdAssetIds.push(assetId);
 
     const invalidInput: AssetInventoryImportRequest = {
       assets: [{
