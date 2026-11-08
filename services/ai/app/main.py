@@ -64,12 +64,11 @@ def _owner_quarantine_path(owner_user_id: str) -> str:
 
 @app.get("/health")
 async def health():
+    # Public liveness endpoint: do not disclose provider credential configuration.
     return {
         "service": "nexus-shield-ai-engine",
         "ok": True,
-        "status": "healthy",
-        "ai_provider": "openai",
-        "ai_configured": bool(os.getenv("OPENAI_API_KEY"))
+        "status": "healthy"
     }
 
 
