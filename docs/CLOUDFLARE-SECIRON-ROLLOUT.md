@@ -2,7 +2,7 @@
 
 *Cloudflare WAF + SecIron IronWALL integration plan*
 
-**Status: preparation only — no provider account is connected and no live protection has been enabled.**  
+**Status: Cloudflare account API access was verified on 2026-11-08. Workers Builds GitHub repository linking is blocked because Cloudflare reports that the Git account is not connected. No DNS zone, Pages project, Worker, or live edge protection is present. SecIron remains unconnected.**  
 **Integration branch:** `feat/nexus-aegis-protection-layer`  
 **Reviewed:** 2026-11-08
 
@@ -164,21 +164,43 @@ No such provider connector or live event flow is configured by this plan.
 - NEXUS SOC integration is a separate connector workstream. Do not claim WAF or IronWALL detections appear in SOC until the actual event export is connected, authenticated, tested and retained with provenance.
 - Product capabilities, plan limits and vendor terms must be rechecked at implementation time; the linked official documentation is authoritative for the current configuration.
 
-## 7. Current status
+## 7. Verified account and integration status (2026-11-08)
+
+The following observations were obtained from the connected Cloudflare account API and the GitHub repository connector. They describe the account at the time of inspection; they are not evidence of production protection.
 
 | Work item | Status |
 |---|---|
-| Repository architecture review | Complete for the reviewed branch/commit |
-| Cloudflare account / zone connection | Not connected or verifiable |
+| Cloudflare account API authentication | **Verified** — one standard Cloudflare account is accessible for read operations |
+| Cloudflare account two-factor enforcement | **Needs action** — account setting `enforce_twofactor=false`; enable MFA before production setup |
+| GitHub repository identity | **Verified** — `maalouf67/NEXUS-SHIELD-AI`, repository ID `1438002146`, default branch `main` |
+| Cloudflare Workers Builds GitHub authorization | **Blocked** — repository-connection API returned Cloudflare error `8000008`: “This project is disconnected from your Git account” |
+| DNS zones | **None found** in the connected Cloudflare account |
+| Cloudflare Pages projects | **None found** |
+| Cloudflare Worker scripts | **None found** |
+| Build configuration / triggers | **Not created** |
 | DNS / nameserver / proxy changes | Not performed |
-| WAF rules deployed | Not performed |
-| Origin access restrictions | Not performed |
+| WAF / DDoS / API Shield rules | Not deployed; a zone and confirmed hostnames are prerequisites |
+| Origin access restrictions | Not performed; origin host and network path are not confirmed |
 | Trusted proxy hop count validated | Not yet; deployment path required |
 | SecIron vendor account / POC | Not connected or verifiable |
 | Hardened Android release artifact | Not produced or tested |
 | Cloudflare/SecIron → NEXUS SOC connectors | Not implemented or verified |
 
-**Next required input:** the exact public domain/subdomain intended for NEXUS SHIELD AI (domain name only). Do not send Cloudflare API tokens, passwords, private keys, or vendor credentials in chat.
+### 7.1 Workers Builds authorization recovery
+
+Cloudflare's current Workers Builds API setup requires the Cloudflare GitHub App to be installed and authorized for the account/repository before creating a Worker build configuration.
+
+1. In Cloudflare Dashboard, open **Workers & Pages** and begin the Worker connection flow.
+2. Under the Worker **Settings → Builds → Connect**, select GitHub and authorize the Cloudflare GitHub App for the `maalouf67/NEXUS-SHIELD-AI` repository.
+3. Return to this integration branch and verify the repository connection before creating build tokens, build triggers, or any deploy configuration.
+
+Do not substitute a Pages static-export project for this monorepo. The repository contains a Next.js application plus separate Express/TypeScript, FastAPI, and PostgreSQL components. Any Cloudflare Workers hosting path for the Next.js app requires a framework compatibility check and an isolated preview build; API, AI, and PostgreSQL hosting must remain separately designed.
+
+### 7.2 Domain and edge-security prerequisites
+
+No domain is currently registered for NEXUS SHIELD AI and no DNS zone exists in this Cloudflare account. Therefore DNSSEC, proxying, TLS mode, origin restrictions, WAF, and hostname-specific rate limits cannot yet be safely configured. Do not add a domain belonging to another person or change nameservers until ownership and the full DNS record set have been verified.
+
+**Next owner actions:** (a) authorize the Cloudflare GitHub App for this repository, (b) enable account MFA, and (c) register a domain owned by the project owner when ready. Do not send Cloudflare API tokens, passwords, private keys, or MFA codes in chat.
 
 
 ## Official references
