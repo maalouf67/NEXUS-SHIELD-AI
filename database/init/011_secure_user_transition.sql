@@ -1,6 +1,6 @@
 -- Additive metadata-only foundation for authorized user imports.
--- This migration stores no source payloads, email addresses, passwords, tokens,
--- MFA material, session IDs, or other raw personal data.
+-- No raw source payloads, emails, names, passwords, tokens, MFA material,
+-- session IDs, or other raw personal data are stored by this migration.
 
 CREATE TABLE IF NOT EXISTS user_import_batches (
   id UUID PRIMARY KEY,
@@ -25,8 +25,9 @@ CREATE TABLE IF NOT EXISTS user_import_batches (
   provisioned_records INTEGER NOT NULL DEFAULT 0 CHECK (provisioned_records >= 0),
   skipped_records INTEGER NOT NULL DEFAULT 0 CHECK (skipped_records >= 0),
   failed_records INTEGER NOT NULL DEFAULT 0 CHECK (failed_records >= 0),
-  initiated_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
-  approved_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  -- Actor IDs are immutable audit references, deliberately not foreign keys.
+  initiated_by_user_id UUID,
+  approved_by_user_id UUID,
   approved_at TIMESTAMPTZ,
   started_at TIMESTAMPTZ,
   completed_at TIMESTAMPTZ,
@@ -104,7 +105,8 @@ CREATE TABLE IF NOT EXISTS user_import_audit_events (
   id UUID PRIMARY KEY,
   batch_id UUID NOT NULL REFERENCES user_import_batches(id) ON DELETE RESTRICT,
   record_id UUID REFERENCES user_import_records(id) ON DELETE RESTRICT,
-  actor_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  -- Immutable actor reference; no FK action may rewrite an audit event.
+  actor_user_id UUID,
   event_code VARCHAR(48) NOT NULL,
   from_status VARCHAR(24),
   to_status VARCHAR(24),
