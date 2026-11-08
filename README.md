@@ -15,6 +15,16 @@ NEXUS SHIELD AI is an actively developed cyber-defense platform foundation combi
 
 Do not describe sample data or planned capabilities as active protection.
 
+## NEXUS AEGIS — Edge & Mobile Defense Layer
+
+**Status: planned integration; not connected or production-active.** NEXUS AEGIS is the named defense layer for two complementary controls:
+- **Cloudflare WAF:** edge filtering and abuse protection for explicitly proxied NEXUS web/API hostnames.
+- **SecIron IronWALL:** compiled Android/iOS application hardening (binary obfuscation/encryption, tamper protection and runtime self-protection, subject to vendor POC verification).
+
+Neither provider is currently claimed as connected or deployed. DNS, origin restrictions, WAF rules and mobile release hardening require their own configuration and acceptance tests. IronWALL hardens mobile binaries; Cloudflare WAF protects proxied HTTP traffic. Neither replaces the existing API controls, ClamAV file scanning, or host-level protection.
+
+Implementation and safety gates: [NEXUS AEGIS rollout plan](docs/CLOUDFLARE-SECIRON-ROLLOUT.md).
+
 ## Architecture
 
 - Frontend: Next.js web/admin console
