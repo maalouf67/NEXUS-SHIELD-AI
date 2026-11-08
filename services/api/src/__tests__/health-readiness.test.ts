@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import request from 'supertest';
 
 import { authTokenConfig } from '../auth/auth.middleware.js';
+import { registerTestAuthSession } from '../auth/auth-session.repository.js';
 import { healthRouter } from '../routes/health.js';
 import { pool } from '../db/pool.js';
 
@@ -27,8 +28,19 @@ function createTestApp() {
 }
 
 function analystToken() {
+  const sessionId = '550e8400-e29b-41d4-a716-446655440002';
+  registerTestAuthSession({
+    sessionId,
+    userId: ANALYST_ID,
+    expiresAt: new Date(Date.now() + 15 * 60 * 1000),
+    testIdentity: {
+      id: ANALYST_ID,
+      email: 'analyst@example.com',
+      role: 'analyst'
+    }
+  });
   return jwt.sign(
-    { email: 'analyst@example.com', role: 'analyst' },
+    { jti: sessionId },
     JWT_SECRET,
     {
       algorithm: 'HS256',
