@@ -52,6 +52,10 @@ const envSchema = z.object({
   ABUSEIPDB_API_KEY: optionalApiKey,
   ABUSEIPDB_MAX_AGE_DAYS: z.coerce.number().int().min(1).max(365).default(90),
   ABUSEIPDB_DAILY_LIMIT: z.coerce.number().int().min(1).max(50000).default(850),
+  PRIVACYHAWK_ENABLED: z.enum(["true", "false"]).default("false"),
+  PRIVACYHAWK_ENVIRONMENT: z.enum(["sandbox", "production"]).default("sandbox"),
+  PRIVACYHAWK_CLIENT_ID: optionalApiKey,
+  PRIVACYHAWK_CLIENT_SECRET: optionalApiKey,
   OTEL_ENABLED: z.enum(["true", "false"]).default("false"),
   OTEL_SERVICE_NAME: z.string().min(1).max(100).default("nexus-shield-api"),
   OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: z.string().url().optional(),
@@ -65,6 +69,9 @@ const envSchema = z.object({
 
 export function validateEnv() {
   const parsed = envSchema.parse(process.env);
+  if (parsed.PRIVACYHAWK_ENABLED === "true" && (!parsed.PRIVACYHAWK_CLIENT_ID || !parsed.PRIVACYHAWK_CLIENT_SECRET)) {
+    throw new Error("PRIVACYHAWK_CLIENT_ID and PRIVACYHAWK_CLIENT_SECRET are required when PRIVACYHAWK_ENABLED=true.");
+  }
   if (parsed.OTEL_ENABLED === "true" && !parsed.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT) {
     throw new Error("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT is required when OTEL_ENABLED=true.");
   }
