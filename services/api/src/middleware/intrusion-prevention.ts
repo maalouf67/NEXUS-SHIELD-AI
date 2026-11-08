@@ -59,7 +59,7 @@ export function createProtectionEvent(request: Request, options: ProtectionEvent
 
 /** Persist the SOC event and propagate errors rather than silently dropping it. */
 export async function recordProtectionEvent(request: Request, options: ProtectionEventOptions): Promise<void> {
-  await securityEventRepository.ingestBatch([createProtectionEvent(request, options)]);
+  await securityEventRepository.ingestSystemBatch([createProtectionEvent(request, options)]);
 }
 
 export function createLoginAttemptLimiter(

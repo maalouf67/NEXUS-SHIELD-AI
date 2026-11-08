@@ -1,12 +1,14 @@
-import { Router } from 'express';
+import { Router, type RequestHandler } from 'express';
 import { z } from 'zod';
 import { runOrchestrator } from '../ai/orchestrator.js';
 import { requireServiceToken } from '../middleware/service-token.js';
 import { threatAnalysisRateLimiter } from '../middleware/ai-rate-limit.js';
-import { requireAuth, requireRole } from '../auth/auth.middleware.js';
+import { requireAuth } from '../auth/auth.middleware.js';
+import { createRequireWorkspace, requireWorkspaceRole } from '../workspaces/workspace.middleware.js';
 import { pool } from '../db/pool.js';
 
-export const threatsRouter = Router();
+export function createThreatsRouter(requireWorkspace: RequestHandler = createRequireWorkspace()) {
+const threatsRouter = Router();
 const ThreatRequestSchema = z.object({
   target: z.string().trim().min(1).max(200),
   source: z.string().trim().min(1).max(200),
@@ -14,7 +16,7 @@ const ThreatRequestSchema = z.object({
   details: z.string().max(5000).optional()
 });
 
-threatsRouter.get('/threats/summary', requireAuth, requireRole('admin', 'analyst', 'viewer'), async (_req, res) => {
+threatsRouter.get('/threats/summary', requireAuth, requireWorkspace, requireWorkspaceRole('admin', 'analyst', 'viewer'), async (req, res) => {
   try {
     const result = await pool.query(
       `SELECT
@@ -26,7 +28,9 @@ threatsRouter.get('/threats/summary', requireAuth, requireRole('admin', 'analyst
            WHERE status IN ('contained', 'resolved', 'closed')
          )::int AS mitigated,
          COALESCE(MAX(updated_at), MAX(created_at), NOW()) AS updated_at
-       FROM incidents`
+       FROM incidents
+       WHERE workspace_id = $1`,
+      [req.workspaceContext!.id]
     );
     const row = result.rows[0] ?? {};
     const updatedAt = row.updated_at instanceof Date
@@ -101,3 +105,8 @@ threatsRouter.post('/threats/analyze', requireServiceToken, threatAnalysisRateLi
     return res.status(502).json({ error: 'AI_ANALYSIS_FAILED' });
   }
 });
+
+return threatsRouter;
+}
+
+export const threatsRouter = createThreatsRouter();

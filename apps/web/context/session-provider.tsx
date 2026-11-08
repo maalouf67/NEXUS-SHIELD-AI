@@ -19,6 +19,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     } catch (cause) {
       setUser(null);
       if (cause instanceof ApiClientError && cause.status === 401) {
+        if (typeof window !== 'undefined') window.localStorage.removeItem('nexus.activeWorkspaceId');
         setStatus('anonymous');
         return;
       }
@@ -31,6 +32,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     try {
       await endCurrentSession();
     } finally {
+      if (typeof window !== 'undefined') window.localStorage.removeItem('nexus.activeWorkspaceId');
       setUser(null);
       setStatus('anonymous');
     }

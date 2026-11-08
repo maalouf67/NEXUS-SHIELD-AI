@@ -6,11 +6,11 @@ import { recordProtectionEvent } from '../middleware/intrusion-prevention.js';
 
 vi.mock('../security-events/security-event.repository.js', () => ({
   securityEventRepository: {
-    ingestBatch: vi.fn().mockResolvedValue({ inserted: 1, duplicates: 0 })
+    ingestSystemBatch: vi.fn().mockResolvedValue({ inserted: 1, duplicates: 0 })
   }
 }));
 
-const ingestBatch = vi.mocked(securityEventRepository.ingestBatch);
+const ingestSystemBatch = vi.mocked(securityEventRepository.ingestSystemBatch);
 const originalRateLimitSecret = process.env.RATE_LIMIT_HASH_SECRET;
 const originalSessionSecret = process.env.SESSION_SECRET;
 
@@ -30,8 +30,8 @@ function requestFrom(ip: string): Request {
 
 describe('privacy-preserving protection events', () => {
   beforeEach(() => {
-    ingestBatch.mockClear();
-    ingestBatch.mockResolvedValue({ inserted: 1, duplicates: 0 });
+    ingestSystemBatch.mockClear();
+    ingestSystemBatch.mockResolvedValue({ inserted: 1, duplicates: 0 });
     process.env.RATE_LIMIT_HASH_SECRET = 'r'.repeat(48);
     delete process.env.SESSION_SECRET;
     vi.spyOn(Date, 'now').mockReturnValue(1_800_000_000_000);
@@ -58,8 +58,8 @@ describe('privacy-preserving protection events', () => {
 
     await recordProtectionEvent(requestFrom(sourceIp), eventOptions);
 
-    expect(ingestBatch).toHaveBeenCalledTimes(1);
-    const event = ingestBatch.mock.calls[0]?.[0][0];
+    expect(ingestSystemBatch).toHaveBeenCalledTimes(1);
+    const event = ingestSystemBatch.mock.calls[0]?.[0][0];
 
     expect(event).toMatchObject({
       source: 'nexus-ips',
@@ -80,8 +80,8 @@ describe('privacy-preserving protection events', () => {
     await recordProtectionEvent(requestFrom(sourceIp), eventOptions);
     await recordProtectionEvent(requestFrom(sourceIp), eventOptions);
 
-    const first = ingestBatch.mock.calls[0]?.[0][0];
-    const second = ingestBatch.mock.calls[1]?.[0][0];
+    const first = ingestSystemBatch.mock.calls[0]?.[0][0];
+    const second = ingestSystemBatch.mock.calls[1]?.[0][0];
 
     expect(first?.externalEventId).toBeTruthy();
     expect(second?.externalEventId).toBe(first?.externalEventId);
@@ -95,8 +95,8 @@ describe('privacy-preserving protection events', () => {
     vi.mocked(Date.now).mockReturnValue(1_800_000_000_002);
     await recordProtectionEvent(requestFrom(sourceIp), eventOptions);
 
-    const first = ingestBatch.mock.calls[0]?.[0][0];
-    const second = ingestBatch.mock.calls[1]?.[0][0];
+    const first = ingestSystemBatch.mock.calls[0]?.[0][0];
+    const second = ingestSystemBatch.mock.calls[1]?.[0][0];
 
     expect(second?.externalEventId).not.toBe(first?.externalEventId);
   });
@@ -108,8 +108,8 @@ describe('privacy-preserving protection events', () => {
     vi.mocked(Date.now).mockReturnValue(1_800_000_600_000);
     await recordProtectionEvent(requestFrom(sourceIp), eventOptions);
 
-    const first = ingestBatch.mock.calls[0]?.[0][0];
-    const second = ingestBatch.mock.calls[1]?.[0][0];
+    const first = ingestSystemBatch.mock.calls[0]?.[0][0];
+    const second = ingestSystemBatch.mock.calls[1]?.[0][0];
 
     expect(second?.externalEventId).not.toBe(first?.externalEventId);
   });
@@ -119,11 +119,11 @@ describe('privacy-preserving protection events', () => {
     delete process.env.SESSION_SECRET;
     await expect(recordProtectionEvent(requestFrom('203.0.113.44'), eventOptions))
       .rejects.toThrow('PROTECTION_EVENT_SECRET_NOT_CONFIGURED');
-    expect(ingestBatch).not.toHaveBeenCalled();
+    expect(ingestSystemBatch).not.toHaveBeenCalled();
   });
 
   it('propagates telemetry persistence failure instead of silently dropping it', async () => {
-    ingestBatch.mockRejectedValueOnce(new Error('database unavailable'));
+    ingestSystemBatch.mockRejectedValueOnce(new Error('database unavailable'));
     await expect(recordProtectionEvent(requestFrom('203.0.113.44'), eventOptions))
       .rejects.toThrow('database unavailable');
   });

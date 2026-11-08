@@ -8,6 +8,9 @@ const ALLOWED_ROOTS = new Set([
   'threats',
   'users',
   'security-events',
+  'workspaces',
+  'assets',
+  'attack-paths',
   'phone-reputation',
   'ip-reputation',
   'health',
@@ -64,6 +67,10 @@ async function proxy(request: NextRequest, context: RouteContext) {
     Authorization: `Bearer ${token}`,
     Accept: 'application/json'
   });
+  const workspaceId = request.headers.get('x-nexus-workspace-id')?.trim();
+  if (workspaceId && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(workspaceId)) {
+    headers.set('X-NEXUS-WORKSPACE-ID', workspaceId);
+  }
 
   let body: ArrayBuffer | undefined;
   if (request.method !== 'GET') {

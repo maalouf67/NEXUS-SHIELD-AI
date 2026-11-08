@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import express from 'express';
+import express, { type RequestHandler } from 'express';
 import jwt from 'jsonwebtoken';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import request from 'supertest';
@@ -16,12 +16,12 @@ import type {
   SecurityEventRepository
 } from '../security-events/security-event.repository.js';
 
-const INGESTION_TOKEN = 'nexus-event-ingestion-test-token'.padEnd(48, 'x');
+const INTEGRATION_TOKEN = 'nexus-event-ingestion-test-token'.padEnd(48, 'x');
+const TEST_WORKSPACE_ID = '550e8400-e29b-41d4-a716-446655440099';
 const JWT_SECRET = 'nexus-security-event-test-jwt-secret-at-least-32';
 const ANALYST_ID = '550e8400-e29b-41d4-a716-446655440001';
 const VIEWER_ID = '550e8400-e29b-41d4-a716-446655440002';
 const EVENT_ID = '550e8400-e29b-41d4-a716-446655440010';
-const originalIngestionToken = process.env.NEXUS_EVENT_INGESTION_TOKEN;
 const originalJwtSecret = process.env.JWT_SECRET;
 
 const sampleInput: SecurityEventInput = {
@@ -48,7 +48,7 @@ function createRepository(
   overrides: Partial<SecurityEventRepository> = {}
 ): SecurityEventRepository {
   return {
-    async ingestBatch(events) {
+    async ingestBatch(_workspaceId, events) {
       return { inserted: events.length, duplicates: 0 };
     },
     async list(filters: SecurityEventListFilters) {
@@ -91,26 +91,28 @@ function token(userId: string, role: 'admin' | 'analyst' | 'viewer') {
   );
 }
 
+const testWorkspaceAccess: RequestHandler = (req, _res, next) => {
+  req.workspaceContext = { id: TEST_WORKSPACE_ID, name: 'Test workspace', slug: 'test-workspace', role: req.authUser!.role };
+  next();
+};
+const testIntegrationAccess: RequestHandler = (req, res, next) => {
+  if (req.header('x-nexus-integration-token') !== INTEGRATION_TOKEN) return res.status(401).json({ error: 'INVALID_INTEGRATION_CREDENTIALS' });
+  req.workspaceIntegration = { id: '550e8400-e29b-41d4-a716-446655440098', workspaceId: TEST_WORKSPACE_ID, name: 'Test integration', permissions: ['events:write'] };
+  return next();
+};
 function createTestApp(repository: SecurityEventRepository) {
   const app = express();
   app.use(express.json({ limit: '1mb' }));
-  app.use('/api', createSecurityEventsRouter(repository));
+  app.use('/api', createSecurityEventsRouter(repository, testWorkspaceAccess, testIntegrationAccess));
   return app;
 }
 
 describe('Normalized security event API', () => {
   beforeEach(() => {
-    process.env.NEXUS_EVENT_INGESTION_TOKEN = INGESTION_TOKEN;
     process.env.JWT_SECRET = JWT_SECRET;
   });
 
   afterEach(() => {
-    if (originalIngestionToken === undefined) {
-      delete process.env.NEXUS_EVENT_INGESTION_TOKEN;
-    } else {
-      process.env.NEXUS_EVENT_INGESTION_TOKEN = originalIngestionToken;
-    }
-
     if (originalJwtSecret === undefined) {
       delete process.env.JWT_SECRET;
     } else {
@@ -118,36 +120,33 @@ describe('Normalized security event API', () => {
     }
   });
 
-  it('fails closed when the dedicated ingestion token is not configured', async () => {
-    delete process.env.NEXUS_EVENT_INGESTION_TOKEN;
-
+  it('requires workspace integration credentials for event ingestion', async () => {
     const response = await request(createTestApp(createRepository()))
       .post('/api/integrations/security-events')
-      .set('X-NEXUS-INGESTION-TOKEN', INGESTION_TOKEN)
       .send({ events: [sampleInput] });
 
-    expect(response.status).toBe(503);
-    expect(response.body.error).toBe('EVENT_INGESTION_NOT_CONFIGURED');
+    expect(response.status).toBe(401);
+    expect(response.body.error).toBe('INVALID_INTEGRATION_CREDENTIALS');
   });
 
   it('rejects an invalid integration token', async () => {
     const response = await request(createTestApp(createRepository()))
       .post('/api/integrations/security-events')
-      .set('X-NEXUS-INGESTION-TOKEN', 'wrong-token')
+      .set('X-NEXUS-INTEGRATION-TOKEN', 'wrong-token')
       .send({ events: [sampleInput] });
 
     expect(response.status).toBe(401);
-    expect(response.body.error).toBe('UNAUTHORIZED');
+    expect(response.body.error).toBe('INVALID_INTEGRATION_CREDENTIALS');
   });
 
   it('accepts normalized events and reports an idempotent batch result', async () => {
     const response = await request(createTestApp(createRepository({
-      async ingestBatch(events): Promise<IngestSecurityEventsResult> {
+      async ingestBatch(_workspaceId, events): Promise<IngestSecurityEventsResult> {
         return { inserted: events.length, duplicates: 0 };
       }
     })))
       .post('/api/integrations/security-events')
-      .set('X-NEXUS-INGESTION-TOKEN', INGESTION_TOKEN)
+      .set('X-NEXUS-INTEGRATION-TOKEN', INTEGRATION_TOKEN)
       .send({ events: [sampleInput] });
 
     expect(response.status).toBe(202);
@@ -168,7 +167,7 @@ describe('Normalized security event API', () => {
 
     const response = await request(createTestApp(repository))
       .post('/api/integrations/security-events')
-      .set('X-NEXUS-INGESTION-TOKEN', INGESTION_TOKEN)
+      .set('X-NEXUS-INTEGRATION-TOKEN', INTEGRATION_TOKEN)
       .send({ events: [sampleInput, sampleInput] });
 
     expect(response.status).toBe(400);
@@ -183,7 +182,7 @@ describe('Normalized security event API', () => {
 
     const response = await request(createTestApp(createRepository()))
       .post('/api/integrations/security-events')
-      .set('X-NEXUS-INGESTION-TOKEN', INGESTION_TOKEN)
+      .set('X-NEXUS-INTEGRATION-TOKEN', INTEGRATION_TOKEN)
       .send({
         events: [{
           ...sampleInput,

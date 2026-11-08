@@ -56,9 +56,10 @@ export type ReviewSecurityEventResult =
   | { outcome: 'reviewed'; event: SecurityEvent };
 
 export interface SecurityEventRepository {
-  ingestBatch(events: SecurityEventInput[]): Promise<IngestSecurityEventsResult>;
-  list(filters: SecurityEventListFilters): Promise<{ events: SecurityEvent[]; total: number }>;
-  review(eventId: string, actorUserId: string, note?: string): Promise<ReviewSecurityEventResult>;
+  ingestSystemBatch(events: SecurityEventInput[]): Promise<IngestSecurityEventsResult>;
+  ingestBatch(workspaceId: string, events: SecurityEventInput[]): Promise<IngestSecurityEventsResult>;
+  list(workspaceId: string, filters: SecurityEventListFilters): Promise<{ events: SecurityEvent[]; total: number }>;
+  review(workspaceId: string, eventId: string, actorUserId: string, note?: string): Promise<ReviewSecurityEventResult>;
 }
 
 function toIsoString(value: Date | string | null): string | null {
@@ -90,7 +91,7 @@ const EVENT_SELECT = `SELECT id, source, external_event_id, event_type, severity
   FROM security_events`;
 
 export class PostgresSecurityEventRepository implements SecurityEventRepository {
-  async ingestBatch(events: SecurityEventInput[]): Promise<IngestSecurityEventsResult> {
+  async ingestSystemBatch(events: SecurityEventInput[]): Promise<IngestSecurityEventsResult> {
     const client = await pool.connect();
     let inserted = 0;
 
@@ -100,12 +101,54 @@ export class PostgresSecurityEventRepository implements SecurityEventRepository 
       for (const event of events) {
         const result = await client.query(
           `INSERT INTO security_events
-            (id, source, external_event_id, event_type, severity, observed_at,
+            (workspace_id, id, source, external_event_id, event_type, severity, observed_at,
              asset_id, summary, attributes)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::JSONB)
-           ON CONFLICT (source, external_event_id) DO NOTHING
+           VALUES (NULL, $1, $2, $3, $4, $5, $6, $7, $8, $9::JSONB)
+           ON CONFLICT (source, external_event_id) WHERE workspace_id IS NULL DO NOTHING
            RETURNING id`,
           [
+            randomUUID(),
+            event.source,
+            event.externalEventId,
+            event.eventType,
+            event.severity,
+            event.observedAt,
+            event.assetId ?? null,
+            event.summary,
+            JSON.stringify(event.attributes ?? {})
+          ]
+        );
+
+        if (result.rowCount && result.rowCount > 0) inserted += 1;
+      }
+
+      await client.query('COMMIT');
+      return { inserted, duplicates: events.length - inserted };
+    } catch (error) {
+      try { await client.query('ROLLBACK'); } catch { /* Preserve the original error. */ }
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async ingestBatch(workspaceId: string, events: SecurityEventInput[]): Promise<IngestSecurityEventsResult> {
+    const client = await pool.connect();
+    let inserted = 0;
+
+    try {
+      await client.query('BEGIN');
+
+      for (const event of events) {
+        const result = await client.query(
+          `INSERT INTO security_events
+            (workspace_id, id, source, external_event_id, event_type, severity, observed_at,
+             asset_id, summary, attributes)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::JSONB)
+           ON CONFLICT (workspace_id, source, external_event_id) WHERE workspace_id IS NOT NULL DO NOTHING
+           RETURNING id`,
+          [
+            workspaceId,
             randomUUID(),
             event.source,
             event.externalEventId,
@@ -141,10 +184,11 @@ export class PostgresSecurityEventRepository implements SecurityEventRepository 
   }
 
   async list(
+    workspaceId: string,
     filters: SecurityEventListFilters
   ): Promise<{ events: SecurityEvent[]; total: number }> {
-    const where: string[] = [];
-    const values: unknown[] = [];
+    const where: string[] = ['workspace_id = $1'];
+    const values: unknown[] = [workspaceId];
 
     if (filters.severity) {
       values.push(filters.severity);
@@ -183,6 +227,7 @@ export class PostgresSecurityEventRepository implements SecurityEventRepository 
   }
 
   async review(
+    workspaceId: string,
     eventId: string,
     actorUserId: string,
     note?: string
@@ -193,8 +238,8 @@ export class PostgresSecurityEventRepository implements SecurityEventRepository 
       await client.query('BEGIN');
 
       const currentResult = await client.query(
-        'SELECT id, review_status FROM security_events WHERE id = $1 FOR UPDATE',
-        [eventId]
+        'SELECT id, review_status FROM security_events WHERE id = $1 AND workspace_id = $2 FOR UPDATE',
+        [eventId, workspaceId]
       );
       const current = currentResult.rows[0];
 
@@ -205,8 +250,8 @@ export class PostgresSecurityEventRepository implements SecurityEventRepository 
 
       if (current.review_status === 'reviewed') {
         const existing = await client.query(
-          `${EVENT_SELECT} WHERE id = $1`,
-          [eventId]
+          `${EVENT_SELECT} WHERE id = $1 AND workspace_id = $2`,
+          [eventId, workspaceId]
         );
         await client.query('COMMIT');
         return { outcome: 'already_reviewed', event: mapSecurityEvent(existing.rows[0]) };
@@ -217,20 +262,20 @@ export class PostgresSecurityEventRepository implements SecurityEventRepository 
          SET review_status = 'reviewed',
              reviewed_at = NOW(),
              reviewed_by_user_id = $2
-         WHERE id = $1`,
-        [eventId, actorUserId]
+         WHERE id = $1 AND workspace_id = $3`,
+        [eventId, actorUserId, workspaceId]
       );
 
       await client.query(
         `INSERT INTO security_event_reviews
-          (id, security_event_id, actor_user_id, action, note)
-         VALUES ($1, $2, $3, 'event.reviewed', $4)`,
-        [randomUUID(), eventId, actorUserId, note ?? null]
+          (workspace_id, id, security_event_id, actor_user_id, action, note)
+         VALUES ($1, $2, $3, $4, 'event.reviewed', $5)`,
+        [workspaceId, randomUUID(), eventId, actorUserId, note ?? null]
       );
 
       const updated = await client.query(
-        `${EVENT_SELECT} WHERE id = $1`,
-        [eventId]
+        `${EVENT_SELECT} WHERE id = $1 AND workspace_id = $2`,
+        [eventId, workspaceId]
       );
 
       await client.query('COMMIT');

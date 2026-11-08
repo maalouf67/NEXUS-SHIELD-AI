@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import express from 'express';
+import express, { type RequestHandler } from 'express';
 import jwt from 'jsonwebtoken';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import request from 'supertest';
@@ -20,6 +20,7 @@ const ADMIN_ID = '550e8400-e29b-41d4-a716-446655440000';
 const ANALYST_ID = '550e8400-e29b-41d4-a716-446655440001';
 const VIEWER_ID = '550e8400-e29b-41d4-a716-446655440002';
 const INCIDENT_ID = '550e8400-e29b-41d4-a716-446655440010';
+const TEST_WORKSPACE_ID = '550e8400-e29b-41d4-a716-446655440099';
 const originalSecret = process.env.JWT_SECRET;
 
 const sampleIncident: Incident = {
@@ -116,10 +117,14 @@ function token(userId: string, role: 'admin' | 'analyst' | 'viewer') {
   );
 }
 
+const testWorkspaceAccess: RequestHandler = (req, _res, next) => {
+  req.workspaceContext = { id: TEST_WORKSPACE_ID, name: 'Test workspace', slug: 'test-workspace', role: req.authUser!.role };
+  next();
+};
 function createTestApp(repository: IncidentRepository) {
   const app = express();
   app.use(express.json());
-  app.use('/api', createIncidentsRouter(repository));
+  app.use('/api', createIncidentsRouter(repository, testWorkspaceAccess));
   return app;
 }
 

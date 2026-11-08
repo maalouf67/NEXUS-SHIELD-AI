@@ -4,7 +4,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { useSession } from '../hooks/use-session';
 
 import type {
-  Incident, Alert, SecurityEvent, ThreatSummary, ThreatAnalysisResult, ManagedUser
+  Incident, Alert, SecurityEvent, ThreatSummary, ThreatAnalysisResult, ManagedUser, Workspace
 } from '../services/dashboard-api';
 import {
   fetchDashboardData,
@@ -12,7 +12,9 @@ import {
   createAlertRecord as apiCreateAlert,
   analyzeThreat as apiAnalyzeThreat,
   reviewSecurityEvent as apiReviewSecurityEvent,
-  createManagedUser as apiCreateManagedUser,
+  addWorkspaceMember as apiAddWorkspaceMember,
+  createWorkspace as apiCreateWorkspace,
+  fetchWorkspaces as apiFetchWorkspaces,
   changeIncidentStatus as apiChangeIncidentStatus,
   changeAlertStatus as apiChangeAlertStatus
 } from '../services/dashboard-api';
@@ -54,8 +56,10 @@ export default function HomePage() {
   const [alertType, setAlertType] = useState('');
   const [alertRisk, setAlertRisk] = useState('50');
   const [managedUsers, setManagedUsers] = useState<ManagedUser[]>([]);
+  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
+  const [activeWorkspaceId, setActiveWorkspaceId] = useState('');
+  const [newWorkspaceName, setNewWorkspaceName] = useState('');
   const [newUserEmail, setNewUserEmail] = useState('');
-  const [newUserPassword, setNewUserPassword] = useState('');
   const [newUserRole, setNewUserRole] = useState<'analyst' | 'viewer'>('analyst');
   const [analysisTarget, setAnalysisTarget] = useState('');
   const [analysisSource, setAnalysisSource] = useState('');
@@ -65,8 +69,9 @@ export default function HomePage() {
   const [aiError, setAiError] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
 
-  const canManage = user?.role === 'admin' || user?.role === 'analyst';
-  const isAdmin = user?.role === 'admin';
+  const activeWorkspace = workspaces.find((workspace) => workspace.id === activeWorkspaceId) ?? null;
+  const canManage = activeWorkspace?.role === 'admin' || activeWorkspace?.role === 'analyst';
+  const isAdmin = activeWorkspace?.role === 'admin';
 
   useEffect(() => {
     if (sessionStatus === 'anonymous') {
@@ -79,11 +84,12 @@ export default function HomePage() {
 
 
   const loadDashboard = useCallback(async () => {
+    if (!user || !activeWorkspaceId) return;
     setIsLoading(true);
     setLoadError('');
 
     try {
-      const data = await fetchDashboardData(user?.role === 'admin');
+      const data = await fetchDashboardData(isAdmin);
       setIncidents(data.incidents);
       setAlerts(data.alerts);
       setSecurityEvents(data.securityEvents);
@@ -103,11 +109,34 @@ export default function HomePage() {
     } finally {
       setIsLoading(false);
     }
-  }, [user]);
+  }, [user, activeWorkspaceId, isAdmin]);
+
+  const loadWorkspaces = useCallback(async () => {
+    try {
+      const available = await apiFetchWorkspaces();
+      setWorkspaces(available);
+      const stored = window.localStorage.getItem('nexus.activeWorkspaceId');
+      const selected = available.find((workspace) => workspace.id === stored) ?? available[0];
+      if (selected) {
+        window.localStorage.setItem('nexus.activeWorkspaceId', selected.id);
+        setActiveWorkspaceId(selected.id);
+      } else {
+        window.localStorage.removeItem('nexus.activeWorkspaceId');
+        setActiveWorkspaceId('');
+        setManagedUsers([]);
+      }
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : 'Unable to load your workspaces.');
+    }
+  }, []);
 
   useEffect(() => {
-    if (user) void loadDashboard();
-  }, [user, loadDashboard]);
+    if (user) void loadWorkspaces();
+  }, [user, loadWorkspaces]);
+
+  useEffect(() => {
+    if (activeWorkspaceId) void loadDashboard();
+  }, [activeWorkspaceId, loadDashboard]);
 
   useEffect(() => {
     if (!alertIncidentId && incidents.length > 0) {
@@ -121,6 +150,41 @@ export default function HomePage() {
     const activeAlerts = alerts.filter((item) => item.status === 'active').length;
     return { open, critical, activeAlerts };
   }, [incidents, alerts]);
+
+  function switchWorkspace(workspaceId: string) {
+    if (!workspaces.some((workspace) => workspace.id === workspaceId)) return;
+    window.localStorage.setItem('nexus.activeWorkspaceId', workspaceId);
+    setIncidents([]);
+    setAlerts([]);
+    setSecurityEvents([]);
+    setIpsEvents([]);
+    setManagedUsers([]);
+    setSummary(null);
+    setIncidentTotal(0);
+    setAlertTotal(0);
+    setSecurityEventTotal(0);
+    setIpsEventTotal(0);
+    setAlertIncidentId('');
+    setActiveWorkspaceId(workspaceId);
+  }
+
+  async function createWorkspace(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setIsSaving(true);
+    setActionError('');
+    try {
+      const result = await apiCreateWorkspace(newWorkspaceName);
+      const created = result.workspace;
+      setWorkspaces((current) => [...current, created]);
+      setNewWorkspaceName('');
+      window.localStorage.setItem('nexus.activeWorkspaceId', created.id);
+      setActiveWorkspaceId(created.id);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Workspace creation failed.');
+    } finally {
+      setIsSaving(false);
+    }
+  }
 
   async function createIncident(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -201,17 +265,12 @@ export default function HomePage() {
     setActionError('');
 
     try {
-      await apiCreateManagedUser({
-        email: newUserEmail,
-        password: newUserPassword,
-        role: newUserRole
-      });
+      await apiAddWorkspaceMember({ email: newUserEmail, role: newUserRole });
 
       setNewUserEmail('');
-      setNewUserPassword('');
       await loadDashboard();
     } catch (error) {
-      setActionError(error instanceof Error ? error.message : 'User creation failed.');
+      setActionError(error instanceof Error ? error.message : 'Could not add this existing account to the workspace.');
     } finally {
       setIsSaving(false);
     }
@@ -296,7 +355,7 @@ export default function HomePage() {
         </div>
         <div className="profile-row">
           <div className="avatar">{user.email.slice(0, 1).toUpperCase()}</div>
-          <div className="profile-details"><strong>{user.email}</strong><small>{user.role}</small></div>
+          <div className="profile-details"><strong>{user.email}</strong><small>{activeWorkspace?.role ?? user.role}</small></div>
           <button className="icon-action" onClick={signOut} title="Sign out" aria-label="Sign out">↗</button>
         </div>
       </aside>
@@ -308,12 +367,35 @@ export default function HomePage() {
             <h1 id="overview">Operational overview</h1>
           </div>
           <div className="topbar-actions">
-            <span className="role-pill">{user.role.toUpperCase()}</span>
+            {workspaces.length > 0 ? (
+              <label className="form-field workspace-switcher">
+                <span>ACTIVE WORKSPACE</span>
+                <select aria-label="Active workspace" value={activeWorkspaceId} onChange={(event) => switchWorkspace(event.target.value)}>
+                  {workspaces.map((workspace) => <option key={workspace.id} value={workspace.id}>{workspace.name} · {workspace.role}</option>)}
+                </select>
+              </label>
+            ) : null}
+            <span className="role-pill">{(activeWorkspace?.role ?? user.role).toUpperCase()}</span>
             <button className="secondary-button" onClick={() => void loadDashboard()} disabled={isLoading}>
               {isLoading ? 'Refreshing…' : '↻ Refresh'}
             </button>
           </div>
         </header>
+
+        {!activeWorkspaceId ? (
+          <section className="section-block">
+            <div className="eyebrow">WORKSPACE SETUP</div>
+            <h2>Select or create your workspace</h2>
+            <p className="muted-note">Security records are isolated by workspace. Create a workspace to begin, or ask an administrator to add your existing account. This does not create a new login account.</p>
+            <form className="inline-form" onSubmit={createWorkspace}>
+              <div className="form-field grow">
+                <label htmlFor="new-workspace-name">Workspace name</label>
+                <input id="new-workspace-name" value={newWorkspaceName} onChange={(event) => setNewWorkspaceName(event.target.value)} maxLength={120} required placeholder="e.g. My security workspace" />
+              </div>
+              <button className="primary-button" type="submit" disabled={isSaving}>{isSaving ? 'Creating…' : 'Create workspace'}</button>
+            </form>
+          </section>
+        ) : null}
 
         {summary?.is_demo ? (
           <div className="notice notice-warning">
@@ -500,14 +582,13 @@ export default function HomePage() {
           <section className="section-block" id="team">
             <div className="section-heading">
               <div><div className="eyebrow">ACCESS CONTROL</div><h2>Team access <span className="count-pill">{managedUsers.length}</span></h2></div>
-              <span className="section-subtitle">Administrator only · Public registration disabled</span>
+              <span className="section-subtitle">Selected workspace administrator only · Existing accounts only</span>
             </div>
 
             <form className="inline-form" onSubmit={createManagedUser}>
-              <div className="form-field grow"><label htmlFor="new-user-email">New user email</label><input id="new-user-email" type="email" autoComplete="off" maxLength={254} value={newUserEmail} onChange={(event) => setNewUserEmail(event.target.value)} placeholder="analyst@company.com" required /></div>
-              <div className="form-field grow"><label htmlFor="new-user-password">Temporary password</label><input id="new-user-password" type="password" autoComplete="new-password" minLength={12} maxLength={128} value={newUserPassword} onChange={(event) => setNewUserPassword(event.target.value)} placeholder="At least 12 characters" required /></div>
+              <div className="form-field grow"><label htmlFor="new-user-email">Existing account email</label><input id="new-user-email" type="email" autoComplete="off" maxLength={254} value={newUserEmail} onChange={(event) => setNewUserEmail(event.target.value)} placeholder="existing-user@company.com" required /></div>
               <div className="form-field"><label htmlFor="new-user-role">Role</label><select id="new-user-role" value={newUserRole} onChange={(event) => setNewUserRole(event.target.value as 'analyst' | 'viewer')}><option value="analyst">Analyst</option><option value="viewer">Viewer</option></select></div>
-              <button className="primary-button" type="submit" disabled={isSaving}>Create account</button>
+              <button className="primary-button" type="submit" disabled={isSaving}>Add to workspace</button>
             </form>
 
             <div className="data-table-wrap">
@@ -518,15 +599,15 @@ export default function HomePage() {
                     <tr key={member.id}>
                       <td><strong>{member.email}</strong><small className="row-id">{member.id.slice(0, 8)}</small></td>
                       <td><span className="role-pill">{member.role}</span></td>
-                      <td><span className={`status-pill ${member.isActive ? 'status-contained' : 'status-closed'}`}>{member.isActive ? 'active' : 'disabled'}</span></td>
+                      <td><span className={`status-pill ${member.status === 'active' ? 'status-contained' : 'status-closed'}`}>{member.status}</span></td>
                       <td>{displayDate(member.createdAt)}</td>
                     </tr>
                   ))}
-                  {managedUsers.length === 0 ? <tr><td colSpan={4} className="empty-cell">No provisioned accounts found.</td></tr> : null}
+                  {managedUsers.length === 0 ? <tr><td colSpan={4} className="empty-cell">No members have been added to this workspace yet.</td></tr> : null}
                 </tbody>
               </table>
             </div>
-            <p className="muted-note">New accounts are limited to Analyst and Viewer. Administrator accounts are provisioned only through the one-time server-side bootstrap command.</p>
+            <p className="muted-note">Only existing accounts can be added. This grants access to the selected workspace; it does not create a login account or change the user's global role.</p>
           </section>
         ) : null}
 

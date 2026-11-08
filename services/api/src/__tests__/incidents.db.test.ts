@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { PostgresIncidentRepository } from '../incidents/incident.repository.js';
 import { pool } from '../db/pool.js';
@@ -9,39 +9,48 @@ const enabled = process.env.NEXUS_RUN_DB_INTEGRATION === 'true';
 describe.skipIf(!enabled)('PostgreSQL incident management integration', () => {
   const repository = new PostgresIncidentRepository();
   const actorId = randomUUID();
-  const incidentIds: string[] = [];
+  const workspaceId = randomUUID();
+  const otherWorkspaceId = randomUUID();
 
-  afterAll(async () => {
-    if (incidentIds.length > 0) {
-      await pool.query(
-        'DELETE FROM incidents WHERE id = ANY($1::uuid[])',
-        [incidentIds]
-      );
-    }
-    await pool.query('DELETE FROM users WHERE id = $1', [actorId]);
-    await pool.end();
-  });
-
-  it('creates an incident, records status history, and retrieves its audit trail', async () => {
+  beforeAll(async () => {
     await pool.query(
       `INSERT INTO users (id, email, role, password_hash, is_active)
        VALUES ($1, $2, 'analyst', NULL, TRUE)`,
       [actorId, `incident-ci-${actorId}@example.test`]
     );
+    await pool.query(
+      'INSERT INTO workspaces (id, name, slug, created_by_user_id) VALUES ($1, $2, $3, $4)',
+      [workspaceId, 'Incident CI workspace', `incident-ci-${workspaceId.slice(0, 8)}`, actorId]
+    );
+    await pool.query(
+      'INSERT INTO workspaces (id, name, slug, created_by_user_id) VALUES ($1, $2, $3, $4)',
+      [otherWorkspaceId, 'Other Incident CI workspace', `incident-other-${otherWorkspaceId.slice(0, 8)}`, actorId]
+    );
+  });
 
+  afterAll(async () => {
+    await pool.query('DELETE FROM incident_activity WHERE workspace_id = $1', [workspaceId]);
+    await pool.query('DELETE FROM incidents WHERE workspace_id = $1', [workspaceId]);
+    await pool.query('DELETE FROM workspaces WHERE id = ANY($1::uuid[])', [[workspaceId, otherWorkspaceId]]);
+    await pool.query('DELETE FROM users WHERE id = $1', [actorId]);
+    await pool.end();
+  });
+
+  it('creates an incident, records status history, and retrieves its audit trail', async () => {
     const incident = await repository.create({
+      workspaceId,
       id: randomUUID(),
       title: 'PostgreSQL integration incident',
       severity: 'high',
       source: 'ci-integration-test',
       actorUserId: actorId
     });
-    incidentIds.push(incident.id);
 
     expect(incident.status).toBe('open');
     expect(incident.createdByUserId).toBe(actorId);
 
     const update = await repository.updateStatus({
+      workspaceId,
       incidentId: incident.id,
       status: 'investigating',
       note: 'Integration test status change.',
@@ -55,7 +64,7 @@ describe.skipIf(!enabled)('PostgreSQL incident management integration', () => {
     }
     expect(update.incident.status).toBe('investigating');
 
-    const detail = await repository.getById(incident.id);
+    const detail = await repository.getById(incident.id, workspaceId);
     expect(detail?.status).toBe('investigating');
     expect(detail?.activity).toHaveLength(2);
     const statusActivity = detail?.activity.find((item) => item.action === 'incident.status_changed');
@@ -63,7 +72,7 @@ describe.skipIf(!enabled)('PostgreSQL incident management integration', () => {
     expect(statusActivity?.toStatus).toBe('investigating');
     expect(statusActivity?.actorUserId).toBe(actorId);
 
-    const list = await repository.list({
+    const list = await repository.list(workspaceId, {
       status: 'investigating',
       severity: 'high',
       limit: 10,
@@ -72,16 +81,43 @@ describe.skipIf(!enabled)('PostgreSQL incident management integration', () => {
     expect(list.incidents.some((item) => item.id === incident.id)).toBe(true);
   });
 
+  it('does not return or update an incident from another workspace', async () => {
+    const incident = await repository.create({
+      workspaceId,
+      id: randomUUID(),
+      title: 'Tenant isolation incident',
+      severity: 'high',
+      actorUserId: actorId
+    });
+
+    expect(await repository.getById(incident.id, otherWorkspaceId)).toBeNull();
+    const otherList = await repository.list(otherWorkspaceId, { limit: 100, offset: 0 });
+    expect(otherList.incidents.some((item) => item.id === incident.id)).toBe(false);
+
+    const attemptedUpdate = await repository.updateStatus({
+      workspaceId: otherWorkspaceId,
+      incidentId: incident.id,
+      status: 'investigating',
+      actorUserId: actorId,
+      actorRole: 'admin'
+    });
+    expect(attemptedUpdate.outcome).toBe('not_found');
+
+    const original = await repository.getById(incident.id, workspaceId);
+    expect(original?.status).toBe('open');
+  });
+
   it('requires an admin to reopen a resolved incident', async () => {
     const incident = await repository.create({
+      workspaceId,
       id: randomUUID(),
       title: 'Reopen authorization test',
       severity: 'medium',
       actorUserId: actorId
     });
-    incidentIds.push(incident.id);
 
     const investigating = await repository.updateStatus({
+      workspaceId,
       incidentId: incident.id,
       status: 'investigating',
       actorUserId: actorId,
@@ -90,6 +126,7 @@ describe.skipIf(!enabled)('PostgreSQL incident management integration', () => {
     expect(investigating.outcome).toBe('updated');
 
     const resolved = await repository.updateStatus({
+      workspaceId,
       incidentId: incident.id,
       status: 'resolved',
       actorUserId: actorId,
@@ -98,6 +135,7 @@ describe.skipIf(!enabled)('PostgreSQL incident management integration', () => {
     expect(resolved.outcome).toBe('updated');
 
     const analystReopen = await repository.updateStatus({
+      workspaceId,
       incidentId: incident.id,
       status: 'open',
       actorUserId: actorId,
@@ -106,6 +144,7 @@ describe.skipIf(!enabled)('PostgreSQL incident management integration', () => {
     expect(analystReopen.outcome).toBe('invalid_transition');
 
     const adminReopen = await repository.updateStatus({
+      workspaceId,
       incidentId: incident.id,
       status: 'open',
       actorUserId: actorId,

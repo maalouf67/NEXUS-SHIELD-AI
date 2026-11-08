@@ -1,8 +1,8 @@
-import { Router } from 'express';
+import { Router, type RequestHandler } from 'express';
 import { z } from 'zod';
 
-import { requireAuth, requireRole } from '../auth/auth.middleware.js';
-import { requireEventIngestionToken } from '../middleware/event-ingestion-token.js';
+import { requireAuth } from '../auth/auth.middleware.js';
+import { createRequireWorkspace, createRequireWorkspaceIntegration, requireWorkspaceRole } from '../workspaces/workspace.middleware.js';
 import {
   securityEventRepository,
   type SecurityEventRepository,
@@ -60,13 +60,15 @@ const ReviewSecurityEventRequestSchema = z.object({
 const EventIdSchema = z.string().uuid();
 
 export function createSecurityEventsRouter(
-  repository: SecurityEventRepository = securityEventRepository
+  repository: SecurityEventRepository = securityEventRepository,
+  requireWorkspace: RequestHandler = createRequireWorkspace(),
+  requireEventsWrite: RequestHandler = createRequireWorkspaceIntegration('events:write')
 ) {
   const router = Router();
 
   router.post(
     '/integrations/security-events',
-    requireEventIngestionToken,
+    requireEventsWrite,
     async (req, res) => {
       const parsed = IngestSecurityEventsRequestSchema.safeParse(req.body);
 
@@ -78,7 +80,7 @@ export function createSecurityEventsRouter(
       }
 
       try {
-        const result = await repository.ingestBatch(parsed.data.events);
+        const result = await repository.ingestBatch(req.workspaceIntegration!.workspaceId, parsed.data.events);
         return res.status(202).json({
           status: 'accepted',
           ...result,
@@ -101,7 +103,8 @@ export function createSecurityEventsRouter(
   router.get(
     '/security-events',
     requireAuth,
-    requireRole('admin', 'analyst', 'viewer'),
+    requireWorkspace,
+    requireWorkspaceRole('admin', 'analyst', 'viewer'),
     async (req, res) => {
       const parsed = ListSecurityEventsQuerySchema.safeParse(req.query);
       if (!parsed.success) {
@@ -112,7 +115,7 @@ export function createSecurityEventsRouter(
       }
 
       try {
-        const result = await repository.list({
+        const result = await repository.list(req.workspaceContext!.id, {
           ...parsed.data,
           severity: parsed.data.severity as SecurityEventSeverity | undefined,
           reviewStatus: parsed.data.reviewStatus as SecurityEventReviewStatus | undefined
@@ -139,7 +142,8 @@ export function createSecurityEventsRouter(
   router.post(
     '/security-events/:id/review',
     requireAuth,
-    requireRole('admin', 'analyst'),
+    requireWorkspace,
+    requireWorkspaceRole('admin', 'analyst'),
     async (req, res) => {
       const parsedId = EventIdSchema.safeParse(req.params.id);
       const parsedBody = ReviewSecurityEventRequestSchema.safeParse(req.body ?? {});
@@ -156,6 +160,7 @@ export function createSecurityEventsRouter(
 
       try {
         const result = await repository.review(
+          req.workspaceContext!.id,
           parsedId.data,
           req.authUser!.id,
           parsedBody.data.note

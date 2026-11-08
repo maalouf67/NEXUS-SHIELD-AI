@@ -14,8 +14,8 @@ export interface AssetInventoryUpsertResult {
 }
 
 export interface AssetInventoryStore {
-  getInventory(): Promise<AssetInventorySnapshot>;
-  upsertInventory(input: AssetInventoryImportRequest): Promise<AssetInventoryUpsertResult>;
+  getInventory(workspaceId: string): Promise<AssetInventorySnapshot>;
+  upsertInventory(workspaceId: string, input: AssetInventoryImportRequest): Promise<AssetInventoryUpsertResult>;
 }
 
 type EvidenceRow = {
@@ -41,20 +41,24 @@ function mapEvidence(row: EvidenceRow): EvidenceReference {
 }
 
 export class PostgresAssetInventoryStore implements AssetInventoryStore {
-  async getInventory(): Promise<AssetInventorySnapshot> {
+  async getInventory(workspaceId: string): Promise<AssetInventorySnapshot> {
     const [assetRows, assetEvidenceRows, relationshipRows, relationshipEvidenceRows] =
       await Promise.all([
         pool.query(
-          'SELECT id, asset_type, name, description, tags FROM assets ORDER BY id'
+          'SELECT id, asset_type, name, description, tags FROM assets WHERE workspace_id = $1 ORDER BY id',
+          [workspaceId]
         ),
         pool.query(
-          'SELECT asset_id, evidence_id, source, status, recorded_at, note FROM asset_evidence ORDER BY asset_id, evidence_id, source'
+          'SELECT asset_id, evidence_id, source, status, recorded_at, note FROM asset_evidence WHERE workspace_id = $1 ORDER BY asset_id, evidence_id, source',
+          [workspaceId]
         ),
         pool.query(
-          'SELECT id, from_asset_id, to_asset_id, relationship_type, notes FROM asset_relationships ORDER BY id'
+          'SELECT id, from_asset_id, to_asset_id, relationship_type, notes FROM asset_relationships WHERE workspace_id = $1 ORDER BY id',
+          [workspaceId]
         ),
         pool.query(
-          'SELECT relationship_id, evidence_id, source, status, recorded_at, note FROM relationship_evidence ORDER BY relationship_id, evidence_id, source'
+          'SELECT relationship_id, evidence_id, source, status, recorded_at, note FROM relationship_evidence WHERE workspace_id = $1 ORDER BY relationship_id, evidence_id, source',
+          [workspaceId]
         )
       ]);
 
@@ -93,7 +97,7 @@ export class PostgresAssetInventoryStore implements AssetInventoryStore {
     return { assets, relationships };
   }
 
-  async upsertInventory(input: AssetInventoryImportRequest): Promise<AssetInventoryUpsertResult> {
+  async upsertInventory(workspaceId: string, input: AssetInventoryImportRequest): Promise<AssetInventoryUpsertResult> {
     const client = await pool.connect();
     const evidenceReferencesUpserted =
       input.assets.reduce((count, asset) => count + asset.evidence.length, 0) +
@@ -104,27 +108,27 @@ export class PostgresAssetInventoryStore implements AssetInventoryStore {
 
       for (const asset of input.assets) {
         await client.query(
-          `INSERT INTO assets (id, asset_type, name, description, tags)
-           VALUES ($1, $2, $3, $4, $5)
-           ON CONFLICT (id) DO UPDATE SET
+          `INSERT INTO assets (workspace_id, id, asset_type, name, description, tags)
+           VALUES ($1, $2, $3, $4, $5, $6)
+           ON CONFLICT (workspace_id, id) DO UPDATE SET
              asset_type = EXCLUDED.asset_type,
              name = EXCLUDED.name,
              description = EXCLUDED.description,
              tags = EXCLUDED.tags,
              updated_at = NOW()`,
-          [asset.id, asset.type, asset.name, asset.description ?? null, asset.tags ?? []]
+          [workspaceId, asset.id, asset.type, asset.name, asset.description ?? null, asset.tags ?? []]
         );
 
         for (const evidence of asset.evidence) {
           await client.query(
             `INSERT INTO asset_evidence
-              (asset_id, evidence_id, source, status, recorded_at, note)
-             VALUES ($1, $2, $3, $4, $5, $6)
+              (workspace_id, asset_id, evidence_id, source, status, recorded_at, note)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)
              ON CONFLICT (asset_id, evidence_id, source) DO UPDATE SET
                status = EXCLUDED.status,
                recorded_at = EXCLUDED.recorded_at,
                note = EXCLUDED.note`,
-            [asset.id, evidence.id, evidence.source, evidence.status, evidence.recordedAt, evidence.note ?? null]
+            [workspaceId, asset.id, evidence.id, evidence.source, evidence.status, evidence.recordedAt, evidence.note ?? null]
           );
         }
       }
@@ -132,15 +136,16 @@ export class PostgresAssetInventoryStore implements AssetInventoryStore {
       for (const relationship of input.relationships) {
         await client.query(
           `INSERT INTO asset_relationships
-            (id, from_asset_id, to_asset_id, relationship_type, notes)
-           VALUES ($1, $2, $3, $4, $5)
-           ON CONFLICT (id) DO UPDATE SET
+            (workspace_id, id, from_asset_id, to_asset_id, relationship_type, notes)
+           VALUES ($1, $2, $3, $4, $5, $6)
+           ON CONFLICT (workspace_id, id) DO UPDATE SET
              from_asset_id = EXCLUDED.from_asset_id,
              to_asset_id = EXCLUDED.to_asset_id,
              relationship_type = EXCLUDED.relationship_type,
              notes = EXCLUDED.notes,
              updated_at = NOW()`,
           [
+            workspaceId,
             relationship.id,
             relationship.fromAssetId,
             relationship.toAssetId,
@@ -152,13 +157,14 @@ export class PostgresAssetInventoryStore implements AssetInventoryStore {
         for (const evidence of relationship.evidence) {
           await client.query(
             `INSERT INTO relationship_evidence
-              (relationship_id, evidence_id, source, status, recorded_at, note)
-             VALUES ($1, $2, $3, $4, $5, $6)
+              (workspace_id, relationship_id, evidence_id, source, status, recorded_at, note)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)
              ON CONFLICT (relationship_id, evidence_id, source) DO UPDATE SET
                status = EXCLUDED.status,
                recorded_at = EXCLUDED.recorded_at,
                note = EXCLUDED.note`,
             [
+              workspaceId,
               relationship.id,
               evidence.id,
               evidence.source,

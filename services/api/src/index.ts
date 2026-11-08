@@ -11,13 +11,13 @@ import { assetInventoryRouter } from './assets/asset-inventory.routes.js';
 import { apiRateLimiter } from './middleware/rate-limit.js';
 import { apiAnomalyGuard } from './middleware/api-anomaly-guard.js';
 import { authRouter } from './auth/auth.routes.js';
-import { usersRouter } from './auth/users.routes.js';
 import { incidentsRouter } from './incidents/incidents.routes.js';
 import { alertsRouter } from './alerts/alerts.routes.js';
 import { securityEventsRouter } from './security-events/security-events.routes.js';
 import { malwareScanRouter } from './malware-scans/malware-scans.routes.js';
 import { phoneReputationRouter } from './phone-reputation/phone-reputation.routes.js';
 import { ipReputationRouter } from './ip-reputation/ip-reputation.routes.js';
+import { workspacesRouter } from './workspaces/workspaces.routes.js';
 import { otelTracingMiddleware } from './observability/otel-tracing.middleware.js';
 
 export const app = express();
@@ -58,7 +58,10 @@ app.use('/api', privacyRequestsRouter);
 app.use('/api', attackPathsRouter);
 app.use('/api', assetInventoryRouter);
 app.use('/api', authRouter);
-app.use('/api', usersRouter);
+app.use('/api', workspacesRouter);
+// The legacy global /users directory and account-creation API is intentionally
+// not mounted. Workspace membership is managed only through /workspaces/members,
+// which requires an active workspace administrator and an existing active account.
 app.use('/api', incidentsRouter);
 app.use('/api', alertsRouter);
 app.use('/api', securityEventsRouter);
