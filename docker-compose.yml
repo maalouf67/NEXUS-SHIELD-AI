@@ -55,9 +55,9 @@ services:
       dockerfile: services/ai/Dockerfile
     container_name: nexus-shield-ai
     restart: unless-stopped
+    # This is the malware-scanning service, not the Express LLM provider.
+    # Do not pass OpenAI API credentials to this container.
     environment:
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
       NEXUS_SERVICE_API_TOKEN: ${NEXUS_SERVICE_API_TOKEN:-}
       NEXUS_QUARANTINE_DIR: /var/lib/nexus/quarantine
       NEXUS_MAX_UPLOAD_BYTES: ${NEXUS_MAX_UPLOAD_BYTES:-104857600}
