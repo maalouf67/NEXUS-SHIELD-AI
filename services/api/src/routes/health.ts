@@ -1,5 +1,5 @@
 import { Router } from "express";
-import rateLimit from "express-rate-limit";
+import { rateLimit } from "express-rate-limit";
 import { checkDatabaseConnection } from "../db/pool.js";
 import { requireAuth } from "../auth/auth.middleware.js";
 
