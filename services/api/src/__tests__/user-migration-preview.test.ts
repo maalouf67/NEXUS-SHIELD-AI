@@ -119,6 +119,14 @@ describe('secure user migration preview', () => {
     }).success).toBe(false);
   });
 
+  it('rejects every non-synthetic source system code', () => {
+    expect(validateUserMigrationPreviewRequest({
+      sourceSystemCode: 'ministry-production',
+      schemaVersion: '1',
+      records: [validRecord]
+    }).success).toBe(false);
+  });
+
   it('limits previews to 250 records', () => {
     expect(validateUserMigrationPreviewRequest({
       sourceSystemCode: 'synthetic-test',
