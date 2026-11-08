@@ -177,7 +177,8 @@ export default function HomePage() {
       const created = result.workspace;
       setWorkspaces((current) => [...current, created]);
       setNewWorkspaceName('');
-      switchWorkspace(created.id);
+      window.localStorage.setItem('nexus.activeWorkspaceId', created.id);
+      setActiveWorkspaceId(created.id);
     } catch (error) {
       setActionError(error instanceof Error ? error.message : 'Workspace creation failed.');
     } finally {
