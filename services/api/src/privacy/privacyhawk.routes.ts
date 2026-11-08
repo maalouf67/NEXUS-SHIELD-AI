@@ -21,7 +21,7 @@ const ProfileSchema = z.object({
     suffix: z.string().trim().max(24).optional()
   }).strict(),
   emailAddresses: z.array(z.string().email().max(254)).min(1).max(5),
-  phoneNumbers: z.array(z.string().regex(/^\\+[1-9]\\d{7,14}$/)).max(5).optional(),
+  phoneNumbers: z.array(z.string().regex(/^\+[1-9]\d{7,14}$/)).max(5).optional(),
   addresses: z.array(z.object({
     address1: z.string().trim().max(160).optional(),
     address2: z.string().trim().max(160).optional(),
