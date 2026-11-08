@@ -1,7 +1,8 @@
 import { apiRequest } from '../api/client';
 
 export type UserRole = 'admin' | 'analyst' | 'viewer';
-export interface ManagedUser { id: string; email: string; role: UserRole; isActive: boolean; createdAt: string; }
+export interface ManagedUser { id: string; email: string; role: UserRole; status: 'active' | 'invited' | 'revoked'; createdAt: string; }
+export interface Workspace { id: string; name: string; slug: string; role: UserRole; }
 export interface ThreatSummary {
   is_demo: boolean;
   data_source: string;
@@ -43,15 +44,32 @@ export interface DashboardData {
   summary: ThreatSummary | null; managedUsers: ManagedUser[];
 }
 
+export async function fetchWorkspaces(): Promise<Workspace[]> {
+  const result = await apiRequest<{ workspaces?: Workspace[] }>('/api/nexus/workspaces');
+  return result.workspaces ?? [];
+}
+
+export function createWorkspace(name: string) {
+  return apiRequest<{ workspace: Workspace }>('/api/nexus/workspaces', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name })
+  });
+}
+
+export function addWorkspaceMember(input: { email: string; role: 'analyst' | 'viewer' }) {
+  return apiRequest<{ member: ManagedUser }>('/api/nexus/workspaces/members', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input)
+  });
+}
+
 /** Load authenticated dashboard data through same-origin Next.js API routes only. */
 export async function fetchDashboardData(isAdmin: boolean): Promise<DashboardData> {
-  const [incidentsResult, alertsResult, eventsResult, ipsEventsResult, summaryResult, usersResult] = await Promise.all([
+  const [incidentsResult, alertsResult, eventsResult, ipsEventsResult, summaryResult, membersResult] = await Promise.all([
     apiRequest<ListResult<Incident>>('/api/nexus/incidents?limit=100'),
     apiRequest<ListResult<Alert>>('/api/nexus/alerts?limit=100'),
     apiRequest<ListResult<SecurityEvent>>('/api/nexus/security-events?limit=100'),
     apiRequest<ListResult<SecurityEvent>>('/api/nexus/security-events?source=nexus-ips&limit=100'),
     apiRequest<ThreatSummary>('/api/nexus/threats/summary').catch(() => null),
-    isAdmin ? apiRequest<{ users?: ManagedUser[] }>('/api/nexus/users') : Promise.resolve({ users: [] })
+    isAdmin ? apiRequest<{ members?: ManagedUser[] }>('/api/nexus/workspaces/members') : Promise.resolve({ members: [] })
   ]);
 
   return {
@@ -64,7 +82,7 @@ export async function fetchDashboardData(isAdmin: boolean): Promise<DashboardDat
     securityEventTotal: eventsResult.pagination?.total ?? 0,
     ipsEventTotal: ipsEventsResult.pagination?.total ?? 0,
     summary: summaryResult,
-    managedUsers: usersResult.users ?? []
+    managedUsers: membersResult.members ?? []
   };
 }
 
@@ -93,10 +111,8 @@ export function reviewSecurityEvent(eventId: string) {
   });
 }
 
-export function createManagedUser(input: { email: string; password: string; role: 'analyst' | 'viewer' }) {
-  return apiRequest<{ user: ManagedUser }>('/api/nexus/users', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input)
-  });
+export function createManagedUser(input: { email: string; role: 'analyst' | 'viewer' }) {
+  return addWorkspaceMember(input);
 }
 
 export function changeIncidentStatus(incidentId: string, status: Incident['status']) {
