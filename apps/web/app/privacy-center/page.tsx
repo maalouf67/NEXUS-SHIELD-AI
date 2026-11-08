@@ -3,6 +3,7 @@
 import { useCallback, useContext, useEffect, useState } from 'react';
 import { SessionContext } from '../../context/session-context';
 import { apiRequest } from '../../api/client';
+import PrivacyHawkPanel from './privacyhawk-panel';
 
 type PrivacyRequest = {
   id: string;
@@ -168,6 +169,7 @@ export default function PrivacyCenterPage() {
         </div>
         <p className="trust-muted">The inventory and retention details are documented separately. Production data flows and ownership for some SOC records still require verification.</p>
       </section>
+      <PrivacyHawkPanel email={user.email} />
       <section className="trust-card">
         <h2>Submit a privacy request</h2>
         <form onSubmit={submit}>

@@ -3,6 +3,9 @@ import request from 'supertest';
 
 import { app } from '../index.js';
 
+// Ensure unauthenticated requests exercise the auth gate rather than an unconfigured-secret 503.
+process.env.JWT_SECRET = 'nexus-api-surface-test-secret-at-least-32-bytes';
+
 describe('production API surface', () => {
   it('does not expose the legacy global user directory or account-creation endpoint', async () => {
     const list = await request(app).get('/api/users');
