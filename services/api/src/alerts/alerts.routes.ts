@@ -2,7 +2,9 @@ import { randomUUID } from 'node:crypto';
 import { Router } from 'express';
 import { z } from 'zod';
 
-import { requireAuth, requireRole } from '../auth/auth.middleware.js';
+import { requireAuth } from '../auth/auth.middleware.js';
+import { createRequireWorkspace, requireWorkspaceRole } from '../workspaces/workspace.middleware.js';
+import type { RequestHandler } from 'express';
 import {
   alertRepository,
   type AlertRepository,
@@ -32,11 +34,12 @@ const UpdateAlertStatusRequestSchema = z.object({
 const IdSchema = z.string().uuid();
 
 export function createAlertsRouter(
-  repository: AlertRepository = alertRepository
+  repository: AlertRepository = alertRepository,
+  requireWorkspace: RequestHandler = createRequireWorkspace()
 ) {
   const router = Router();
 
-  router.get('/alerts', requireAuth, requireRole('admin', 'analyst', 'viewer'), async (req, res) => {
+  router.get('/alerts', requireAuth, requireWorkspace, requireWorkspaceRole('admin', 'analyst', 'viewer'), async (req, res) => {
     const parsed = ListAlertsQuerySchema.safeParse(req.query);
     if (!parsed.success) {
       return res.status(400).json({
@@ -46,7 +49,7 @@ export function createAlertsRouter(
     }
 
     try {
-      const result = await repository.list(parsed.data);
+      const result = await repository.list(req.workspaceContext!.id, parsed.data);
       return res.status(200).json({
         status: 'ok',
         alerts: result.alerts,
@@ -65,7 +68,7 @@ export function createAlertsRouter(
     }
   });
 
-  router.post('/incidents/:id/alerts', requireAuth, requireRole('admin', 'analyst'), async (req, res) => {
+  router.post('/incidents/:id/alerts', requireAuth, requireWorkspace, requireWorkspaceRole('admin', 'analyst'), async (req, res) => {
     const parsedId = IdSchema.safeParse(req.params.id);
     const parsedBody = CreateAlertRequestSchema.safeParse(req.body);
 
@@ -81,6 +84,7 @@ export function createAlertsRouter(
 
     try {
       const alert = await repository.create({
+        workspaceId: req.workspaceContext!.id,
         id: randomUUID(),
         incidentId: parsedId.data,
         type: parsedBody.data.type,
@@ -108,7 +112,7 @@ export function createAlertsRouter(
     }
   });
 
-  router.patch('/alerts/:id/status', requireAuth, requireRole('admin', 'analyst'), async (req, res) => {
+  router.patch('/alerts/:id/status', requireAuth, requireWorkspace, requireWorkspaceRole('admin', 'analyst'), async (req, res) => {
     const parsedId = IdSchema.safeParse(req.params.id);
     const parsedBody = UpdateAlertStatusRequestSchema.safeParse(req.body);
 
@@ -124,10 +128,11 @@ export function createAlertsRouter(
 
     try {
       const result = await repository.updateStatus({
+        workspaceId: req.workspaceContext!.id,
         alertId: parsedId.data,
         status: parsedBody.data.status as AlertStatus,
         actorUserId: req.authUser!.id,
-        actorRole: req.authUser!.role,
+        actorRole: req.workspaceContext!.role,
         note: parsedBody.data.note
       });
 

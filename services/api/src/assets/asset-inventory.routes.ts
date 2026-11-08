@@ -1,6 +1,6 @@
-import { Router } from 'express';
+import { Router, type RequestHandler } from 'express';
 
-import { requireServiceToken } from '../middleware/service-token.js';
+import { createRequireWorkspaceIntegration } from '../workspaces/workspace.middleware.js';
 import { analyzeAttackPaths } from '../attack-paths/engine.js';
 import {
   AssetInventoryImportRequestSchema,
@@ -12,13 +12,15 @@ import {
 } from './asset-inventory.service.js';
 
 export function createAssetInventoryRouter(
-  store: AssetInventoryStore = assetInventoryStore
+  store: AssetInventoryStore = assetInventoryStore,
+  requireAssetsRead: RequestHandler = createRequireWorkspaceIntegration('assets:read'),
+  requireAssetsWrite: RequestHandler = createRequireWorkspaceIntegration('assets:write')
 ) {
   const router = Router();
 
-  router.get('/assets/inventory', requireServiceToken, async (_req, res) => {
+  router.get('/assets/inventory', requireAssetsRead, async (req, res) => {
     try {
-      const inventory = await store.getInventory();
+      const inventory = await store.getInventory(req.workspaceIntegration!.workspaceId);
       return res.status(200).json({
         status: 'ok',
         data_source: 'postgresql',
@@ -37,7 +39,7 @@ export function createAssetInventoryRouter(
     }
   });
 
-  router.post('/assets/inventory/import', requireServiceToken, async (req, res) => {
+  router.post('/assets/inventory/import', requireAssetsWrite, async (req, res) => {
     const parsed = AssetInventoryImportRequestSchema.safeParse(req.body);
 
     if (!parsed.success) {
@@ -48,7 +50,7 @@ export function createAssetInventoryRouter(
     }
 
     try {
-      const result = await store.upsertInventory(parsed.data);
+      const result = await store.upsertInventory(req.workspaceIntegration!.workspaceId, parsed.data);
       return res.status(200).json({
         status: 'ok',
         operation: 'transactional_upsert',
@@ -65,7 +67,7 @@ export function createAssetInventoryRouter(
     }
   });
 
-  router.post('/attack-paths/analyze-inventory', requireServiceToken, async (req, res) => {
+  router.post('/attack-paths/analyze-inventory', requireAssetsRead, async (req, res) => {
     const parsed = StoredAttackPathAnalysisOptionsSchema.safeParse(req.body ?? {});
 
     if (!parsed.success) {
@@ -76,7 +78,7 @@ export function createAssetInventoryRouter(
     }
 
     try {
-      const inventory = await store.getInventory();
+      const inventory = await store.getInventory(req.workspaceIntegration!.workspaceId);
       const analysis = analyzeAttackPaths({
         ...inventory,
         ...parsed.data

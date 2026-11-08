@@ -2,7 +2,9 @@ import { randomUUID } from 'node:crypto';
 import { Router } from 'express';
 import { z } from 'zod';
 
-import { requireAuth, requireRole } from '../auth/auth.middleware.js';
+import { requireAuth } from '../auth/auth.middleware.js';
+import { createRequireWorkspace, requireWorkspaceRole } from '../workspaces/workspace.middleware.js';
+import type { RequestHandler } from 'express';
 import {
   incidentRepository,
   type IncidentRepository,
@@ -40,11 +42,12 @@ const UpdateIncidentStatusRequestSchema = z.object({
 const IncidentIdSchema = z.string().uuid();
 
 export function createIncidentsRouter(
-  repository: IncidentRepository = incidentRepository
+  repository: IncidentRepository = incidentRepository,
+  requireWorkspace: RequestHandler = createRequireWorkspace()
 ) {
   const router = Router();
 
-  router.get('/incidents', requireAuth, requireRole('admin', 'analyst', 'viewer'), async (req, res) => {
+  router.get('/incidents', requireAuth, requireWorkspace, requireWorkspaceRole('admin', 'analyst', 'viewer'), async (req, res) => {
     const parsed = ListIncidentsQuerySchema.safeParse(req.query);
     if (!parsed.success) {
       return res.status(400).json({
@@ -54,7 +57,7 @@ export function createIncidentsRouter(
     }
 
     try {
-      const result = await repository.list(parsed.data);
+      const result = await repository.list(req.workspaceContext!.id, parsed.data);
       return res.status(200).json({
         status: 'ok',
         incidents: result.incidents,
@@ -73,14 +76,14 @@ export function createIncidentsRouter(
     }
   });
 
-  router.get('/incidents/:id', requireAuth, requireRole('admin', 'analyst', 'viewer'), async (req, res) => {
+  router.get('/incidents/:id', requireAuth, requireWorkspace, requireWorkspaceRole('admin', 'analyst', 'viewer'), async (req, res) => {
     const parsedId = IncidentIdSchema.safeParse(req.params.id);
     if (!parsedId.success) {
       return res.status(400).json({ error: 'INVALID_INCIDENT_ID' });
     }
 
     try {
-      const incident = await repository.getById(parsedId.data);
+      const incident = await repository.getById(parsedId.data, req.workspaceContext!.id);
       if (!incident) {
         return res.status(404).json({ error: 'INCIDENT_NOT_FOUND' });
       }
@@ -93,7 +96,7 @@ export function createIncidentsRouter(
     }
   });
 
-  router.post('/incidents', requireAuth, requireRole('admin', 'analyst'), async (req, res) => {
+  router.post('/incidents', requireAuth, requireWorkspace, requireWorkspaceRole('admin', 'analyst'), async (req, res) => {
     const parsed = CreateIncidentRequestSchema.safeParse(req.body);
     if (!parsed.success) {
       return res.status(400).json({
@@ -104,6 +107,7 @@ export function createIncidentsRouter(
 
     try {
       const incident = await repository.create({
+        workspaceId: req.workspaceContext!.id,
         id: randomUUID(),
         title: parsed.data.title,
         severity: parsed.data.severity,
@@ -123,7 +127,7 @@ export function createIncidentsRouter(
     }
   });
 
-  router.patch('/incidents/:id/status', requireAuth, requireRole('admin', 'analyst'), async (req, res) => {
+  router.patch('/incidents/:id/status', requireAuth, requireWorkspace, requireWorkspaceRole('admin', 'analyst'), async (req, res) => {
     const parsedId = IncidentIdSchema.safeParse(req.params.id);
     const parsedBody = UpdateIncidentStatusRequestSchema.safeParse(req.body);
 
@@ -139,11 +143,12 @@ export function createIncidentsRouter(
 
     try {
       const result = await repository.updateStatus({
+        workspaceId: req.workspaceContext!.id,
         incidentId: parsedId.data,
         status: parsedBody.data.status as IncidentStatus,
         note: parsedBody.data.note,
         actorUserId: req.authUser!.id,
-        actorRole: req.authUser!.role
+        actorRole: req.workspaceContext!.role
       });
 
       if (result.outcome === 'not_found') {

@@ -23,6 +23,7 @@ export interface AlertListFilters {
 }
 
 export interface CreateAlertInput {
+  workspaceId: string;
   id: string;
   incidentId: string;
   type: string;
@@ -32,6 +33,7 @@ export interface CreateAlertInput {
 }
 
 export interface UpdateAlertStatusInput {
+  workspaceId: string;
   alertId: string;
   status: AlertStatus;
   actorUserId: string;
@@ -45,7 +47,7 @@ export type UpdateAlertStatusResult =
   | { outcome: 'updated'; alert: Alert };
 
 export interface AlertRepository {
-  list(filters: AlertListFilters): Promise<{ alerts: Alert[]; total: number }>;
+  list(workspaceId: string, filters: AlertListFilters): Promise<{ alerts: Alert[]; total: number }>
   create(input: CreateAlertInput): Promise<Alert | null>;
   updateStatus(input: UpdateAlertStatusInput): Promise<UpdateAlertStatusResult>;
 }
@@ -75,9 +77,9 @@ const allowedTransitions: Record<AlertStatus, AlertStatus[]> = {
 };
 
 export class PostgresAlertRepository implements AlertRepository {
-  async list(filters: AlertListFilters): Promise<{ alerts: Alert[]; total: number }> {
-    const where: string[] = [];
-    const values: unknown[] = [];
+  async list(workspaceId: string, filters: AlertListFilters): Promise<{ alerts: Alert[]; total: number }> {
+    const where: string[] = ['a.workspace_id = $1'];
+    const values: unknown[] = [workspaceId];
 
     if (filters.status) {
       values.push(filters.status);
@@ -102,7 +104,7 @@ export class PostgresAlertRepository implements AlertRepository {
               i.severity AS incident_severity, i.status AS incident_status,
               a.type, a.risk_score, a.status, a.created_at
        FROM alerts a
-       LEFT JOIN incidents i ON i.id = a.incident_id
+       LEFT JOIN incidents i ON i.id = a.incident_id AND i.workspace_id = a.workspace_id
        ${whereClause}
        ORDER BY a.created_at DESC, a.id DESC
        LIMIT $${listValues.length - 1} OFFSET $${listValues.length}`,
@@ -121,8 +123,8 @@ export class PostgresAlertRepository implements AlertRepository {
       await client.query('BEGIN');
 
       const incidentResult = await client.query(
-        'SELECT id FROM incidents WHERE id = $1 FOR UPDATE',
-        [input.incidentId]
+        'SELECT id FROM incidents WHERE id = $1 AND workspace_id = $2 FOR UPDATE',
+        [input.incidentId, input.workspaceId]
       );
 
       if (!incidentResult.rowCount) {
@@ -132,9 +134,9 @@ export class PostgresAlertRepository implements AlertRepository {
 
       const alertId = input.id;
       await client.query(
-        `INSERT INTO alerts (id, incident_id, type, risk_score, status, created_at)
-         VALUES ($1, $2, $3, $4, 'active', NOW())`,
-        [alertId, input.incidentId, input.type, input.riskScore]
+        `INSERT INTO alerts (workspace_id, id, incident_id, type, risk_score, status, created_at)
+         VALUES ($1, $2, $3, $4, $5, 'active', NOW())`,
+        [input.workspaceId, alertId, input.incidentId, input.type, input.riskScore]
       );
 
       const auditNote = [
@@ -145,10 +147,10 @@ export class PostgresAlertRepository implements AlertRepository {
 
       await client.query(
         `INSERT INTO incident_activity
-          (id, incident_id, alert_id, actor_user_id, action,
+          (workspace_id, id, incident_id, alert_id, actor_user_id, action,
            from_status, to_status, note)
-         VALUES ($1, $2, $3, $4, 'alert.created', NULL, 'active', $5)`,
-        [randomUUID(), input.incidentId, alertId, input.actorUserId, auditNote]
+         VALUES ($1, $2, $3, $4, $5, 'alert.created', NULL, 'active', $6)`,
+        [input.workspaceId, randomUUID(), input.incidentId, alertId, input.actorUserId, auditNote]
       );
 
       const result = await client.query(
@@ -156,9 +158,9 @@ export class PostgresAlertRepository implements AlertRepository {
                 i.severity AS incident_severity, i.status AS incident_status,
                 a.type, a.risk_score, a.status, a.created_at
          FROM alerts a
-         JOIN incidents i ON i.id = a.incident_id
-         WHERE a.id = $1`,
-        [alertId]
+         JOIN incidents i ON i.id = a.incident_id AND i.workspace_id = a.workspace_id
+         WHERE a.id = $1 AND a.workspace_id = $2`,
+        [alertId, input.workspaceId]
       );
 
       await client.query('COMMIT');
@@ -181,8 +183,8 @@ export class PostgresAlertRepository implements AlertRepository {
       await client.query('BEGIN');
 
       const currentResult = await client.query(
-        'SELECT id, incident_id, status FROM alerts WHERE id = $1 FOR UPDATE',
-        [input.alertId]
+        'SELECT id, incident_id, status FROM alerts WHERE id = $1 AND workspace_id = $2 FOR UPDATE',
+        [input.alertId, input.workspaceId]
       );
       const current = currentResult.rows[0];
 
@@ -208,16 +210,17 @@ export class PostgresAlertRepository implements AlertRepository {
       }
 
       await client.query(
-        'UPDATE alerts SET status = $2 WHERE id = $1',
-        [input.alertId, input.status]
+        'UPDATE alerts SET status = $2 WHERE id = $1 AND workspace_id = $3',
+        [input.alertId, input.status, input.workspaceId]
       );
 
       await client.query(
         `INSERT INTO incident_activity
-          (id, incident_id, alert_id, actor_user_id, action,
+          (workspace_id, id, incident_id, alert_id, actor_user_id, action,
            from_status, to_status, note)
-         VALUES ($1, $2, $3, $4, 'alert.status_changed', $5, $6, $7)`,
+         VALUES ($1, $2, $3, $4, $5, 'alert.status_changed', $6, $7, $8)`,
         [
+          input.workspaceId,
           randomUUID(),
           current.incident_id,
           input.alertId,
@@ -233,9 +236,9 @@ export class PostgresAlertRepository implements AlertRepository {
                 i.severity AS incident_severity, i.status AS incident_status,
                 a.type, a.risk_score, a.status, a.created_at
          FROM alerts a
-         JOIN incidents i ON i.id = a.incident_id
-         WHERE a.id = $1`,
-        [input.alertId]
+         JOIN incidents i ON i.id = a.incident_id AND i.workspace_id = a.workspace_id
+         WHERE a.id = $1 AND a.workspace_id = $2`,
+        [input.alertId, input.workspaceId]
       );
 
       await client.query('COMMIT');

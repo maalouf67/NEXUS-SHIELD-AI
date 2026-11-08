@@ -51,6 +51,7 @@ export interface IncidentListFilters {
 }
 
 export interface CreateIncidentInput {
+  workspaceId: string;
   id: string;
   title: string;
   severity: IncidentSeverity;
@@ -59,6 +60,7 @@ export interface CreateIncidentInput {
 }
 
 export interface UpdateIncidentStatusInput {
+  workspaceId: string;
   incidentId: string;
   status: IncidentStatus;
   note?: string;
@@ -72,8 +74,8 @@ export type UpdateIncidentStatusResult =
   | { outcome: 'updated'; incident: Incident };
 
 export interface IncidentRepository {
-  list(filters: IncidentListFilters): Promise<{ incidents: Incident[]; total: number }>;
-  getById(id: string): Promise<IncidentDetail | null>;
+  list(workspaceId: string, filters: IncidentListFilters): Promise<{ incidents: Incident[]; total: number }>;
+  getById(id: string, workspaceId: string): Promise<IncidentDetail | null>;
   create(input: CreateIncidentInput): Promise<Incident>;
   updateStatus(input: UpdateIncidentStatusInput): Promise<UpdateIncidentStatusResult>;
 }
@@ -130,9 +132,9 @@ const allowedTransitions: Record<IncidentStatus, IncidentStatus[]> = {
 };
 
 export class PostgresIncidentRepository implements IncidentRepository {
-  async list(filters: IncidentListFilters): Promise<{ incidents: Incident[]; total: number }> {
-    const where: string[] = [];
-    const values: unknown[] = [];
+  async list(workspaceId: string, filters: IncidentListFilters): Promise<{ incidents: Incident[]; total: number }> {
+    const where: string[] = ['workspace_id = $1'];
+    const values: unknown[] = [workspaceId];
 
     if (filters.status) {
       values.push(filters.status);
@@ -167,13 +169,13 @@ export class PostgresIncidentRepository implements IncidentRepository {
     };
   }
 
-  async getById(id: string): Promise<IncidentDetail | null> {
+  async getById(id: string, workspaceId: string): Promise<IncidentDetail | null> {
     const incidentResult = await pool.query(
       `SELECT id, title, severity, status, source, created_by_user_id,
               updated_by_user_id, created_at, updated_at
        FROM incidents
-       WHERE id = $1`,
-      [id]
+       WHERE id = $1 AND workspace_id = $2`,
+      [id, workspaceId]
     );
 
     const row = incidentResult.rows[0];
@@ -185,18 +187,18 @@ export class PostgresIncidentRepository implements IncidentRepository {
       pool.query(
         `SELECT id, incident_id, type, risk_score, status, created_at
          FROM alerts
-         WHERE incident_id = $1
+         WHERE incident_id = $2 AND workspace_id = $1
          ORDER BY created_at DESC, id DESC`,
-        [id]
+        [workspaceId, id]
       ),
       pool.query(
         `SELECT id, incident_id, alert_id, actor_user_id, action, from_status,
                 to_status, note, created_at
          FROM incident_activity
-         WHERE incident_id = $1
+         WHERE incident_id = $2 AND workspace_id = $1
          ORDER BY created_at DESC, id DESC
          LIMIT 100`,
-        [id]
+        [workspaceId, id]
       )
     ]);
 
@@ -213,19 +215,19 @@ export class PostgresIncidentRepository implements IncidentRepository {
       await client.query('BEGIN');
       const incidentResult = await client.query(
         `INSERT INTO incidents
-          (id, title, severity, status, source, created_by_user_id,
+          (workspace_id, id, title, severity, status, source, created_by_user_id,
            updated_by_user_id, created_at, updated_at)
-         VALUES ($1, $2, $3, 'open', $4, $5, $5, NOW(), NOW())
+         VALUES ($1, $2, $3, $4, 'open', $5, $6, $6, NOW(), NOW())
          RETURNING id, title, severity, status, source, created_by_user_id,
                    updated_by_user_id, created_at, updated_at`,
-        [input.id, input.title, input.severity, input.source ?? null, input.actorUserId]
+        [input.workspaceId, input.id, input.title, input.severity, input.source ?? null, input.actorUserId]
       );
 
       await client.query(
         `INSERT INTO incident_activity
-          (id, incident_id, actor_user_id, action, from_status, to_status, note)
-         VALUES ($1, $2, $3, 'incident.created', NULL, 'open', NULL)`,
-        [randomUUID(), input.id, input.actorUserId]
+          (workspace_id, id, incident_id, actor_user_id, action, from_status, to_status, note)
+         VALUES ($1, $2, $3, $4, 'incident.created', NULL, 'open', NULL)`,
+        [input.workspaceId, randomUUID(), input.id, input.actorUserId]
       );
 
       await client.query('COMMIT');
@@ -248,8 +250,8 @@ export class PostgresIncidentRepository implements IncidentRepository {
       await client.query('BEGIN');
 
       const currentResult = await client.query(
-        'SELECT id, status FROM incidents WHERE id = $1 FOR UPDATE',
-        [input.incidentId]
+        'SELECT id, status FROM incidents WHERE id = $1 AND workspace_id = $2 FOR UPDATE',
+        [input.incidentId, input.workspaceId]
       );
       const current = currentResult.rows[0];
 
@@ -277,17 +279,18 @@ export class PostgresIncidentRepository implements IncidentRepository {
       const updatedResult = await client.query(
         `UPDATE incidents
          SET status = $2, updated_by_user_id = $3, updated_at = NOW()
-         WHERE id = $1
+         WHERE id = $1 AND workspace_id = $4
          RETURNING id, title, severity, status, source, created_by_user_id,
                    updated_by_user_id, created_at, updated_at`,
-        [input.incidentId, input.status, input.actorUserId]
+        [input.incidentId, input.status, input.actorUserId, input.workspaceId]
       );
 
       await client.query(
         `INSERT INTO incident_activity
-          (id, incident_id, actor_user_id, action, from_status, to_status, note)
-         VALUES ($1, $2, $3, 'incident.status_changed', $4, $5, $6)`,
+          (workspace_id, id, incident_id, actor_user_id, action, from_status, to_status, note)
+         VALUES ($1, $2, $3, $4, 'incident.status_changed', $5, $6, $7)`,
         [
+          input.workspaceId,
           randomUUID(),
           input.incidentId,
           input.actorUserId,
