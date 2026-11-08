@@ -19,7 +19,10 @@ describe.skipIf(!enabled)('PostgreSQL workspace isolation foundation', () => {
 
   afterAll(async () => {
     await pool.query('DELETE FROM workspace_integrations WHERE workspace_id = ANY($1::uuid[])', [[workspaceA, workspaceB]]);
-    await pool.query('DELETE FROM security_events WHERE workspace_id = ANY($1::uuid[])', [[workspaceA, workspaceB]]);
+    await pool.query(
+      'DELETE FROM security_events WHERE workspace_id = ANY($1::uuid[]) OR (workspace_id IS NULL AND source = \'ci-legacy\' AND external_event_id = $2)',
+      [[workspaceA, workspaceB], externalEventId]
+    );
     await pool.query('DELETE FROM assets WHERE id = ANY($1::varchar[])', [[assetA, assetB]]);
     await pool.query('DELETE FROM workspaces WHERE id = ANY($1::uuid[])', [[workspaceA, workspaceB]]);
     await pool.query('DELETE FROM users WHERE id = ANY($1::uuid[])', [[userA, userB]]);
@@ -60,6 +63,16 @@ describe.skipIf(!enabled)('PostgreSQL workspace isolation foundation', () => {
       [[workspaceA, workspaceB], externalEventId]
     );
     expect(eventCount.rows[0].total).toBe(2);
+
+    // The legacy/unassigned namespace must retain its original source+ID uniqueness.
+    await pool.query(
+      'INSERT INTO security_events (id, workspace_id, source, external_event_id, event_type, severity, observed_at, summary) VALUES ($1, NULL, \'ci-legacy\', $2, \'test-event\', \'low\', NOW(), \'Legacy event\')',
+      [randomUUID(), externalEventId]
+    );
+    await expect(pool.query(
+      'INSERT INTO security_events (id, workspace_id, source, external_event_id, event_type, severity, observed_at, summary) VALUES ($1, NULL, \'ci-legacy\', $2, \'test-event\', \'low\', NOW(), \'Duplicate legacy event\')',
+      [randomUUID(), externalEventId]
+    )).rejects.toMatchObject({ code: '23505' });
 
     const created = await repository.createIntegration({
       workspaceId: workspaceA,
