@@ -1,9 +1,6 @@
 import { createRequire } from 'node:module';
 import express, { type RequestHandler } from 'express';
 import cors from 'cors';
-// Load Helmet's CommonJS export explicitly to avoid NodeNext declaration
-// resolution differences between the monorepo and Vercel's isolated project build.
-const helmet = createRequire(import.meta.url)('helmet') as () => RequestHandler;
 
 import { healthRouter } from './routes/health.js';
 import { threatsRouter } from './routes/threats.js';
@@ -22,6 +19,10 @@ import { phoneReputationRouter } from './phone-reputation/phone-reputation.route
 import { ipReputationRouter } from './ip-reputation/ip-reputation.routes.js';
 import { workspacesRouter } from './workspaces/workspaces.routes.js';
 import { otelTracingMiddleware } from './observability/otel-tracing.middleware.js';
+
+// Load Helmet's CommonJS export explicitly to avoid NodeNext declaration
+// resolution differences between the monorepo and Vercel's isolated project build.
+const helmet = createRequire(import.meta.url)('helmet') as () => RequestHandler;
 
 export const app = express();
 
