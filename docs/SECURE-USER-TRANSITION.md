@@ -1,6 +1,6 @@
 # Secure User Transition Foundation
 
-**Status:** design and metadata schema foundation only. No source-system connection, user import, account creation, credential transfer, or production cutover is implemented.
+**Status:** design, metadata schema, and synthetic-data preview foundation. No source-system connection, live user import, account creation, credential transfer, or production cutover is implemented.
 
 ## 1. Purpose and safety boundary
 
@@ -109,13 +109,25 @@ Terminal or exceptional states: `rejected`, `failed`, `blocked`, `cancelled`, `r
 - **Retry:** safe only with the same idempotency key and verified source snapshot; never create duplicates.
 - **Rollback:** disables the connector/batch mapping and prevents further updates. It does not delete user accounts, alter source accounts, revoke unrelated sessions, or erase audit history. Any target-account deactivation requires a separate reviewed action.
 
-## 8. Privacy-safe observability
+## 8. Implemented preview API (synthetic data only)
+
+The current feature branch includes an admin-only preview endpoint:
+
+`POST /api/admin/user-migration/preview`
+
+It accepts a strict, versioned request with a maximum of 250 records per request. The record allowlist is limited to a stable source subject identifier, optional email, an enumerated source role, an optional source account status, and an optional ISO timestamp for last login. Unknown fields are rejected. Fields resembling passwords, credentials, secrets, tokens, cookies, sessions, MFA material, private/access keys, or national identifiers are explicitly rejected.
+
+The preview runs in memory only. It does not contact an external source, write to PostgreSQL, create users, create sessions, change roles, or modify source accounts. Its response contains aggregate counts, record indexes, safe issue codes, and low-privilege role suggestions; it does not echo source identifiers or email addresses. Existing-local-account matching is explicitly reported as `not_performed` and remains a later review gate. Duplicate source identifiers and duplicate normalized emails are marked as conflicts. Administrator and unknown roles require manual review and never map to NEXUS admin.
+
+**Important:** use synthetic test records only at this stage. Do not submit live ministry records until the source owner approves the exact fields and processing environment, and a later implementation adds approved staging, retention, access control, and a tested deletion/retention policy. This endpoint is not a live import facility.
+
+## 9. Privacy-safe observability
 
 Audit records should include batch ID, event code, actor ID, timestamp, source system code, schema version, counts, and a non-reversible/pseudonymous record reference where needed. Do not log email addresses, names, raw payloads, access tokens, authorization headers, national identifiers, or source response bodies.
 
 Operational metrics may include records received, accepted, rejected, conflicted, provisioned, skipped, and failed. Logs and metrics require access controls and a documented retention period. Exported reports must be aggregate by default.
 
-## 9. Required tests before any live import
+## 10. Required tests before any live import
 
 - schema validation rejects unknown and prohibited credential fields;
 - source endpoint allowlist rejects arbitrary hosts and redirects;
@@ -131,7 +143,7 @@ Operational metrics may include records received, accepted, rejected, conflicted
 - rollback stops future synchronization without destructive deletion;
 - test fixtures contain synthetic identities only.
 
-## 10. Release gates
+## 11. Release gates
 
 Live source integration is blocked until all of the following are verified:
 
@@ -145,7 +157,7 @@ Live source integration is blocked until all of the following are verified:
 
 Until these gates pass, only synthetic test data may be used. No live users are migrated by this foundation.
 
-## 11. Implementation sequence
+## 12. Implementation sequence
 
 1. Inspect the existing NEXUS users, auth sessions, migration runner, RBAC middleware, and audit/event facilities.
 2. Add an additive database migration for source-system identity links and import batch metadata; do not alter existing user/session rows.
@@ -154,13 +166,15 @@ Until these gates pass, only synthetic test data may be used. No live users are 
 5. Add tests with synthetic data and verify no writes occur during preview.
 6. Add a local-only configuration guide and deployment checklist. Live integration remains disabled by default.
 
-## 12. Current implementation status
+## 13. Current implementation status
 
 - [x] Repository and existing user/auth/session foundations inspected on `main`.
 - [x] This design and safety boundary documented on a feature branch.
 - [x] Additive metadata-only migration `011_secure_user_transition.sql` added on the feature branch; it has **not** been applied to any database.
-- [ ] Connector interface and strict DTO validation.
-- [ ] Dry-run preview and conflict quarantine.
+- [x] Strict DTO validation and admin-only in-memory preview endpoint (synthetic data only).
+- [x] Duplicate source-ID/email detection and prohibited-field rejection.
+- [ ] Existing local-account conflict check (read-only, later phase).
+- [ ] Connector interface for an approved read-only source.
 - [ ] Approval-bound idempotent provisioning.
 - [ ] Automated synthetic-data tests.
 - [ ] OVHcloud hardening and deployment verification.
