@@ -26,6 +26,8 @@ const PreviewRequestSchema = z.object({
 
 const PROHIBITED_FIELD = /password|passwd|credential|secret|token|cookie|session|mfa|totp|recovery|private.?key|access.?key|national.?id/i;
 
+type ParsedImportRecord = z.infer<typeof ImportRecordSchema>;
+
 export type PreviewIssueCode =
   | 'INVALID_RECORD'
   | 'PROHIBITED_FIELD_PRESENT'
@@ -81,14 +83,14 @@ function duplicateValues(values: Array<string | undefined>): Set<string> {
 export function buildUserMigrationPreview(input: unknown): UserMigrationPreview {
   const request = PreviewRequestSchema.parse(input);
 
-  const parsedRecords = request.records.map((record) => {
+  const parsedRecords: Array<ParsedImportRecord | null> = request.records.map((record) => {
     if (hasProhibitedField(record)) return null;
     const parsed = ImportRecordSchema.safeParse(record);
     return parsed.success ? parsed.data : null;
   });
 
   const validRecords = parsedRecords.filter(
-    (record): record is NonNullable<typeof record> => record !== null
+    (record): record is ParsedImportRecord => record !== null
   );
   const duplicateSubjects = duplicateValues(validRecords.map((record) => record.sourceSubjectId));
   const duplicateEmails = duplicateValues(validRecords.map((record) => record.email));
