@@ -1,6 +1,6 @@
 # Secure User Transition Foundation
 
-**Status:** design foundation only. No source-system connection, user import, account creation, credential transfer, or production cutover is implemented by this document.
+**Status:** design and metadata schema foundation only. No source-system connection, user import, account creation, credential transfer, or production cutover is implemented.
 
 ## 1. Purpose and safety boundary
 
@@ -158,7 +158,7 @@ Until these gates pass, only synthetic test data may be used. No live users are 
 
 - [x] Repository and existing user/auth/session foundations inspected on `main`.
 - [x] This design and safety boundary documented on a feature branch.
-- [ ] Additive identity-link and import-batch schema.
+- [x] Additive metadata-only migration `011_secure_user_transition.sql` added on the feature branch; it has **not** been applied to any database.
 - [ ] Connector interface and strict DTO validation.
 - [ ] Dry-run preview and conflict quarantine.
 - [ ] Approval-bound idempotent provisioning.
