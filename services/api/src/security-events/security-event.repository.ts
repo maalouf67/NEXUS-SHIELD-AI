@@ -57,6 +57,7 @@ export type ReviewSecurityEventResult =
 
 export interface SecurityEventRepository {
   ingestBatch(workspaceId: string, events: SecurityEventInput[]): Promise<IngestSecurityEventsResult>;
+  ingestSystemBatch(events: SecurityEventInput[]): Promise<IngestSecurityEventsResult>;
   list(workspaceId: string, filters: SecurityEventListFilters): Promise<{ events: SecurityEvent[]; total: number }>;
   review(workspaceId: string, eventId: string, actorUserId: string, note?: string): Promise<ReviewSecurityEventResult>;
 }
@@ -90,6 +91,47 @@ const EVENT_SELECT = `SELECT id, source, external_event_id, event_type, severity
   FROM security_events`;
 
 export class PostgresSecurityEventRepository implements SecurityEventRepository {
+  async ingestSystemBatch(events: SecurityEventInput[]): Promise<IngestSecurityEventsResult> {
+    const client = await pool.connect();
+    let inserted = 0;
+
+    try {
+      await client.query('BEGIN');
+
+      for (const event of events) {
+        const result = await client.query(
+          `INSERT INTO security_events
+            (workspace_id, id, source, external_event_id, event_type, severity, observed_at,
+             asset_id, summary, attributes)
+           VALUES (NULL, $1, $2, $3, $4, $5, $6, $7, $8, $9::JSONB)
+           ON CONFLICT (source, external_event_id) WHERE workspace_id IS NULL DO NOTHING
+           RETURNING id`,
+          [
+            randomUUID(),
+            event.source,
+            event.externalEventId,
+            event.eventType,
+            event.severity,
+            event.observedAt,
+            event.assetId ?? null,
+            event.summary,
+            JSON.stringify(event.attributes ?? {})
+          ]
+        );
+
+        if (result.rowCount && result.rowCount > 0) inserted += 1;
+      }
+
+      await client.query('COMMIT');
+      return { inserted, duplicates: events.length - inserted };
+    } catch (error) {
+      try { await client.query('ROLLBACK'); } catch { /* Preserve the original error. */ }
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
   async ingestBatch(workspaceId: string, events: SecurityEventInput[]): Promise<IngestSecurityEventsResult> {
     const client = await pool.connect();
     let inserted = 0;
