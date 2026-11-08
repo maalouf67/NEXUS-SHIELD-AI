@@ -34,6 +34,7 @@ Rust is planned, not currently compiled or deployed as a scanner. Begin with a m
 8. AI: treat model output as untrusted advisory; no autonomous execution, deletion, blocking, quarantine, or incident confirmation solely by AI.
 9. Malware inspection (planned): isolated upload gateway, strict file caps/type policy, generated IDs, SHA-256 streaming, scanner adapter, private quarantine, timeout/resource caps, archive expansion limits, analyst release, audit. Never execute uploads.
 10. Operations: dependency/secret scanning, SAST, SBOM, signed releases, backup/restore tests, incident runbooks.
+11. **NEXUS AEGIS — Edge & Mobile Defense Layer (planned):** Cloudflare WAF protects approved proxied web/API hostnames; SecIron IronWALL hardens signed Android/iOS binaries. These are complementary controls, not substitutes for API authorization, malware scanning, host firewalls or network-layer protections. Neither is active until its provider configuration, origin controls, vendor proof of concept and acceptance tests are verified.
 
 ## Malware inspection lifecycle (implemented in source; runtime validation pending)
 RECEIVED → VALIDATED → HASHED → QUARANTINED → SCANNING → CLEAN / DETECTED / ERROR / TIMEOUT → REVIEWED → EXPIRED/DELETED
@@ -65,9 +66,14 @@ Not runtime-verified or production-active: Docker image builds and ClamAV signat
 - P1 App trust center: settings, language, privacy preference, help, contact, license and policy drafts.
 - P2 Malware inspection: implemented upload path, per-user quarantine, ClamAV adapter, scan history and retention; verify in Docker CI and the target runtime.
 - P3 Android network protection: user-approved VPN/DNS filtering engine, blocklist provenance, encrypted DNS coverage disclosure, foreground notification and battery/abuse testing; iOS requires a separate entitlement-reviewed implementation.
+- P3.5 **NEXUS AEGIS:** staged Cloudflare WAF perimeter onboarding and SecIron IronWALL mobile binary-hardening proof of concept, followed by origin-lockdown, false-positive, physical-device, performance and SOC-event export validation. Planned only; not deployed.
 - P4 Threat-intel connectors, provenance, rate limits, cache and licensing.
 - P5 Endpoint agent only after platform permissions, update signing, tamper controls and privacy review.
 - P6 Independent penetration test, legal review, retention, response, backups and explicitly approved release.
+
+## NEXUS AEGIS rollout record
+
+The integration plan, configuration prerequisites and acceptance checklist are maintained in [docs/CLOUDFLARE-SECIRON-ROLLOUT.md](CLOUDFLARE-SECIRON-ROLLOUT.md). This reference does not indicate a live provider connection or production protection.
 
 ## References
 - OWASP ASVS: https://owasp.org/www-project-application-security-verification-standard/
