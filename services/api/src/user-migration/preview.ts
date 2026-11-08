@@ -1,10 +1,8 @@
 import { z } from 'zod';
 
-const SourceSystemCodeSchema = z.string()
-  .trim()
-  .min(2)
-  .max(48)
-  .regex(/^[a-z0-9][a-z0-9_-]+$/);
+// This foundation is intentionally restricted to synthetic fixtures. A real
+// source-system identifier is not accepted by the preview endpoint.
+const SourceSystemCodeSchema = z.literal('synthetic-test');
 
 const ImportRecordSchema = z.object({
   sourceSubjectId: z.string()
