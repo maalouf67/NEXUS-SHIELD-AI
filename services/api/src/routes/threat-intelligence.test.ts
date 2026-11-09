@@ -39,7 +39,7 @@ const workspaceAccess: RequestHandler = (req, _res, next) => {
     id: WORKSPACE_ID,
     name: 'Test workspace',
     slug: 'test-workspace',
-    role: 'analyst'
+    role: req.authUser?.role ?? 'viewer'
   };
   next();
 };
