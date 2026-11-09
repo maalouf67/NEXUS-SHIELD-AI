@@ -37,6 +37,7 @@ jobs:
       DATABASE_SSL: 'false'
       JWT_SECRET: nexus-ci-test-secret-at-least-thirty-two-characters
       NODE_ENV: test
+      NEXUS_RUN_DB_INTEGRATION_TESTS: 'true'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -46,10 +47,10 @@ jobs:
       - run: npm ci
       - name: Build API
         run: npm run build --workspace @nexus-shield/api
-      - name: Test API
-        run: npm test --workspace @nexus-shield/api
       - name: Apply all numbered PostgreSQL migrations
         run: npm run db:migrate --workspace @nexus-shield/api
+      - name: Test API including PostgreSQL integration
+        run: npm test --workspace @nexus-shield/api
 
   r-analytics:
     runs-on: ubuntu-latest
