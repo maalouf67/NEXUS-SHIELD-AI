@@ -65,9 +65,10 @@ const suite = describe.skipIf(!enabled)('PostgreSQL threat feed correlation inte
     expect(first.matched_events).toBe(1);
     expect(first.warnings_created).toBe(1);
 
-    const [matches, warnings, foreignMatches] = await Promise.all([
+    const [matches, warnings, indicators, foreignMatches] = await Promise.all([
       pool.query('SELECT security_event_id, match_field FROM threat_indicator_matches WHERE workspace_id = $1', [workspaceA]),
       pool.query('SELECT warning_type, severity, evidence FROM threat_early_warnings WHERE workspace_id = $1', [workspaceA]),
+      pool.query('SELECT confidence, severity FROM threat_indicators WHERE workspace_id = $1', [workspaceA]),
       pool.query('SELECT COUNT(*)::int AS count FROM threat_indicator_matches WHERE workspace_id = $1 AND security_event_id = $2', [workspaceB, eventB])
     ]);
     expect(matches.rows).toHaveLength(1);
@@ -75,7 +76,9 @@ const suite = describe.skipIf(!enabled)('PostgreSQL threat feed correlation inte
     expect(warnings.rows).toHaveLength(1);
     expect(warnings.rows[0].warning_type).toBe('threat_feed_indicator_match');
     expect(warnings.rows[0].severity).toBe('high');
-    expect(warnings.rows[0].evidence).toMatchObject({ provider: 'abuseipdb', security_event_id: eventA });
+    expect(warnings.rows[0].evidence).toMatchObject([{ provider: 'abuseipdb', security_event_id: eventA }]);
+    expect(Number(indicators.rows[0].confidence)).toBe(0.95);
+    expect(indicators.rows[0].severity).toBe('high');
     expect(foreignMatches.rows[0].count).toBe(0);
   });
 
