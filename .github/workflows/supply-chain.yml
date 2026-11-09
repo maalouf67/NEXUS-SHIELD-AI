@@ -119,13 +119,6 @@ jobs:
           NEXUS_VULN_BASELINE_FILE: ${{ runner.temp }}/nexus-vulnerability-baseline.json
         run: node scripts/supply-chain/compare-sbom-vulnerabilities.mjs
 
-      - name: Save refreshed main-branch vulnerability baseline
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && steps.vulnerability-comparison.outputs.baseline_written == 'true'
-        uses: actions/cache/save@v4
-        with:
-          path: ${{ runner.temp }}/nexus-vulnerability-baseline.json
-          key: nexus-sbom-vulnerability-baseline-${{ github.sha }}-${{ github.run_id }}
-
       - name: Create an immutable source archive and checksums
         shell: bash
         run: |
@@ -168,3 +161,10 @@ jobs:
             ${{ runner.temp }}/nexus-vuln/*.json
           if-no-files-found: warn
           retention-days: 30
+
+      - name: Save refreshed main-branch vulnerability baseline
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && steps.vulnerability-comparison.outputs.baseline_written == 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/nexus-vulnerability-baseline.json
+          key: nexus-sbom-vulnerability-baseline-${{ github.sha }}-${{ github.run_id }}
