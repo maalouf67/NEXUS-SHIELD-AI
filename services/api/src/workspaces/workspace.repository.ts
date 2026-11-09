@@ -237,10 +237,11 @@ export class PostgresWorkspaceRepository implements WorkspaceRepository {
       // Revalidate the actor inside the same transaction; middleware checks
       // are not sufficient when membership can change between check and write.
       const actor = await client.query(
-        `SELECT role
-         FROM workspace_memberships
-         WHERE workspace_id = $1 AND user_id = $2 AND status = 'active'
-         FOR UPDATE`,
+        `SELECT m.role
+         FROM workspace_memberships m
+         INNER JOIN users u ON u.id = m.user_id AND u.is_active = TRUE
+         WHERE m.workspace_id = $1 AND m.user_id = $2 AND m.status = 'active'
+         FOR UPDATE OF m`,
         [input.workspaceId, input.actorUserId]
       );
       if (actor.rows[0]?.role !== 'admin') {
@@ -284,11 +285,12 @@ export class PostgresWorkspaceRepository implements WorkspaceRepository {
       if (target.role === 'admin' && (input.action === 'revoked' || nextRole !== 'admin')) {
         const otherAdmins = await client.query(
           `SELECT COUNT(*)::int AS total
-           FROM workspace_memberships
-           WHERE workspace_id = $1
-             AND status = 'active'
-             AND role = 'admin'
-             AND user_id <> $2`,
+           FROM workspace_memberships m
+           INNER JOIN users u ON u.id = m.user_id AND u.is_active = TRUE
+           WHERE m.workspace_id = $1
+             AND m.status = 'active'
+             AND m.role = 'admin'
+             AND m.user_id <> $2`,
           [input.workspaceId, input.userId]
         );
         if (Number(otherAdmins.rows[0]?.total ?? 0) === 0) {
