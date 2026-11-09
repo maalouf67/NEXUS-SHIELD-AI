@@ -35,6 +35,7 @@ jobs:
       DATABASE_URL: postgresql://nexus_test:nexus_test_password@127.0.0.1:5432/nexus_test
       DATABASE_SSL: "false"
       NEXUS_RUN_DB_INTEGRATION: "true"
+      NEXUS_RUN_DB_INTEGRATION_TESTS: "true"
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
