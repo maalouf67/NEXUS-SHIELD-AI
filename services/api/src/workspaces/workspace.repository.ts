@@ -20,6 +20,10 @@ export interface WorkspaceMember {
   createdAt: string;
 }
 
+export type WorkspaceMemberMutationResult =
+  | { outcome: 'updated' | 'revoked' | 'unchanged'; member: WorkspaceMember }
+  | { outcome: 'not_found' | 'not_active' | 'actor_not_admin' | 'last_admin' };
+
 export interface WorkspaceIntegration {
   id: string;
   workspaceId: string;
@@ -37,6 +41,8 @@ export interface WorkspaceRepository {
   findActiveMembership(userId: string, workspaceId: string): Promise<WorkspaceMembership | null>;
   listMembers(workspaceId: string): Promise<WorkspaceMember[]>;
   addMemberByEmail(workspaceId: string, email: string, role: WorkspaceRole, actorUserId: string): Promise<WorkspaceMember | null>;
+  updateMemberRole(workspaceId: string, userId: string, role: WorkspaceRole, actorUserId: string): Promise<WorkspaceMemberMutationResult>;
+  revokeMember(workspaceId: string, userId: string, actorUserId: string): Promise<WorkspaceMemberMutationResult>;
   createIntegration(input: { workspaceId: string; name: string; permissions: WorkspaceIntegrationPermission[]; actorUserId: string }): Promise<CreatedWorkspaceIntegration>;
   findActiveIntegrationByHash(tokenHash: string): Promise<WorkspaceIntegration | null>;
   revokeIntegration(workspaceId: string, integrationId: string): Promise<boolean>;
@@ -201,6 +207,194 @@ export class PostgresWorkspaceRepository implements WorkspaceRepository {
     } finally {
       client.release();
     }
+  }
+
+
+  private async mutateMember(input: {
+    workspaceId: string;
+    userId: string;
+    actorUserId: string;
+    action: 'role_changed' | 'revoked';
+    role?: WorkspaceRole;
+  }): Promise<WorkspaceMemberMutationResult> {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // Serialize membership changes for this workspace. This prevents two
+      // concurrent administrators from both removing the final active admin.
+      const workspace = await client.query(
+        `SELECT id FROM workspaces
+         WHERE id = $1 AND status = 'active'
+         FOR UPDATE`,
+        [input.workspaceId]
+      );
+      if (!workspace.rowCount) {
+        await client.query('ROLLBACK');
+        return { outcome: 'not_found' };
+      }
+
+      // Revalidate the actor inside the same transaction; middleware checks
+      // are not sufficient when membership can change between check and write.
+      const actor = await client.query(
+        `SELECT role
+         FROM workspace_memberships
+         WHERE workspace_id = $1 AND user_id = $2 AND status = 'active'
+         FOR UPDATE`,
+        [input.workspaceId, input.actorUserId]
+      );
+      if (actor.rows[0]?.role !== 'admin') {
+        await client.query('ROLLBACK');
+        return { outcome: 'actor_not_admin' };
+      }
+
+      const targetResult = await client.query(
+        `SELECT u.id, u.email, m.role, m.status, m.created_at
+         FROM workspace_memberships m
+         INNER JOIN users u ON u.id = m.user_id
+         WHERE m.workspace_id = $1 AND m.user_id = $2
+         FOR UPDATE OF m`,
+        [input.workspaceId, input.userId]
+      );
+      const target = targetResult.rows[0];
+      if (!target) {
+        await client.query('ROLLBACK');
+        return { outcome: 'not_found' };
+      }
+      if (target.status !== 'active') {
+        await client.query('ROLLBACK');
+        return { outcome: 'not_active' };
+      }
+
+      const nextRole = input.action === 'role_changed' ? input.role! : target.role;
+      if (input.action === 'role_changed' && nextRole === target.role) {
+        await client.query('COMMIT');
+        return {
+          outcome: 'unchanged',
+          member: {
+            id: target.id,
+            email: target.email,
+            role: target.role as WorkspaceRole,
+            status: 'active',
+            createdAt: iso(target.created_at)
+          }
+        };
+      }
+
+      if (target.role === 'admin' && (input.action === 'revoked' || nextRole !== 'admin')) {
+        const otherAdmins = await client.query(
+          `SELECT COUNT(*)::int AS total
+           FROM workspace_memberships
+           WHERE workspace_id = $1
+             AND status = 'active'
+             AND role = 'admin'
+             AND user_id <> $2`,
+          [input.workspaceId, input.userId]
+        );
+        if (Number(otherAdmins.rows[0]?.total ?? 0) === 0) {
+          await client.query('ROLLBACK');
+          return { outcome: 'last_admin' };
+        }
+      }
+
+      let updated;
+      if (input.action === 'role_changed') {
+        updated = await client.query(
+          `UPDATE workspace_memberships
+           SET role = $3
+           WHERE workspace_id = $1 AND user_id = $2 AND status = 'active'
+           RETURNING user_id, role, status, created_at`,
+          [input.workspaceId, input.userId, nextRole]
+        );
+      } else {
+        updated = await client.query(
+          `UPDATE workspace_memberships
+           SET status = 'revoked', revoked_at = NOW()
+           WHERE workspace_id = $1 AND user_id = $2 AND status = 'active'
+           RETURNING user_id, role, status, created_at`,
+          [input.workspaceId, input.userId]
+        );
+      }
+
+      const row = updated.rows[0];
+      if (!row) {
+        await client.query('ROLLBACK');
+        return { outcome: 'not_active' };
+      }
+
+      const auditId = randomUUID();
+      const eventType = input.action === 'role_changed'
+        ? 'workspace.member_role_changed'
+        : 'workspace.member_revoked';
+      const summary = input.action === 'role_changed'
+        ? 'Workspace member role changed.'
+        : 'Workspace member access revoked.';
+      await client.query(
+        `INSERT INTO security_events
+          (workspace_id, id, source, external_event_id, event_type, severity,
+           observed_at, summary, attributes)
+         VALUES ($1, $2, 'nexus.workspace.access', $3, $4, 'informational',
+                 NOW(), $5, $6::JSONB)`,
+        [
+          input.workspaceId,
+          auditId,
+          `workspace-access:${auditId}`,
+          eventType,
+          summary,
+          JSON.stringify({
+            actor_user_id: input.actorUserId,
+            target_user_id: input.userId,
+            previous_role: target.role,
+            new_role: input.action === 'role_changed' ? nextRole : null
+          })
+        ]
+      );
+
+      await client.query('COMMIT');
+      return {
+        outcome: input.action === 'role_changed' ? 'updated' : 'revoked',
+        member: {
+          id: row.user_id,
+          email: target.email,
+          role: row.role as WorkspaceRole,
+          status: row.status as WorkspaceMember['status'],
+          createdAt: iso(row.created_at)
+        }
+      };
+    } catch (error) {
+      try { await client.query('ROLLBACK'); } catch { /* preserve original error */ }
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async updateMemberRole(
+    workspaceId: string,
+    userId: string,
+    role: WorkspaceRole,
+    actorUserId: string
+  ): Promise<WorkspaceMemberMutationResult> {
+    return this.mutateMember({
+      workspaceId,
+      userId,
+      role,
+      actorUserId,
+      action: 'role_changed'
+    });
+  }
+
+  async revokeMember(
+    workspaceId: string,
+    userId: string,
+    actorUserId: string
+  ): Promise<WorkspaceMemberMutationResult> {
+    return this.mutateMember({
+      workspaceId,
+      userId,
+      actorUserId,
+      action: 'revoked'
+    });
   }
 
   async createIntegration(input: {
