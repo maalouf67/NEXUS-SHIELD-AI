@@ -89,6 +89,52 @@ describe.skipIf(!enabled)('PostgreSQL workspace isolation foundation', () => {
       actorUserId: userB
     })).rejects.toMatchObject({ name: 'WorkspaceAuthorizationError' });
 
+    // Race test: a concurrent membership revocation commits while a privileged
+    // operation is waiting for the same membership row lock. The operation
+    // must re-read the committed status and fail closed.
+    const revocationClient = await pool.connect();
+    let pendingCreate: Promise<unknown> | undefined;
+    try {
+      await revocationClient.query('BEGIN');
+      await revocationClient.query(
+        "UPDATE workspace_memberships SET status = 'revoked', revoked_at = NOW() WHERE workspace_id = $1 AND user_id = $2",
+        [workspaceA, userA]
+      );
+      pendingCreate = repository.createIntegration({
+        workspaceId: workspaceA,
+        name: 'must-not-be-created-after-revocation',
+        permissions: ['events:write'],
+        actorUserId: userA
+      });
+
+      let waitingOnMembershipLock = false;
+      for (let attempt = 0; attempt < 200; attempt += 1) {
+        const waiting = await pool.query(
+          "SELECT 1 FROM pg_stat_activity WHERE datname = current_database() AND state = 'active' AND wait_event_type = 'Lock' AND query LIKE '%SELECT m.role%' LIMIT 1"
+        );
+        if (waiting.rowCount) {
+          waitingOnMembershipLock = true;
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      expect(waitingOnMembershipLock).toBe(true);
+      await revocationClient.query('COMMIT');
+      await expect(pendingCreate).rejects.toMatchObject({ name: 'WorkspaceAuthorizationError' });
+    } catch (error) {
+      try { await revocationClient.query('ROLLBACK'); } catch { /* preserve original error */ }
+      if (pendingCreate) {
+        await pendingCreate.catch(() => undefined);
+      }
+      throw error;
+    } finally {
+      revocationClient.release();
+    }
+    await pool.query(
+      "UPDATE workspace_memberships SET status = 'active', revoked_at = NULL WHERE workspace_id = $1 AND user_id = $2",
+      [workspaceA, userA]
+    );
+
     const created = await repository.createIntegration({
       workspaceId: workspaceA,
       name: 'CI event integration',
