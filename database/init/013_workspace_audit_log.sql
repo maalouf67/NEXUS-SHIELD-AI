@@ -2,8 +2,9 @@
 -- Secrets and raw integration credentials must never be written to this table.
 CREATE TABLE IF NOT EXISTS workspace_audit_logs (
   id UUID PRIMARY KEY,
-  workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE RESTRICT,
-  actor_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  -- Retain identifiers without cascading deletion of historical audit evidence.
+  workspace_id UUID NOT NULL,
+  actor_user_id UUID,
   action VARCHAR(64) NOT NULL CHECK (
     action IN (
       'workspace.member.added',
