@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, describe, expect, it } from 'vitest';
 import { pool } from '../db/pool.js';
+import { withWorkspaceTransaction } from '../db/workspace-transaction.js';
 import { PostgresWorkspaceRepository, hashWorkspaceIntegrationToken } from '../workspaces/workspace.repository.js';
 
 const enabled = process.env.NEXUS_RUN_DB_INTEGRATION === 'true' && Boolean(process.env.DATABASE_URL);
@@ -27,6 +28,30 @@ describe.skipIf(!enabled)('PostgreSQL workspace isolation foundation', () => {
     await pool.query('DELETE FROM workspaces WHERE id = ANY($1::uuid[])', [[workspaceA, workspaceB]]);
     await pool.query('DELETE FROM users WHERE id = ANY($1::uuid[])', [[userA, userB]]);
     await pool.end();
+  });
+
+  it('sets workspace context transaction-locally and clears it before pooled connection reuse', async () => {
+    const workspaceId = randomUUID();
+    const scoped = await withWorkspaceTransaction(workspaceId, (client) =>
+      client.query<{ workspace_id: string }>(
+        "SELECT current_setting('app.workspace_id', true) AS workspace_id"
+      )
+    );
+    expect(scoped.rows[0]?.workspace_id).toBe(workspaceId);
+
+    const reusedClient = await pool.connect();
+    try {
+      const afterCommit = await reusedClient.query<{ workspace_id: string | null }>(
+        "SELECT NULLIF(current_setting('app.workspace_id', true), '') AS workspace_id"
+      );
+      expect(afterCommit.rows[0]?.workspace_id).toBeNull();
+    } finally {
+      reusedClient.release();
+    }
+
+    await expect(
+      withWorkspaceTransaction('not-a-uuid', async () => undefined)
+    ).rejects.toThrow(TypeError);
   });
 
   it('isolates memberships and enforces same-workspace asset relationships at the database layer', async () => {
