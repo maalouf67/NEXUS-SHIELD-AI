@@ -21,8 +21,13 @@ export interface WorkspaceMember {
 }
 
 export type WorkspaceMemberMutationResult =
-  | { outcome: 'updated' | 'revoked' | 'unchanged'; member: WorkspaceMember }
-  | { outcome: 'not_found' | 'not_active' | 'actor_not_admin' | 'last_admin' };
+  | { outcome: 'updated'; member: WorkspaceMember }
+  | { outcome: 'revoked'; member: WorkspaceMember }
+  | { outcome: 'unchanged'; member: WorkspaceMember }
+  | { outcome: 'not_found' }
+  | { outcome: 'not_active' }
+  | { outcome: 'actor_not_admin' }
+  | { outcome: 'last_admin' };
 
 export interface WorkspaceIntegration {
   id: string;
