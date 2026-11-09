@@ -11,6 +11,7 @@ import { createIncidentsRouter } from '../incidents/incidents.routes.js';
 import { createAlertsRouter } from '../alerts/alerts.routes.js';
 import { createSecurityEventsRouter } from '../security-events/security-events.routes.js';
 import { createAssetInventoryRouter } from '../assets/asset-inventory.routes.js';
+import { createThreatIntelligenceRouter } from '../routes/threat-intelligence.js';
 import {
   PostgresWorkspaceRepository,
   type CreatedWorkspaceIntegration
@@ -47,6 +48,7 @@ describe.skipIf(!enabled)('PostgreSQL cross-tenant negative API tests', () => {
   app.use('/api', createAlertsRouter());
   app.use('/api', createSecurityEventsRouter());
   app.use('/api', createAssetInventoryRouter());
+  app.use('/api', createThreatIntelligenceRouter());
 
   function accessToken(userId: string, sessionId: string): string {
     return jwt.sign(
@@ -132,6 +134,14 @@ describe.skipIf(!enabled)('PostgreSQL cross-tenant negative API tests', () => {
     );
     await pool.query(
       'DELETE FROM security_event_reviews WHERE workspace_id = ANY($1::uuid[])',
+      [ids]
+    );
+    await pool.query(
+      'DELETE FROM threat_anomaly_findings WHERE workspace_id = ANY($1::uuid[])',
+      [ids]
+    );
+    await pool.query(
+      'DELETE FROM threat_risk_assessments WHERE workspace_id = ANY($1::uuid[])',
       [ids]
     );
     await pool.query(
@@ -253,6 +263,72 @@ describe.skipIf(!enabled)('PostgreSQL cross-tenant negative API tests', () => {
       .get('/api/security-events?reviewStatus=new')
       .set(userHeaders(tokenA, workspaceA));
     expect(stillNew.body.events.some((item: { id: string }) => item.id === eventAId)).toBe(true);
+  });
+
+  it('isolates threat intelligence overview and risk assessments between workspaces', async () => {
+    const foreignAssessment = await request(app)
+      .post(`/api/threat-intelligence/events/${eventAId}/assess`)
+      .set(userHeaders(tokenB, workspaceB))
+      .send({});
+
+    expect(foreignAssessment.status).toBe(404);
+    expect(foreignAssessment.body.error).toBe('SECURITY_EVENT_NOT_FOUND');
+
+    const ownerAssessment = await request(app)
+      .post(`/api/threat-intelligence/events/${eventAId}/assess`)
+      .set(userHeaders(tokenA, workspaceA))
+      .send({});
+
+    expect(ownerAssessment.status).toBe(201);
+    expect(ownerAssessment.body.assessment.security_event_id).toBe(eventAId);
+
+    const ownerAssessments = await request(app)
+      .get('/api/threat-intelligence/assessments')
+      .set(userHeaders(tokenA, workspaceA));
+    expect(ownerAssessments.status).toBe(200);
+    expect(ownerAssessments.body.assessments.some(
+      (item: { security_event_id: string }) => item.security_event_id === eventAId
+    )).toBe(true);
+
+    const foreignAssessments = await request(app)
+      .get('/api/threat-intelligence/assessments')
+      .set(userHeaders(tokenB, workspaceB));
+    expect(foreignAssessments.status).toBe(200);
+    expect(foreignAssessments.body.assessments.some(
+      (item: { security_event_id: string }) => item.security_event_id === eventAId
+    )).toBe(false);
+
+    const [overviewA, overviewB] = await Promise.all([
+      request(app).get('/api/threat-intelligence/overview').set(userHeaders(tokenA, workspaceA)),
+      request(app).get('/api/threat-intelligence/overview').set(userHeaders(tokenB, workspaceB))
+    ]);
+    expect(overviewA.status).toBe(200);
+    expect(overviewA.body.metrics.events_24h).toBeGreaterThanOrEqual(1);
+    expect(overviewA.body.metrics.assessments_24h).toBeGreaterThanOrEqual(1);
+    expect(overviewB.status).toBe(200);
+    expect(overviewB.body.metrics.events_24h).toBe(0);
+    expect(overviewB.body.metrics.assessments_24h).toBe(0);
+  });
+
+  it('immediately denies a still-authenticated user after workspace membership revocation', async () => {
+    await pool.query(
+      `UPDATE workspace_memberships
+       SET status = 'revoked', revoked_at = NOW()
+       WHERE workspace_id = $1 AND user_id = $2 AND status = 'active'`,
+      [workspaceA, userA]
+    );
+
+    const denied = await request(app)
+      .get('/api/threat-intelligence/overview')
+      .set(userHeaders(tokenA, workspaceA));
+
+    expect(denied.status).toBe(403);
+    expect(denied.body.error).toBe('WORKSPACE_ACCESS_DENIED');
+
+    const otherTenantRemainsAvailable = await request(app)
+      .get('/api/threat-intelligence/overview')
+      .set(userHeaders(tokenB, workspaceB));
+    expect(otherTenantRemainsAvailable.status).toBe(200);
   });
 
   it('binds asset reads and writes to the integration credential workspace', async () => {
