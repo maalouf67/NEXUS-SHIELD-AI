@@ -53,6 +53,55 @@ describe.skipIf(!enabled)('PostgreSQL workspace isolation foundation', () => {
     )).rejects.toMatchObject({ code: '23503' });
   });
 
+
+  it('changes and revokes members transactionally, preserves the last admin, and records workspace audit events', async () => {
+    const added = await repository.addMemberByEmail(workspaceA, emailB, 'analyst', userA);
+    expect(added).toMatchObject({ id: userB, role: 'analyst', status: 'active' });
+
+    const promoted = await repository.updateMemberRole(workspaceA, userB, 'admin', userA);
+    expect(promoted.outcome).toBe('updated');
+    if (promoted.outcome !== 'updated') throw new Error('Expected user B promotion.');
+    expect(promoted.member).toMatchObject({ id: userB, role: 'admin', status: 'active' });
+
+    const demoted = await repository.updateMemberRole(workspaceA, userA, 'analyst', userB);
+    expect(demoted.outcome).toBe('updated');
+    if (demoted.outcome !== 'updated') throw new Error('Expected user A demotion.');
+    expect(demoted.member).toMatchObject({ id: userA, role: 'analyst', status: 'active' });
+
+    const revoked = await repository.revokeMember(workspaceA, userA, userB);
+    expect(revoked.outcome).toBe('revoked');
+    if (revoked.outcome !== 'revoked') throw new Error('Expected user A revocation.');
+    expect(revoked.member).toMatchObject({ id: userA, role: 'analyst', status: 'revoked' });
+    expect(await repository.findActiveMembership(userA, workspaceA)).toBeNull();
+
+    expect(await repository.revokeMember(workspaceA, userB, userB)).toMatchObject({
+      outcome: 'last_admin'
+    });
+    expect(await repository.updateMemberRole(workspaceA, userB, 'viewer', userA)).toMatchObject({
+      outcome: 'actor_not_admin'
+    });
+
+    const audit = await pool.query(
+      `SELECT event_type, attributes
+       FROM security_events
+       WHERE workspace_id = $1 AND source = 'nexus.workspace.access'
+       ORDER BY received_at ASC, id ASC`,
+      [workspaceA]
+    );
+    expect(audit.rows).toHaveLength(3);
+    expect(audit.rows.map((row) => row.event_type)).toEqual([
+      'workspace.member_role_changed',
+      'workspace.member_role_changed',
+      'workspace.member_revoked'
+    ]);
+    expect(audit.rows[0].attributes).toMatchObject({
+      actor_user_id: userA,
+      target_user_id: userB,
+      previous_role: 'analyst',
+      new_role: 'admin'
+    });
+  });
+
   it('permits duplicate external event identifiers in separate workspaces and stores only integration-token hashes', async () => {
     await pool.query(
       'INSERT INTO security_events (id, workspace_id, source, external_event_id, event_type, severity, observed_at, summary) VALUES ($1, $2, \'ci-workspace\', $3, \'test-event\', \'low\', NOW(), \'Workspace A test\'), ($4, $5, \'ci-workspace\', $3, \'test-event\', \'low\', NOW(), \'Workspace B test\')',
