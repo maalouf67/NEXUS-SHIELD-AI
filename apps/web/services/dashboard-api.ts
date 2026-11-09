@@ -24,6 +24,7 @@ export interface SecurityEvent {
   observedAt: string; receivedAt: string; assetId: string | null; summary: string;
   attributes: Record<string, string>; reviewStatus: 'new' | 'reviewed';
   reviewedAt: string | null; reviewedByUserId: string | null;
+  ocsfEvent?: Record<string, unknown> | null;
 }
 export interface ThreatAnalysisResult {
   target: string; source: string; provider: string; model: string;
