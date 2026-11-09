@@ -17,7 +17,8 @@ import {
 } from '../workspaces/workspace.repository.js';
 
 const enabled =
-  process.env.NEXUS_RUN_DB_INTEGRATION_TESTS === 'true' &&
+  (process.env.NEXUS_RUN_DB_INTEGRATION_TESTS === 'true' ||
+    process.env.NEXUS_RUN_DB_INTEGRATION === 'true') &&
   Boolean(process.env.DATABASE_URL);
 
 describe.skipIf(!enabled)('PostgreSQL cross-tenant negative API tests', () => {
