@@ -127,7 +127,7 @@ export function createThreatIntelligenceRouter(
              INSERT INTO threat_anomaly_findings
                (id, workspace_id, security_event_id, anomaly_score, threshold,
                 detection_method, model_version, evidence)
-             SELECT $4, $1, id, event_count, $5,
+             SELECT $4, $1, id, event_count, $5::numeric,
                     '24h_event_type_velocity_threshold',
                     'nexus-baseline-heuristic-0.1.0',
                     jsonb_build_array(
@@ -135,7 +135,7 @@ export function createThreatIntelligenceRouter(
                       jsonb_build_object('type', 'event_velocity_24h', 'value', event_count)
                     )
                FROM scored
-              WHERE event_count >= $5
+              WHERE event_count >= $5::numeric
              RETURNING id
            )
            SELECT assessment.*, scored.event_count,
