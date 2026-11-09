@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
-import * as helmet from 'helmet';
+import helmet from 'helmet';
+import type { RequestHandler } from 'express';
 
 import { healthRouter } from './routes/health.js';
 import { threatsRouter } from './routes/threats.js';
@@ -35,7 +36,8 @@ const allowedOrigins = process.env.ALLOWED_ORIGINS
   .map((origin) => origin.trim())
   .filter(Boolean) ?? [];
 
-app.use(helmet.default());
+const helmetMiddleware = (helmet as unknown as () => RequestHandler)();
+app.use(helmetMiddleware);
 app.use(otelTracingMiddleware);
 app.use(
   cors({
