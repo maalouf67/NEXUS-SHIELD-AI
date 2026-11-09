@@ -14,7 +14,7 @@ The workflow at `.github/workflows/security.yml` runs:
 4. **ClamAV runtime image scan** against the exact Compose image reference `clamav/clamav:1.5.4`.
 5. **Dependency Review** on pull requests, plus the existing `npm audit --audit-level=high` check in the build workflow.
 
-The Trivy binary is explicitly pinned to `v0.76.1` under the existing `aquasecurity/trivy-action@v0.36.0` action. Filesystem and image gates select HIGH and CRITICAL severity and do not ignore unfixed findings. JSON reports are uploaded as workflow artifacts for 30 days where a scan produces an output file. The PostgreSQL container job also verifies the exact upstream `gosu` binary, runs the upstream project's pinned `govulncheck` source review, and tests PostgreSQL startup on a root-owned local Docker volume with the container runtime UID overridden to root. This local test is a Railway-volume compatibility preflight, not a live Railway test.
+The current Trivy binary is explicitly pinned to `v0.76.2` under the existing `aquasecurity/trivy-action@v0.36.0` action. The earlier November 6 scan evidence below remains recorded against the `v0.76.1` binary that was used at that time. Filesystem and image gates select HIGH and CRITICAL severity and do not ignore unfixed findings. JSON reports are uploaded as workflow artifacts for 30 days where a scan produces an output file. The PostgreSQL container job also verifies the exact upstream `gosu` binary, runs the upstream project's pinned `govulncheck` source review, and tests PostgreSQL startup on a root-owned local Docker volume with the container runtime UID overridden to root. This local test is a Railway-volume compatibility preflight, not a live Railway test.
 
 ## Latest verified scan evidence — 2026-11-06
 
