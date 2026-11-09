@@ -32,12 +32,18 @@ score_threat_events <- function(events, velocity_window_hours = 24) {
 
   observed <- as.POSIXct(events$observed_at, tz = "UTC")
   if (anyNA(observed)) stop("observed_at contains invalid timestamps")
+  event_types <- as.character(events$event_type)
+  if (anyNA(event_types) || any(!nzchar(trimws(event_types)))) {
+    stop("event_type must contain non-empty values")
+  }
 
   base <- severity_weight(events$severity)
   observed_seconds <- as.numeric(observed)
   window_seconds <- velocity_window_hours * 3600
   velocity_counts <- vapply(seq_along(observed_seconds), function(i) {
-    sum(observed_seconds >= observed_seconds[i] - window_seconds &
+    same_type <- event_types == event_types[i]
+    sum(same_type &
+        observed_seconds >= observed_seconds[i] - window_seconds &
         observed_seconds <= observed_seconds[i])
   }, integer(1))
   velocity <- pmin(20, pmax(0, (velocity_counts - 1) * 2))
