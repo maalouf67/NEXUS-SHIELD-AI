@@ -74,6 +74,13 @@ describe.skipIf(!enabled)('PostgreSQL workspace isolation foundation', () => {
       [randomUUID(), externalEventId]
     )).rejects.toMatchObject({ code: '23505' });
 
+    await expect(repository.createIntegration({
+      workspaceId: workspaceA,
+      name: 'unauthorized integration',
+      permissions: ['events:write'],
+      actorUserId: userB
+    })).rejects.toMatchObject({ name: 'WorkspaceAuthorizationError' });
+
     const created = await repository.createIntegration({
       workspaceId: workspaceA,
       name: 'CI event integration',
@@ -91,7 +98,31 @@ describe.skipIf(!enabled)('PostgreSQL workspace isolation foundation', () => {
     expect(await repository.findActiveIntegrationByHash(tokenHash)).toMatchObject({
       id: created.id, workspaceId: workspaceA, permissions: ['events:write']
     });
-    expect(await repository.revokeIntegration(workspaceA, created.id)).toBe(true);
+
+    const createdAudit = await pool.query(
+      "SELECT action, actor_user_id, target_id, metadata FROM workspace_audit_logs WHERE workspace_id = $1 AND target_id = $2",
+      [workspaceA, created.id]
+    );
+    expect(createdAudit.rows).toMatchObject([{
+      action: 'workspace.integration.created',
+      actor_user_id: userA,
+      target_id: created.id
+    }]);
+    expect(createdAudit.rows[0].metadata).toMatchObject({
+      name: 'CI event integration',
+      permissions: 'events:write'
+    });
+    expect(JSON.stringify(createdAudit.rows[0].metadata)).not.toContain(created.token);
+
+    await expect(repository.revokeIntegration(workspaceA, created.id, userB))
+      .rejects.toMatchObject({ name: 'WorkspaceAuthorizationError' });
+    expect(await repository.revokeIntegration(workspaceA, created.id, userA)).toBe(true);
     expect(await repository.findActiveIntegrationByHash(tokenHash)).toBeNull();
+
+    const revokedAudit = await pool.query(
+      "SELECT COUNT(*)::int AS total FROM workspace_audit_logs WHERE workspace_id = $1 AND target_id = $2 AND action = 'workspace.integration.revoked'",
+      [workspaceA, created.id]
+    );
+    expect(revokedAudit.rows[0].total).toBe(1);
   });
 });
