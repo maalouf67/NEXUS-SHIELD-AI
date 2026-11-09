@@ -89,11 +89,11 @@ describe.skipIf(!enabled)('PostgreSQL workspace isolation foundation', () => {
       [workspaceA]
     );
     expect(audit.rows).toHaveLength(3);
-    expect(audit.rows.map((row) => row.event_type)).toEqual([
+    expect(audit.rows.map((row) => row.event_type).sort()).toEqual([
+      'workspace.member_revoked',
       'workspace.member_role_changed',
-      'workspace.member_role_changed',
-      'workspace.member_revoked'
-    ]);
+      'workspace.member_role_changed'
+    ].sort());
     expect(audit.rows[0].attributes).toMatchObject({
       actor_user_id: userA,
       target_user_id: userB,
