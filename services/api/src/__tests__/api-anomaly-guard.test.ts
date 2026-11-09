@@ -155,7 +155,8 @@ describe('API anomaly containment', () => {
     app.use('/api', createApiAnomalyGuard({
       windowMs: 60_000,
       threshold: 1,
-      store
+      store,
+      onContainment: vi.fn()
     }));
     app.get('/api/missing', (_request, response) => response.status(404).json({ error: 'NOT_FOUND' }));
     app.get('/api/health', (_request, response) => response.status(200).json({ ok: true }));
