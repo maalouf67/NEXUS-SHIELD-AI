@@ -33,9 +33,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          archive="$RUNNER_TEMP/syft_1.55.0_linux_amd64.tar.gz"
           curl --fail --silent --show-error --location \
-            https://raw.githubusercontent.com/anchore/syft/v1.55.0/install.sh \
-            | sh -s -- -b /usr/local/bin v1.55.0
+            https://github.com/anchore/syft/releases/download/v1.55.0/syft_1.55.0_linux_amd64.tar.gz \
+            --output "$archive"
+          echo "bb65249542db5fedeeb4d3f9b018b75e7264dbfbbb10486f044581a92f90490d  $archive" \
+            | sha256sum --check
+          mkdir -p "$RUNNER_TEMP/syft-bin"
+          tar -xzf "$archive" -C "$RUNNER_TEMP/syft-bin" syft
+          sudo install "$RUNNER_TEMP/syft-bin/syft" /usr/local/bin/syft
           syft version
           syft version | grep -F "1.55.0"
 
