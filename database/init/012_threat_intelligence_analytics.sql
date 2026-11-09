@@ -39,6 +39,8 @@ CREATE TABLE IF NOT EXISTS threat_risk_assessments (
   FOREIGN KEY (workspace_id, security_event_id)
     REFERENCES security_events (workspace_id, id) ON DELETE RESTRICT
 );
+CREATE UNIQUE INDEX IF NOT EXISTS uq_threat_risk_workspace_id_id
+  ON threat_risk_assessments (workspace_id, id);
 CREATE INDEX IF NOT EXISTS idx_threat_risk_workspace_score
   ON threat_risk_assessments (workspace_id, risk_score DESC, assessed_at DESC);
 CREATE INDEX IF NOT EXISTS idx_threat_risk_event_assessed
@@ -73,6 +75,9 @@ CREATE TABLE IF NOT EXISTS threat_attack_correlations (
   CHECK (last_observed_at >= first_observed_at),
   UNIQUE (workspace_id, correlation_key)
 );
+CREATE UNIQUE INDEX IF NOT EXISTS uq_threat_correlations_workspace_id_id
+  ON threat_attack_correlations (workspace_id, id);
+
 CREATE TABLE IF NOT EXISTS threat_attack_correlation_events (
   workspace_id UUID NOT NULL,
   correlation_id UUID NOT NULL,
