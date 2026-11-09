@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { SecurityEvent } from '../services/dashboard-api';
 import { ApiClientError, apiRequest } from '../api/client';
 
@@ -32,7 +32,17 @@ interface AssessmentHistoryResponse {
 }
 
 interface AssessmentResponse {
-  assessment: ThreatRiskAssessment & { risk_band: string };
+  assessment: {
+    id: string;
+    security_event_id: string;
+    risk_score: number;
+    confidence: number;
+    risk_band: string;
+    method: string;
+    model_version: string;
+    evidence: Array<{ type: string; value: string | number }>;
+    assessed_at: string;
+  };
   event_velocity_24h: number;
   anomaly_recorded: boolean;
   anomaly_threshold: number;
@@ -61,11 +71,15 @@ export default function ThreatIntelligencePanel({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const requestVersion = useRef(0);
 
   const load = useCallback(async () => {
+    const currentRequest = ++requestVersion.current;
     if (!workspaceId) {
       setOverview(null);
       setAssessments([]);
+      setLatestResult(null);
+      setIsLoading(false);
       return;
     }
     setIsLoading(true);
@@ -75,23 +89,32 @@ export default function ThreatIntelligencePanel({
         apiRequest<ThreatIntelligenceOverview>('/api/nexus/threat-intelligence/overview'),
         apiRequest<AssessmentHistoryResponse>('/api/nexus/threat-intelligence/assessments?limit=10')
       ]);
+      // Ignore responses from an earlier refresh or workspace selection.
+      if (currentRequest !== requestVersion.current) return;
       setOverview(metrics);
       setAssessments(history.assessments ?? []);
     } catch (requestError) {
+      if (currentRequest !== requestVersion.current) return;
       if (requestError instanceof ApiClientError && requestError.status === 401) {
         window.location.replace('/login');
         return;
       }
       setError(requestError instanceof Error ? requestError.message : 'Threat intelligence data could not be loaded.');
     } finally {
-      setIsLoading(false);
+      if (currentRequest === requestVersion.current) setIsLoading(false);
     }
   }, [workspaceId]);
 
   useEffect(() => {
     setLatestResult(null);
     setNotice('');
+    setError('');
     void load();
+    return () => {
+      // Invalidate requests still in flight when this workspace panel unmounts
+      // or the selected workspace changes.
+      requestVersion.current += 1;
+    };
   }, [load]);
 
   async function assessEvent(eventId: string) {
