@@ -1,0 +1,75 @@
+# NEXUS SHIELD AI — reproducible threat analytics primitives.
+# This module is an offline analysis/validation layer; it does not ingest live
+# telemetry, call external providers, or make autonomous response decisions.
+
+severity_weight <- function(severity) {
+  weights <- c(informational = 0, low = 10, medium = 25, high = 45, critical = 60)
+  value <- unname(weights[as.character(severity)])
+  value[is.na(value)] <- 0
+  value
+}
+
+robust_z_score <- function(x) {
+  x <- as.numeric(x)
+  center <- stats::median(x, na.rm = TRUE)
+  scale <- stats::mad(x, center = center, constant = 1.4826, na.rm = TRUE)
+  if (!is.finite(scale) || scale <= 0) {
+    return(rep(0, length(x)))
+  }
+  (x - center) / scale
+}
+
+score_threat_events <- function(events, velocity_window_hours = 24) {
+  required <- c("event_type", "severity", "observed_at")
+  missing <- setdiff(required, names(events))
+  if (length(missing)) {
+    stop(sprintf("Missing required columns: %s", paste(missing, collapse = ", ")))
+  }
+  if (!is.numeric(velocity_window_hours) || length(velocity_window_hours) != 1L ||
+      !is.finite(velocity_window_hours) || velocity_window_hours <= 0) {
+    stop("velocity_window_hours must be one positive finite number")
+  }
+
+  raw_observed <- events$observed_at
+  if (inherits(raw_observed, "POSIXt")) {
+    observed <- as.POSIXct(raw_observed, tz = "UTC")
+  } else {
+    raw_observed <- sub("Z$", "", as.character(raw_observed))
+    # Parse ISO-8601 UTC timestamps explicitly; relying on R's default format
+    # can discard the time component on some platform/R locale combinations.
+    observed <- as.POSIXct(raw_observed, format = "%Y-%m-%dT%H:%M:%OS", tz = "UTC")
+    missing_time <- is.na(observed)
+    if (any(missing_time)) {
+      observed[missing_time] <- as.POSIXct(
+        raw_observed[missing_time],
+        format = "%Y-%m-%d %H:%M:%OS",
+        tz = "UTC"
+      )
+    }
+  }
+  if (anyNA(observed)) stop("observed_at contains invalid timestamps")
+  event_types <- as.character(events$event_type)
+  if (anyNA(event_types) || any(!nzchar(trimws(event_types)))) {
+    stop("event_type must contain non-empty values")
+  }
+
+  base <- severity_weight(events$severity)
+  observed_seconds <- as.numeric(observed)
+  window_seconds <- velocity_window_hours * 3600
+  velocity_counts <- vapply(seq_along(observed_seconds), function(i) {
+    same_type <- event_types == event_types[i]
+    sum(same_type &
+        observed_seconds >= observed_seconds[i] - window_seconds &
+        observed_seconds <= observed_seconds[i])
+  }, integer(1))
+  velocity <- pmin(20, pmax(0, (velocity_counts - 1) * 2))
+  risk <- pmin(100, pmax(0, base + velocity))
+
+  data.frame(
+    risk_score = round(risk, 2),
+    event_velocity_24h = velocity_counts,
+    anomaly_z = round(robust_z_score(velocity_counts), 4),
+    model_version = "nexus-r-baseline-0.1.0",
+    stringsAsFactors = FALSE
+  )
+}

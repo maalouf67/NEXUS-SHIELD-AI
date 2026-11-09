@@ -1,9 +1,11 @@
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
+import type { RequestHandler } from 'express';
 
 import { healthRouter } from './routes/health.js';
 import { threatsRouter } from './routes/threats.js';
+import { threatIntelligenceRouter } from './routes/threat-intelligence.js';
 import { privacyRouter } from './routes/privacy.js';
 import { privacyRequestsRouter } from './privacy/privacy-requests.routes.js';
 import { attackPathsRouter } from './routes/attack-paths.js';
@@ -34,7 +36,8 @@ const allowedOrigins = process.env.ALLOWED_ORIGINS
   .map((origin) => origin.trim())
   .filter(Boolean) ?? [];
 
-app.use(helmet());
+const helmetMiddleware = (helmet as unknown as () => RequestHandler)();
+app.use(helmetMiddleware);
 app.use(otelTracingMiddleware);
 app.use(
   cors({
@@ -53,6 +56,7 @@ app.use(express.json({ limit: '1mb' }));
 app.use('/health', healthRouter);
 app.use('/api/health', healthRouter);
 app.use('/api', threatsRouter);
+app.use('/api', threatIntelligenceRouter);
 app.use('/api', privacyRouter);
 app.use('/api', privacyRequestsRouter);
 app.use('/api', attackPathsRouter);
