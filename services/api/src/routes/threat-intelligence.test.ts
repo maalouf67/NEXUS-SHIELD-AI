@@ -105,14 +105,21 @@ describe('workspace-scoped threat intelligence API', () => {
   });
 
   it('persists an evidence-backed baseline assessment and records a velocity anomaly', async () => {
-    vi.mocked(pool.query)
-      .mockResolvedValueOnce({
-        rows: [{ id: EVENT_ID, event_type: 'login_failure', severity: 'high', observed_at: new Date('2026-11-09T10:00:00Z') }],
-        rowCount: 1
-      } as never)
-      .mockResolvedValueOnce({ rows: [{ event_count: 6 }], rowCount: 1 } as never)
-      .mockResolvedValueOnce({ rows: [], rowCount: 1 } as never)
-      .mockResolvedValueOnce({ rows: [], rowCount: 1 } as never);
+    vi.mocked(pool.query).mockResolvedValueOnce({
+      rows: [{
+        id: randomUUID(),
+        security_event_id: EVENT_ID,
+        risk_score: '55.00',
+        confidence: '0.7400',
+        assessment_method: 'severity_plus_24h_event_velocity',
+        model_version: 'nexus-baseline-heuristic-0.1.0',
+        evidence: [{ type: 'severity', value: 'high' }, { type: 'event_velocity_24h', value: 6 }],
+        assessed_at: new Date('2026-11-09T10:00:00Z'),
+        event_count: 6,
+        anomaly_recorded: true
+      }],
+      rowCount: 1
+    } as never);
 
     const response = await request(appForRouter())
       .post(`/api/threat-intelligence/events/${EVENT_ID}/assess`)
@@ -122,9 +129,10 @@ describe('workspace-scoped threat intelligence API', () => {
     expect(response.body.assessment.risk_score).toBe(55);
     expect(response.body.anomaly_recorded).toBe(true);
     expect(response.body.trained_model_used).toBe(false);
-    expect(pool.query).toHaveBeenCalledTimes(4);
-    expect(vi.mocked(pool.query).mock.calls[2][1][1]).toBe(WORKSPACE_ID);
-    expect(vi.mocked(pool.query).mock.calls[3][1][1]).toBe(WORKSPACE_ID);
+    expect(pool.query).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(pool.query).mock.calls[0][1]).toEqual([WORKSPACE_ID, EVENT_ID, expect.any(String), expect.any(String), 5]);
+    expect(String(vi.mocked(pool.query).mock.calls[0][0])).toContain('INSERT INTO threat_risk_assessments');
+    expect(String(vi.mocked(pool.query).mock.calls[0][0])).toContain('INSERT INTO threat_anomaly_findings');
   });
 
   it('does not expose SQL errors when the database is unavailable', async () => {
