@@ -1,4 +1,4 @@
-import type { PoolClient, QueryResult } from 'pg';
+import type { PoolClient } from 'pg';
 import { pool } from './pool.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -45,13 +45,4 @@ export async function withWorkspaceTransaction<T>(
   } finally {
     client.release();
   }
-}
-
-/** Convenience wrapper for the common single-query workspace operation. */
-export function workspaceQuery<T extends QueryResult = QueryResult>(
-  workspaceId: string,
-  query: string,
-  values: unknown[] = []
-): Promise<T> {
-  return withWorkspaceTransaction(workspaceId, (client) => client.query<T>(query, values));
 }
