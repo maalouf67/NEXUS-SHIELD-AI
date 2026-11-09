@@ -6,6 +6,7 @@ const ALLOWED_ROOTS = new Set([
   'incidents',
   'alerts',
   'threats',
+  'threat-intelligence',
   'users',
   'security-events',
   'workspaces',
