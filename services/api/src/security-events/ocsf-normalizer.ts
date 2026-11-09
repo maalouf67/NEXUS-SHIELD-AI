@@ -97,7 +97,7 @@ export function normalizeSecurityEventToOcsf(
   }
 
   const message = event.summary
-    .replace(CONTROL_CHARACTERS, ' ')
+    .replace(/[\u0000-\u001f\u007f]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, 1000);
