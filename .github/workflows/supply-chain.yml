@@ -94,7 +94,7 @@ jobs:
             nexus-sbom-vulnerability-baseline-
 
       - name: Set up pinned Trivy CLI for SBOM scanning
-        uses: aquasecurity/setup-trivy@v0.2.0
+        uses: aquasecurity/setup-trivy@v0.3.1
         with:
           version: v0.76.1
           cache: true
