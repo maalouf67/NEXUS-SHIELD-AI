@@ -30,7 +30,23 @@ score_threat_events <- function(events, velocity_window_hours = 24) {
     stop("velocity_window_hours must be one positive finite number")
   }
 
-  observed <- as.POSIXct(events$observed_at, tz = "UTC")
+  raw_observed <- events$observed_at
+  if (inherits(raw_observed, "POSIXt")) {
+    observed <- as.POSIXct(raw_observed, tz = "UTC")
+  } else {
+    raw_observed <- as.character(raw_observed)
+    # Parse ISO-8601 UTC timestamps explicitly; relying on R's default format
+    # can discard the time component on some platform/R locale combinations.
+    observed <- as.POSIXct(raw_observed, format = "%Y-%m-%dT%H:%M:%OS", tz = "UTC")
+    missing_time <- is.na(observed)
+    if (any(missing_time)) {
+      observed[missing_time] <- as.POSIXct(
+        raw_observed[missing_time],
+        format = "%Y-%m-%d %H:%M:%OS",
+        tz = "UTC"
+      )
+    }
+  }
   if (anyNA(observed)) stop("observed_at contains invalid timestamps")
   event_types <- as.character(events$event_type)
   if (anyNA(event_types) || any(!nzchar(trimws(event_types)))) {
