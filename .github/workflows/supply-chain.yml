@@ -96,7 +96,7 @@ jobs:
       - name: Set up pinned Trivy CLI for SBOM scanning
         uses: aquasecurity/setup-trivy@v0.3.1
         with:
-          version: v0.76.1
+          version: v0.76.2
           cache: true
 
       - name: Test SBOM vulnerability comparison logic
