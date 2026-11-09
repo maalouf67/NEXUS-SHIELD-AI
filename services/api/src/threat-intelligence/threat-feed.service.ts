@@ -162,7 +162,7 @@ export class ThreatFeedService {
                            last_observed_at = GREATEST(threat_attack_correlations.last_observed_at, EXCLUDED.last_observed_at)
              RETURNING id`,
             [randomUUID(), workspaceId, correlationKey, indicator.confidence / 100,
-              JSON.stringify({ provider: 'abuseipdb', indicator_type: 'ip', indicator_hash: valueHash, confidence: indicator.confidence, matched_field: matchedField, security_event_id: event.id }),
+              JSON.stringify([{ provider: 'abuseipdb', indicator_type: 'ip', indicator_hash: valueHash, confidence: indicator.confidence, matched_field: matchedField, security_event_id: event.id }]),
               event.observed_at]
           );
           const correlationId = correlation.rows[0].id as string;
@@ -180,7 +180,7 @@ export class ThreatFeedService {
              RETURNING id`,
             [randomUUID(), workspaceId, correlationId, severityForConfidence(indicator.confidence),
               'A recent security event contains an IP indicator listed by AbuseIPDB. Analyst review is required; this match is not proof of compromise.',
-              JSON.stringify({ provider: 'abuseipdb', indicator_type: 'ip', indicator_hash: valueHash, confidence: indicator.confidence, matched_field: matchedField, security_event_id: event.id, feed_generated_at: generatedAt.toISOString(), event_observed_at: new Date(event.observed_at).toISOString() }),
+              JSON.stringify([{ provider: 'abuseipdb', indicator_type: 'ip', indicator_hash: valueHash, confidence: indicator.confidence, matched_field: matchedField, security_event_id: event.id, feed_generated_at: generatedAt.toISOString(), event_observed_at: new Date(event.observed_at).toISOString() }]),
               dedupeKey]
           );
           if (warning.rowCount && warning.rowCount > 0) warningsCreated += 1;
