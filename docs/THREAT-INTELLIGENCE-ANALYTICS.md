@@ -38,3 +38,17 @@ This branch introduces the first additive data and offline-analysis foundation. 
 5. Integrate read-only analytics into the existing threat API and SOC dashboard after contract and CI validation.
 
 No production deployment or merge to `main` is included in this branch.
+
+## API integration added
+
+The Express API mounts the protected `/api/threat-intelligence` routes:
+
+- `GET /overview`: workspace-scoped PostgreSQL counters.
+- `POST /events/:id/assess`: analyst/admin-only deterministic baseline assessment, persisted with evidence; returns 404 for events outside the active workspace.
+- `GET /assessments`: workspace-scoped assessment history.
+
+The current assessment is intentionally a transparent heuristic using event severity and same-type event volume in a rolling 24-hour window. It is not a trained model. Anomaly findings are recorded only when the same event type reaches the explicit five-event threshold in that window. The endpoint does not perform containment or external lookups.
+
+## API verification
+
+Automated route tests cover authentication, workspace-scoped event lookup, viewer write denial, persisted assessment/anomaly writes, and database failure handling. These tests still need to pass in GitHub Actions before merge.
