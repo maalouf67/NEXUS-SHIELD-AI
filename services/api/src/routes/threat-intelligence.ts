@@ -12,20 +12,6 @@ const AssessmentQuerySchema = z.object({
   offset: z.coerce.number().int().min(0).max(100000).default(0)
 }).strict();
 
-const severityWeight: Record<string, number> = {
-  informational: 0,
-  low: 10,
-  medium: 25,
-  high: 45,
-  critical: 60
-};
-
-function baselineRiskScore(severity: string, relatedEvents: number): number {
-  const base = severityWeight[severity] ?? 0;
-  const velocity = Math.min(20, Math.max(0, (relatedEvents - 1) * 2));
-  return Math.min(100, Math.max(0, base + velocity));
-}
-
 export function createThreatIntelligenceRouter(
   requireWorkspace: RequestHandler = createRequireWorkspace()
 ) {
@@ -86,91 +72,96 @@ export function createThreatIntelligenceRouter(
       }
 
       const workspaceId = req.workspaceContext!.id;
+      const assessmentId = randomUUID();
+      const anomalyId = randomUUID();
+      const anomalyThreshold = 5;
+
       try {
-        const eventResult = await pool.query(
-          `SELECT id, event_type, severity, observed_at
-             FROM security_events
-            WHERE workspace_id = $1 AND id = $2
-            LIMIT 1`,
-          [workspaceId, parsedId.data]
-        );
-        const event = eventResult.rows[0];
-        if (!event) return res.status(404).json({ error: 'SECURITY_EVENT_NOT_FOUND' });
-
-        const velocityResult = await pool.query(
-          `SELECT COUNT(*)::int AS event_count
-             FROM security_events
-            WHERE workspace_id = $1
-              AND event_type = $2
-              AND observed_at >= $3::timestamptz - INTERVAL '24 hours'
-              AND observed_at <= $3::timestamptz`,
-          [workspaceId, event.event_type, event.observed_at]
-        );
-        const relatedEvents = Number(velocityResult.rows[0]?.event_count ?? 1);
-        const riskScore = baselineRiskScore(event.severity, relatedEvents);
-        const confidence = Math.min(0.95, 0.5 + Math.min(relatedEvents, 10) * 0.04);
-        const assessmentId = randomUUID();
-        const evidence = [{
-          type: 'severity',
-          value: event.severity
-        }, {
-          type: 'event_velocity_24h',
-          value: relatedEvents
-        }];
-
-        await pool.query(
-          `INSERT INTO threat_risk_assessments
-             (id, workspace_id, security_event_id, risk_score, confidence,
-              assessment_method, model_version, evidence)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)`,
-          [
-            assessmentId,
-            workspaceId,
-            event.id,
-            riskScore,
-            confidence,
-            'severity_plus_24h_event_velocity',
-            'nexus-baseline-heuristic-0.1.0',
-            JSON.stringify(evidence)
-          ]
-        );
-
-        let anomalyRecorded = false;
-        const anomalyThreshold = 5;
-        if (relatedEvents >= anomalyThreshold) {
-          await pool.query(
-            `INSERT INTO threat_anomaly_findings
+        // One data-modifying CTE keeps the assessment and optional anomaly
+        // record atomic. Every read and write is constrained to this workspace.
+        const result = await pool.query(
+          `WITH selected_event AS (
+             SELECT id, event_type, severity, observed_at
+               FROM security_events
+              WHERE workspace_id = $1 AND id = $2
+           ),
+           velocity AS (
+             SELECT e.id, e.event_type, e.severity, e.observed_at,
+                    COUNT(s.id)::int AS event_count
+               FROM selected_event e
+               JOIN security_events s
+                 ON s.workspace_id = $1
+                AND s.event_type = e.event_type
+                AND s.observed_at >= e.observed_at - INTERVAL '24 hours'
+                AND s.observed_at <= e.observed_at
+              GROUP BY e.id, e.event_type, e.severity, e.observed_at
+           ),
+           scored AS (
+             SELECT *,
+                    LEAST(100, (CASE severity
+                      WHEN 'informational' THEN 0
+                      WHEN 'low' THEN 10
+                      WHEN 'medium' THEN 25
+                      WHEN 'high' THEN 45
+                      WHEN 'critical' THEN 60
+                      ELSE 0 END) + LEAST(20, GREATEST(0, (event_count - 1) * 2)))::numeric(5,2) AS risk_score,
+                    LEAST(0.95, 0.5 + LEAST(event_count, 10) * 0.04)::numeric(5,4) AS confidence
+               FROM velocity
+           ),
+           assessment AS (
+             INSERT INTO threat_risk_assessments
+               (id, workspace_id, security_event_id, risk_score, confidence,
+                assessment_method, model_version, evidence)
+             SELECT $3, $1, id, risk_score, confidence,
+                    'severity_plus_24h_event_velocity',
+                    'nexus-baseline-heuristic-0.1.0',
+                    jsonb_build_array(
+                      jsonb_build_object('type', 'severity', 'value', severity),
+                      jsonb_build_object('type', 'event_velocity_24h', 'value', event_count)
+                    )
+               FROM scored
+             RETURNING id, security_event_id, risk_score, confidence,
+                       assessment_method, model_version, evidence, assessed_at
+           ),
+           anomaly AS (
+             INSERT INTO threat_anomaly_findings
                (id, workspace_id, security_event_id, anomaly_score, threshold,
                 detection_method, model_version, evidence)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)`,
-            [
-              randomUUID(),
-              workspaceId,
-              event.id,
-              relatedEvents,
-              anomalyThreshold,
-              '24h_event_type_velocity_threshold',
-              'nexus-baseline-heuristic-0.1.0',
-              JSON.stringify(evidence)
-            ]
-          );
-          anomalyRecorded = true;
-        }
+             SELECT $4, $1, id, event_count, $5,
+                    '24h_event_type_velocity_threshold',
+                    'nexus-baseline-heuristic-0.1.0',
+                    jsonb_build_array(
+                      jsonb_build_object('type', 'severity', 'value', severity),
+                      jsonb_build_object('type', 'event_velocity_24h', 'value', event_count)
+                    )
+               FROM scored
+              WHERE event_count >= $5
+             RETURNING id
+           )
+           SELECT assessment.*, scored.event_count,
+                  EXISTS (SELECT 1 FROM anomaly) AS anomaly_recorded
+             FROM assessment CROSS JOIN scored`,
+          [workspaceId, parsedId.data, assessmentId, anomalyId, anomalyThreshold]
+        );
+        const row = result.rows[0];
+        if (!row) return res.status(404).json({ error: 'SECURITY_EVENT_NOT_FOUND' });
 
+        const riskScore = Number(row.risk_score);
         return res.status(201).json({
           status: 'assessed',
           assessment: {
-            id: assessmentId,
-            security_event_id: event.id,
+            id: row.id,
+            security_event_id: row.security_event_id,
             risk_score: riskScore,
-            confidence: Number(confidence.toFixed(4)),
+            confidence: Number(row.confidence),
             risk_band: riskScore >= 80 ? 'critical' : riskScore >= 60 ? 'high' : riskScore >= 30 ? 'medium' : 'low',
-            method: 'severity_plus_24h_event_velocity',
-            model_version: 'nexus-baseline-heuristic-0.1.0',
-            evidence,
-            assessed_at: new Date().toISOString()
+            method: row.assessment_method,
+            model_version: row.model_version,
+            evidence: row.evidence,
+            assessed_at: row.assessed_at
           },
-          anomaly_recorded: anomalyRecorded,
+          event_velocity_24h: Number(row.event_count),
+          anomaly_recorded: Boolean(row.anomaly_recorded),
           anomaly_threshold: anomalyThreshold,
           trained_model_used: false,
           disclaimer: 'Deterministic baseline heuristic based on event severity and same-type event volume. This is not a trained predictive model or proof of compromise.'
