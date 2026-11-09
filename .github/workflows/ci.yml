@@ -35,6 +35,7 @@ jobs:
       DATABASE_URL: postgresql://nexus_test:nexus_test_password@127.0.0.1:5432/nexus_test
       DATABASE_SSL: "false"
       NEXUS_RUN_DB_INTEGRATION: "true"
+      NEXUS_RUN_DB_INTEGRATION_TESTS: "true"
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -63,13 +64,13 @@ jobs:
         run: |
           second_run="$(npm run db:migrate 2>&1)"
           echo "$second_run"
-          echo "$second_run" | grep -F "0 applied, 12 already current, 12 total"
+          echo "$second_run" | grep -F "0 applied, 13 already current, 13 total"
           npm run db:check
-          tables="$(psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -Atqc "SELECT to_regclass('public.api_rate_limit_counters')::text || ',' || to_regclass('public.auth_sessions')::text || ',' || to_regclass('public.workspaces')::text || ',' || to_regclass('public.workspace_memberships')::text || ',' || to_regclass('public.workspace_integrations')::text")"
-          test "$tables" = "api_rate_limit_counters,auth_sessions,workspaces,workspace_memberships,workspace_integrations"
+          tables="$(psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -Atqc "SELECT to_regclass('public.api_rate_limit_counters')::text || ',' || to_regclass('public.auth_sessions')::text || ',' || to_regclass('public.workspaces')::text || ',' || to_regclass('public.workspace_memberships')::text || ',' || to_regclass('public.workspace_integrations')::text || ',' || to_regclass('public.threat_feeds')::text || ',' || to_regclass('public.threat_feed_runs')::text || ',' || to_regclass('public.threat_indicator_matches')::text")"
+          test "$tables" = "api_rate_limit_counters,auth_sessions,workspaces,workspace_memberships,workspace_integrations,threat_feeds,threat_feed_runs,threat_indicator_matches"
           migration_count="$(psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -Atqc "SELECT COUNT(*) FROM nexus_schema_migrations")"
-          test "$migration_count" = "12"
-          echo "PostgreSQL connection verified and all 12 numbered migrations are recorded."
+          test "$migration_count" = "13"
+          echo "PostgreSQL connection verified and all 13 numbered migrations are recorded."
 
       - name: Build web and API workspaces
         run: npm run build
@@ -104,7 +105,6 @@ jobs:
         env:
           PYTHONPATH: services/ai
         run: python -m unittest discover -s services/ai/tests -v
-
 
   android-build:
     name: Android companion debug build
@@ -304,11 +304,11 @@ jobs:
           JWT_SECRET: nexus-ci-only-jwt-secret-never-reuse-123456789
         run: |
           TOKEN="$(node -e "const jwt=require('jsonwebtoken'); process.stdout.write(jwt.sign({jti:'00000000-0000-4000-8000-000000000011'}, process.env.JWT_SECRET, {algorithm:'HS256',subject:'00000000-0000-4000-8000-000000000001',issuer:'nexus-shield-ai',audience:'nexus-shield-ai-api',expiresIn:'15m'}))")"
-          printf '%s\n' 'NEXUS SHIELD AI benign web gateway test fixture.' > /tmp/nexus-clean.txt
-          HTTP_STATUS="$(curl --silent --show-error --output /tmp/nexus-clean-result.json --write-out '%{http_code}' \
-            -H "Cookie: nexus_access_token=$TOKEN" \
-            -H "Origin: http://127.0.0.1:3000" \
-            -F "file=@/tmp/nexus-clean.txt;filename=benign.txt" \
+          printf '%s\\n' 'NEXUS SHIELD AI benign web gateway test fixture.' > /tmp/nexus-clean.txt
+          HTTP_STATUS="$(curl --silent --show-error --output /tmp/nexus-clean-result.json --write-out '%{http_code}' \\
+            -H "Cookie: nexus_access_token=$TOKEN" \\
+            -H "Origin: http://127.0.0.1:3000" \\
+            -F "file=@/tmp/nexus-clean.txt;filename=benign.txt" \\
             http://127.0.0.1:3000/api/security/scan)"
           echo "Benign upload gateway HTTP status: $HTTP_STATUS"
           cat /tmp/nexus-clean-result.json
@@ -320,11 +320,11 @@ jobs:
           JWT_SECRET: nexus-ci-only-jwt-secret-never-reuse-123456789
         run: |
           TOKEN="$(node -e "const jwt=require('jsonwebtoken'); process.stdout.write(jwt.sign({jti:'00000000-0000-4000-8000-000000000011'}, process.env.JWT_SECRET, {algorithm:'HS256',subject:'00000000-0000-4000-8000-000000000001',issuer:'nexus-shield-ai',audience:'nexus-shield-ai-api',expiresIn:'15m'}))")"
-          printf '%s' 'X5O!P%@AP[4\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*' > /tmp/eicar.com
-          curl --fail --silent --show-error \
-            -H "Cookie: nexus_access_token=$TOKEN" \
-            -H "Origin: http://127.0.0.1:3000" \
-            -F "file=@/tmp/eicar.com;filename=eicar.com" \
+          printf '%s' 'X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*' > /tmp/eicar.com
+          curl --fail --silent --show-error \\
+            -H "Cookie: nexus_access_token=$TOKEN" \\
+            -H "Origin: http://127.0.0.1:3000" \\
+            -F "file=@/tmp/eicar.com;filename=eicar.com" \\
             http://127.0.0.1:3000/api/security/scan > /tmp/nexus-eicar-result.json
           python -c "import json; d=json.load(open('/tmp/nexus-eicar-result.json')); assert d['scan']['verdict'] == 'detected', d; assert d['history_persisted'] is True, d; print('Web gateway EICAR scan: detected; history saved')"
 
@@ -334,11 +334,11 @@ jobs:
         run: |
           ADMIN_TOKEN="$(node -e "const jwt=require('jsonwebtoken'); process.stdout.write(jwt.sign({jti:'00000000-0000-4000-8000-000000000011'}, process.env.JWT_SECRET, {algorithm:'HS256',subject:'00000000-0000-4000-8000-000000000001',issuer:'nexus-shield-ai',audience:'nexus-shield-ai-api',expiresIn:'15m'}))")"
           VIEWER_TOKEN="$(node -e "const jwt=require('jsonwebtoken'); process.stdout.write(jwt.sign({jti:'00000000-0000-4000-8000-000000000022'}, process.env.JWT_SECRET, {algorithm:'HS256',subject:'00000000-0000-4000-8000-000000000002',issuer:'nexus-shield-ai',audience:'nexus-shield-ai-api',expiresIn:'15m'}))")"
-          curl --fail --silent --show-error \
-            -H "Cookie: nexus_access_token=$ADMIN_TOKEN" \
+          curl --fail --silent --show-error \\
+            -H "Cookie: nexus_access_token=$ADMIN_TOKEN" \\
             http://127.0.0.1:3000/api/security/scan?limit=10 > /tmp/nexus-admin-history.json
-          curl --fail --silent --show-error \
-            -H "Cookie: nexus_access_token=$VIEWER_TOKEN" \
+          curl --fail --silent --show-error \\
+            -H "Cookie: nexus_access_token=$VIEWER_TOKEN" \\
             http://127.0.0.1:3000/api/security/scan?limit=10 > /tmp/nexus-viewer-history.json
           python -c "import json; a=json.load(open('/tmp/nexus-admin-history.json')); v=json.load(open('/tmp/nexus-viewer-history.json')); assert a['pagination']['total'] == 2, a; assert {x['verdict'] for x in a['scans']} == {'clean','detected'}, a; assert v['pagination']['total'] == 0, v; print('Owner isolation: admin sees two scans; another user sees none')"
 
