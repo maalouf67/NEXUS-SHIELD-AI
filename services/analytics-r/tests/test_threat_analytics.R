@@ -4,7 +4,7 @@ stopifnot(identical(severity_weight(c("low", "medium", "high", "critical")), c(1
 stopifnot(all(robust_z_score(c(1, 1, 1)) == 0))
 outlier_z <- robust_z_score(c(1, 2, 3, 100))
 stopifnot(all(is.finite(outlier_z)))
-stopifnot(outlier_z[4] > 0))
+stopifnot(outlier_z[4] > 0)
 
 sample_events <- data.frame(
   event_type = c("login_failure", "login_failure", "malware"),
