@@ -1,9 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
 import { ThreatFeedService } from './threat-feed.service.js';
 
-function fakePool(responses: Array<{ rows?: unknown[]; rowCount?: number }> = []) {
+function fakePool() {
   const client = {
-    query: vi.fn(async () => responses.shift() ?? { rows: [], rowCount: 0 }),
+    query: vi.fn(async (sql: string) => {
+      if (sql.includes('INSERT INTO threat_feeds')) return { rows: [{ id: 'feed-id' }], rowCount: 1 };
+      if (sql.includes('INSERT INTO threat_indicators')) return { rows: [{ id: 'indicator-id', inserted: true }], rowCount: 1 };
+      return { rows: [], rowCount: 0 };
+    }),
     release: vi.fn()
   };
   return { connect: vi.fn().mockResolvedValue(client), client };
@@ -22,14 +26,7 @@ describe('ThreatFeedService', () => {
   });
 
   it('deduplicates duplicate feed indicators before database persistence', async () => {
-    const pool = fakePool([
-      { rows: [{ id: 'feed-id' }] },
-      { rows: [] },
-      { rows: [{ id: 'indicator-id', inserted: true }] },
-      { rows: [] },
-      { rows: [] },
-      { rows: [] }
-    ]);
+    const pool = fakePool();
     const provider = { fetchBlacklist: vi.fn().mockResolvedValue({
       generatedAt: '2026-11-09T11:59:00Z',
       indicators: [
@@ -48,10 +45,14 @@ describe('ThreatFeedService', () => {
 
   it('rolls back and releases the database connection when persistence fails', async () => {
     const client = {
-      query: vi.fn()
-        .mockResolvedValueOnce({ rows: [{ id: 'feed-id' }] })
-        .mockResolvedValueOnce({ rows: [] })
-        .mockRejectedValueOnce(new Error('database failure')),
+      query: vi.fn(async (sql: string) => {
+        if (sql === 'BEGIN') return { rows: [], rowCount: 0 };
+        if (sql.includes('INSERT INTO threat_feeds')) return { rows: [{ id: 'feed-id' }], rowCount: 1 };
+        if (sql.includes('INSERT INTO threat_feed_runs')) return { rows: [], rowCount: 1 };
+        if (sql.includes('INSERT INTO threat_indicators')) throw new Error('database failure');
+        if (sql === 'ROLLBACK') return { rows: [], rowCount: 0 };
+        return { rows: [], rowCount: 0 };
+      }),
       release: vi.fn()
     };
     const pool = { connect: vi.fn().mockResolvedValue(client) };
