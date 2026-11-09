@@ -101,7 +101,7 @@ describe('workspace-scoped threat intelligence API', () => {
       .set('Authorization', `Bearer ${token('analyst')}`);
 
     expect(response.status).toBe(404);
-    expect(vi.mocked(pool.query).mock.calls[0][1]).toEqual([WORKSPACE_ID, EVENT_ID]);
+    expect(vi.mocked(pool.query).mock.calls[0][1]).toEqual([WORKSPACE_ID, EVENT_ID, expect.any(String), expect.any(String), 5]);
   });
 
   it('persists an evidence-backed baseline assessment and records a velocity anomaly', async () => {
