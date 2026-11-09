@@ -4,6 +4,7 @@ import helmet from 'helmet';
 
 import { healthRouter } from './routes/health.js';
 import { threatsRouter } from './routes/threats.js';
+import { threatIntelligenceRouter } from './routes/threat-intelligence.js';
 import { privacyRouter } from './routes/privacy.js';
 import { privacyRequestsRouter } from './privacy/privacy-requests.routes.js';
 import { attackPathsRouter } from './routes/attack-paths.js';
@@ -53,6 +54,7 @@ app.use(express.json({ limit: '1mb' }));
 app.use('/health', healthRouter);
 app.use('/api/health', healthRouter);
 app.use('/api', threatsRouter);
+app.use('/api', threatIntelligenceRouter);
 app.use('/api', privacyRouter);
 app.use('/api', privacyRequestsRouter);
 app.use('/api', attackPathsRouter);
