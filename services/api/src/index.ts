@@ -35,7 +35,12 @@ const allowedOrigins = process.env.ALLOWED_ORIGINS
   .map((origin) => origin.trim())
   .filter(Boolean) ?? [];
 
-app.use(helmet());
+// Helmet's ESM default export is a callable middleware factory. Narrow its type
+// explicitly because Vercel's Node type checker resolves the dual ESM/CJS
+// declaration as a module namespace in this project.
+const helmetFactory = helmet as unknown as () => express.RequestHandler;
+
+app.use(helmetFactory());
 app.use(otelTracingMiddleware);
 app.use(
   cors({
