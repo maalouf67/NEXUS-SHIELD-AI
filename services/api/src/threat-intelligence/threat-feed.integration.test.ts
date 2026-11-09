@@ -8,8 +8,6 @@ const workspaceA = randomUUID();
 const workspaceB = randomUUID();
 const eventA = randomUUID();
 const eventB = randomUUID();
-const userIdA = randomUUID();
-const userIdB = randomUUID();
 const generatedAt = new Date(Date.now() - 60_000).toISOString();
 
 const provider = {
