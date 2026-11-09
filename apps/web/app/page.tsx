@@ -19,6 +19,7 @@ import {
   changeAlertStatus as apiChangeAlertStatus
 } from '../services/dashboard-api';
 import { ApiClientError } from '../api/client';
+import ThreatIntelligencePanel from './threat-intelligence-panel';
 
 function ShieldMark() {
   return (
@@ -340,6 +341,7 @@ export default function HomePage() {
           <a className="side-nav-link" href="#incidents"><span>⌁</span> Incidents</a>
           <a className="side-nav-link" href="#alerts"><span>◎</span> Alerts</a>
           <a className="side-nav-link" href="#events"><span>⌖</span> Defense activity</a>
+          <a className="side-nav-link" href="#threat-intelligence"><span>✦</span> Threat intelligence</a>
           {isAdmin ? <a className="side-nav-link" href="#team"><span>♙</span> Team access</a> : null}
           <a className="side-nav-link" href="#intelligence"><span>✧</span> AI intelligence</a>
           {canManage ? <a className="side-nav-link" href="/scan"><span>⌕</span> Malware file scan</a> : null}
@@ -610,6 +612,8 @@ export default function HomePage() {
             <p className="muted-note">Only existing accounts can be added. This grants access to the selected workspace; it does not create a login account or change the user's global role.</p>
           </section>
         ) : null}
+
+        <ThreatIntelligencePanel workspaceId={activeWorkspaceId} events={securityEvents} canManage={canManage} />
 
         <section className="section-block" id="intelligence">
           <div className="section-heading">
