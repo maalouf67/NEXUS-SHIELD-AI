@@ -28,7 +28,7 @@ jobs:
       - name: Scan repository for vulnerabilities, misconfigurations and secrets
         uses: aquasecurity/trivy-action@v0.36.0
         with:
-          version: v0.76.1
+          version: v0.76.2
           scan-type: fs
           scan-ref: .
           scanners: vuln,misconfig,secret
@@ -139,7 +139,7 @@ jobs:
       - name: Scan PostgreSQL runtime image
         uses: aquasecurity/trivy-action@v0.36.0
         with:
-          version: v0.76.1
+          version: v0.76.2
           scan-type: image
           image-ref: nexus-postgres:ci
           scanners: vuln,misconfig,secret
@@ -152,7 +152,7 @@ jobs:
       - name: Scan AI service runtime image
         uses: aquasecurity/trivy-action@v0.36.0
         with:
-          version: v0.76.1
+          version: v0.76.2
           scan-type: image
           image-ref: nexus-ai:ci
           scanners: vuln,misconfig,secret
@@ -165,7 +165,7 @@ jobs:
       - name: Scan ClamAV runtime image
         uses: aquasecurity/trivy-action@v0.36.0
         with:
-          version: v0.76.1
+          version: v0.76.2
           scan-type: image
           image-ref: clamav/clamav:1.5.4
           scanners: vuln,misconfig,secret
@@ -270,7 +270,7 @@ jobs:
       - name: Scan PostgreSQL runtime image with Trivy
         uses: aquasecurity/trivy-action@v0.36.0
         with:
-          version: v0.76.1
+          version: v0.76.2
           scan-type: image
           image-ref: nexus-postgres:ci
           scanners: vuln,misconfig,secret
