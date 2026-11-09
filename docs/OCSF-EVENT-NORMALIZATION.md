@@ -15,7 +15,7 @@ The ingestion contract accepts a provider-neutral, free-form eventType. That alo
 - A composite foreign key binds the projection to the same workspace as its source event.
 - Source event and OCSF projection are committed or rolled back in one transaction.
 - Replayed source events do not create duplicate projections.
-- Existing historical events are not backfilled by this migration. They have ocsfEvent=null until newly ingested; a separately reviewed backfill can be added later.
+- Existing historical events are not backfilled by this migration. They have ocsfEvent=null until a separately reviewed backfill is approved and run. Replaying an existing idempotency key does not rewrite or retroactively project the original event.
 - Global NULL-workspace system events are not copied into the tenant projection table.
 
 The projection does not copy arbitrary provider attributes. It contains the bounded normalized summary, source identifier, external event ID, event type in unmapped, optional asset identifier, timestamp, severity, and producer metadata. The normalized JSON is SHA-256 fingerprinted.
