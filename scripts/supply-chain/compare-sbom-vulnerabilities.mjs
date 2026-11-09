@@ -22,13 +22,19 @@ export function makeIdentity(item) {
 }
 
 export function compareFindings(current, baseline) {
-  const oldIds = new Set(baseline.map(item => item.identity || makeIdentity(item)));
+  const oldById = new Map(
+    baseline.map(item => [item.identity || makeIdentity(item), item])
+  );
   const newIds = new Set(current.map(item => item.identity || makeIdentity(item)));
-  return {
-    introduced: current.filter(item => !oldIds.has(item.identity || makeIdentity(item))),
-    existing: current.filter(item => oldIds.has(item.identity || makeIdentity(item))),
-    resolved: baseline.filter(item => !newIds.has(item.identity || makeIdentity(item)))
-  };
+  const introduced = current.filter(item => !oldById.has(item.identity || makeIdentity(item)));
+  const existing = current.filter(item => oldById.has(item.identity || makeIdentity(item)));
+  const resolved = baseline.filter(item => !newIds.has(item.identity || makeIdentity(item)));
+  const escalated = current.filter(item => {
+    const previous = oldById.get(item.identity || makeIdentity(item));
+    if (!previous) return false;
+    return SEVERITIES.indexOf(item.severity) < SEVERITIES.indexOf(previous.severity);
+  });
+  return { introduced, existing, resolved, escalated };
 }
 
 export function collectFindings(reportDirectory) {
@@ -109,7 +115,7 @@ function main() {
 
   let baseline = null;
   let baselineStatus = 'unavailable';
-  let delta = { introduced: [], existing: [], resolved: [] };
+  let delta = { introduced: [], existing: [], resolved: [], escalated: [] };
   if (fs.existsSync(baselinePath)) {
     baseline = JSON.parse(fs.readFileSync(baselinePath, 'utf8'));
     if (baseline.schemaVersion !== 1 || !Array.isArray(baseline.findings)) {
@@ -119,7 +125,10 @@ function main() {
     delta = compareFindings(current.findings, baseline.findings);
   }
 
-  const blocking = delta.introduced.filter(item => BLOCKING.has(item.severity));
+  const blocking = [
+    ...delta.introduced.filter(item => BLOCKING.has(item.severity)),
+    ...delta.escalated.filter(item => BLOCKING.has(item.severity))
+  ];
   const counts = Object.fromEntries(
     SEVERITIES.map(severity => [
       severity,
@@ -134,6 +143,7 @@ function main() {
       introduced: delta.introduced.length,
       existing: delta.existing.length,
       resolved: delta.resolved.length,
+      escalated: delta.escalated.length,
       introducedBySeverity: counts,
       newHighOrCritical: blocking.length
     }
@@ -167,6 +177,7 @@ function main() {
     lines.push('- New: **' + delta.introduced.length + '**');
     lines.push('- Existing: ' + delta.existing.length);
     lines.push('- Resolved: ' + delta.resolved.length);
+    lines.push('- Severity escalations: ' + delta.escalated.length);
   }
   if (blocking.length) {
     lines.push('');
@@ -177,7 +188,7 @@ function main() {
     }
   } else if (baselineStatus === 'available') {
     lines.push('');
-    lines.push('No newly introduced HIGH/CRITICAL finding was detected.');
+    lines.push('No newly introduced or severity-escalated HIGH/CRITICAL finding was detected.');
   }
   if (process.env.GITHUB_STEP_SUMMARY) {
     fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, lines.join('\n') + '\n');
