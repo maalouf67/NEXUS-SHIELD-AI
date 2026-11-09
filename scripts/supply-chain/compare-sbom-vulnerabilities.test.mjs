@@ -58,3 +58,23 @@ test('uses package name if package URL is absent', () => {
     installedVersion: '4.17.0'
   }), /lodash/);
 });
+
+test('detects severity escalation on an unchanged package and vulnerability', () => {
+  const previous = {
+    target: 'ai',
+    vulnerabilityId: 'CVE-2026-1005',
+    packageName: 'fastapi',
+    purl: 'pkg:pypi/fastapi@1.0.0',
+    installedVersion: '1.0.0',
+    severity: 'MEDIUM'
+  };
+  const current = {
+    ...previous,
+    severity: 'HIGH',
+    identity: makeIdentity(previous)
+  };
+  const result = compareFindings([current], [previous]);
+  assert.equal(result.existing.length, 1);
+  assert.equal(result.escalated.length, 1);
+  assert.equal(result.escalated[0].severity, 'HIGH');
+});
