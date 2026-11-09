@@ -95,8 +95,8 @@ export class ThreatFeedService {
            VALUES ($1, $2, 'ip', $3, 'abuseipdb', $4, $5, $6, $7, $8, $9::jsonb, NOW())
            ON CONFLICT (workspace_id, indicator_type, indicator_value_hash, source)
            DO UPDATE SET confidence = GREATEST(threat_indicators.confidence, EXCLUDED.confidence),
-                         severity = CASE WHEN EXCLUDED.confidence >= 100 THEN 'critical'
-                                         WHEN EXCLUDED.confidence >= 90 THEN 'high' ELSE 'medium' END,
+                         severity = CASE WHEN GREATEST(threat_indicators.confidence, EXCLUDED.confidence) >= 1 THEN 'critical'
+                                         WHEN GREATEST(threat_indicators.confidence, EXCLUDED.confidence) >= 0.9 THEN 'high' ELSE 'medium' END,
                          first_seen_at = LEAST(threat_indicators.first_seen_at, EXCLUDED.first_seen_at),
                          last_seen_at = GREATEST(threat_indicators.last_seen_at, EXCLUDED.last_seen_at),
                          expires_at = EXCLUDED.expires_at,
@@ -104,7 +104,7 @@ export class ThreatFeedService {
                          updated_at = NOW()
            RETURNING id, (xmax = 0) AS inserted`,
           [
-            indicatorId, workspaceId, valueHash, item.confidence, severityForConfidence(item.confidence),
+            indicatorId, workspaceId, valueHash, item.confidence / 100, severityForConfidence(item.confidence),
             firstSeen, lastSeen, new Date(generatedAt.getTime() + DEFAULT_INDICATOR_TTL_HOURS * 60 * 60_000),
             JSON.stringify({ provider: 'abuseipdb', generated_at: generatedAt.toISOString(), last_reported_at: item.lastReportedAt, country_code: item.countryCode, confidence: item.confidence })
           ]
