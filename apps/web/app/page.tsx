@@ -613,7 +613,7 @@ export default function HomePage() {
           </section>
         ) : null}
 
-        <ThreatIntelligencePanel workspaceId={activeWorkspaceId} events={securityEvents} canManage={canManage} />
+        <ThreatIntelligencePanel key={activeWorkspaceId} workspaceId={activeWorkspaceId} events={securityEvents} canManage={canManage} />
 
         <section className="section-block" id="intelligence">
           <div className="section-heading">
