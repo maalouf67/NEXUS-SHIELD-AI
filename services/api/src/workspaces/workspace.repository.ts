@@ -39,11 +39,66 @@ export interface WorkspaceRepository {
   addMemberByEmail(workspaceId: string, email: string, role: WorkspaceRole, actorUserId: string): Promise<WorkspaceMember | null>;
   createIntegration(input: { workspaceId: string; name: string; permissions: WorkspaceIntegrationPermission[]; actorUserId: string }): Promise<CreatedWorkspaceIntegration>;
   findActiveIntegrationByHash(tokenHash: string): Promise<WorkspaceIntegration | null>;
-  revokeIntegration(workspaceId: string, integrationId: string): Promise<boolean>;
+  revokeIntegration(workspaceId: string, integrationId: string, actorUserId: string): Promise<boolean>;
+}
+
+export class WorkspaceAuthorizationError extends Error {
+  constructor() {
+    super('An active workspace administrator membership is required.');
+    this.name = 'WorkspaceAuthorizationError';
+  }
 }
 
 function iso(value: Date | string): string {
   return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
+}
+
+async function requireActiveWorkspaceAdmin(
+  client: import('pg').PoolClient,
+  workspaceId: string,
+  actorUserId: string
+): Promise<void> {
+  // Lock the actor membership and workspace to serialize privileged writes
+  // against concurrent membership revocation and workspace suspension.
+  const result = await client.query(
+    `SELECT m.role
+     FROM workspace_memberships m
+     INNER JOIN workspaces w ON w.id = m.workspace_id
+     WHERE m.workspace_id = $1
+       AND m.user_id = $2
+       AND m.status = 'active'
+       AND w.status = 'active'
+     FOR UPDATE OF m, w`,
+    [workspaceId, actorUserId]
+  );
+  if (result.rows[0]?.role !== 'admin') throw new WorkspaceAuthorizationError();
+}
+
+async function appendWorkspaceAudit(
+  client: import('pg').PoolClient,
+  input: {
+    workspaceId: string;
+    actorUserId: string;
+    action: 'workspace.member.added' | 'workspace.integration.created' | 'workspace.integration.revoked';
+    targetType: 'membership' | 'integration';
+    targetId: string;
+    metadata?: Record<string, string | number | boolean>;
+  }
+): Promise<void> {
+  await client.query(
+    `INSERT INTO workspace_audit_logs
+       (id, workspace_id, actor_user_id, action, target_type, target_id, metadata)
+     VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)`,
+    [
+      randomUUID(),
+      input.workspaceId,
+      input.actorUserId,
+      input.action,
+      input.targetType,
+      input.targetId,
+      JSON.stringify(input.metadata ?? {})
+    ]
+  );
 }
 
 export function hashWorkspaceIntegrationToken(token: string): string {
@@ -150,6 +205,7 @@ export class PostgresWorkspaceRepository implements WorkspaceRepository {
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
+      await requireActiveWorkspaceAdmin(client, workspaceId, actorUserId);
       const user = await client.query(
         'SELECT id, email FROM users WHERE LOWER(email) = LOWER($1) AND is_active = TRUE LIMIT 1',
         [email]
@@ -187,6 +243,14 @@ export class PostgresWorkspaceRepository implements WorkspaceRepository {
           createdAt: iso(row.created_at)
         } : null;
       }
+      await appendWorkspaceAudit(client, {
+        workspaceId,
+        actorUserId,
+        action: 'workspace.member.added',
+        targetType: 'membership',
+        targetId: inserted.rows[0].user_id,
+        metadata: { role: inserted.rows[0].role as WorkspaceRole }
+      });
       await client.query('COMMIT');
       return {
         id: inserted.rows[0].user_id,
@@ -212,12 +276,31 @@ export class PostgresWorkspaceRepository implements WorkspaceRepository {
     const token = randomBytes(32).toString('base64url');
     const tokenHash = hashWorkspaceIntegrationToken(token);
     const id = randomUUID();
-    await pool.query(
-      `INSERT INTO workspace_integrations
-         (id, workspace_id, name, token_hash, permissions, created_by_user_id)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [id, input.workspaceId, input.name, tokenHash, input.permissions, input.actorUserId]
-    );
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await requireActiveWorkspaceAdmin(client, input.workspaceId, input.actorUserId);
+      await client.query(
+        `INSERT INTO workspace_integrations
+           (id, workspace_id, name, token_hash, permissions, created_by_user_id)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [id, input.workspaceId, input.name, tokenHash, input.permissions, input.actorUserId]
+      );
+      await appendWorkspaceAudit(client, {
+        workspaceId: input.workspaceId,
+        actorUserId: input.actorUserId,
+        action: 'workspace.integration.created',
+        targetType: 'integration',
+        targetId: id,
+        metadata: { name: input.name, permissions: input.permissions.join(',') }
+      });
+      await client.query('COMMIT');
+    } catch (error) {
+      try { await client.query('ROLLBACK'); } catch { /* preserve original error */ }
+      throw error;
+    } finally {
+      client.release();
+    }
     return {
       id,
       workspaceId: input.workspaceId,
@@ -248,15 +331,35 @@ export class PostgresWorkspaceRepository implements WorkspaceRepository {
     } : null;
   }
 
-  async revokeIntegration(workspaceId: string, integrationId: string): Promise<boolean> {
-    const result = await pool.query(
-      `UPDATE workspace_integrations
-       SET status = 'revoked', revoked_at = NOW()
-       WHERE workspace_id = $1 AND id = $2 AND status = 'active'
-       RETURNING id`,
-      [workspaceId, integrationId]
-    );
-    return (result.rowCount ?? 0) > 0;
+  async revokeIntegration(workspaceId: string, integrationId: string, actorUserId: string): Promise<boolean> {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await requireActiveWorkspaceAdmin(client, workspaceId, actorUserId);
+      const result = await client.query(
+        `UPDATE workspace_integrations
+         SET status = 'revoked', revoked_at = NOW()
+         WHERE workspace_id = $1 AND id = $2 AND status = 'active'
+         RETURNING id`,
+        [workspaceId, integrationId]
+      );
+      if (result.rowCount) {
+        await appendWorkspaceAudit(client, {
+          workspaceId,
+          actorUserId,
+          action: 'workspace.integration.revoked',
+          targetType: 'integration',
+          targetId: integrationId
+        });
+      }
+      await client.query('COMMIT');
+      return (result.rowCount ?? 0) > 0;
+    } catch (error) {
+      try { await client.query('ROLLBACK'); } catch { /* preserve original error */ }
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 }
 
