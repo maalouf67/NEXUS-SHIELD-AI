@@ -42,6 +42,14 @@ describe.skipIf(!enabled)('PostgreSQL workspace isolation foundation', () => {
     expect(await repository.findActiveMembership(userA, workspaceB)).toBeNull();
     expect(await repository.findActiveMembership(userB, workspaceA)).toBeNull();
 
+    const invitedMember = await repository.addMemberByEmail(workspaceA, emailB, 'viewer', userA);
+    expect(invitedMember).toMatchObject({ id: userB, role: 'viewer', status: 'active' });
+    const memberAudit = await pool.query(
+      "SELECT action, actor_user_id, target_id FROM workspace_audit_logs WHERE workspace_id = $1 AND action = 'workspace.member.added' AND target_id = $2",
+      [workspaceA, userB]
+    );
+    expect(memberAudit.rows).toMatchObject([{ action: 'workspace.member.added', actor_user_id: userA, target_id: userB }]);
+
     await pool.query(
       'INSERT INTO assets (id, workspace_id, asset_type, name) VALUES ($1, $2, \'server\', \'workspace A asset\'), ($3, $4, \'server\', \'workspace B asset\')',
       [assetA, workspaceA, assetB, workspaceB]
@@ -113,6 +121,14 @@ describe.skipIf(!enabled)('PostgreSQL workspace isolation foundation', () => {
       permissions: 'events:write'
     });
     expect(JSON.stringify(createdAudit.rows[0].metadata)).not.toContain(created.token);
+    await expect(pool.query(
+      "UPDATE workspace_audit_logs SET metadata = '{}'::jsonb WHERE workspace_id = $1 AND target_id = $2",
+      [workspaceA, created.id]
+    )).rejects.toMatchObject({ code: '55000' });
+    await expect(pool.query(
+      'DELETE FROM workspace_audit_logs WHERE workspace_id = $1 AND target_id = $2',
+      [workspaceA, created.id]
+    )).rejects.toMatchObject({ code: '55000' });
 
     await expect(repository.revokeIntegration(workspaceA, created.id, userB))
       .rejects.toMatchObject({ name: 'WorkspaceAuthorizationError' });
