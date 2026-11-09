@@ -51,6 +51,7 @@ score_threat_events <- function(events, velocity_window_hours = 24) {
 
   data.frame(
     risk_score = round(risk, 2),
+    event_velocity_24h = velocity_counts,
     anomaly_z = round(robust_z_score(velocity_counts), 4),
     model_version = "nexus-r-baseline-0.1.0",
     stringsAsFactors = FALSE
