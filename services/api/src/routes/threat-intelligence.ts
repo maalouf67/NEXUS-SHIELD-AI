@@ -3,7 +3,7 @@ import { Router, type RequestHandler } from 'express';
 import { z } from 'zod';
 
 import { requireAuth } from '../auth/auth.middleware.js';
-import { pool } from '../db/pool.js';
+import { withWorkspaceTransaction } from '../db/workspace-transaction.js';
 import { createRequireWorkspace, requireWorkspaceRole } from '../workspaces/workspace.middleware.js';
 
 const EventIdSchema = z.string().uuid();
@@ -24,7 +24,7 @@ export function createThreatIntelligenceRouter(
     requireWorkspaceRole('admin', 'analyst', 'viewer'),
     async (req, res) => {
       try {
-        const result = await pool.query(
+        const result = await withWorkspaceTransaction(req.workspaceContext!.id, (client) => client.query(
           `SELECT
              (SELECT COUNT(*)::int FROM threat_indicators
                WHERE workspace_id = $1 AND (expires_at IS NULL OR expires_at > NOW())) AS active_indicators,
@@ -37,7 +37,7 @@ export function createThreatIntelligenceRouter(
              (SELECT COUNT(*)::int FROM security_events
                WHERE workspace_id = $1 AND received_at >= NOW() - INTERVAL '24 hours') AS events_24h`,
           [req.workspaceContext!.id]
-        );
+        ));
         const row = result.rows[0] ?? {};
         return res.status(200).json({
           status: 'ok',
@@ -79,7 +79,7 @@ export function createThreatIntelligenceRouter(
       try {
         // One data-modifying CTE keeps the assessment and optional anomaly
         // record atomic. Every read and write is constrained to this workspace.
-        const result = await pool.query(
+        const result = await withWorkspaceTransaction(req.workspaceContext!.id, (client) => client.query(
           `WITH selected_event AS (
              SELECT id, event_type, severity, observed_at
                FROM security_events
@@ -142,7 +142,7 @@ export function createThreatIntelligenceRouter(
                   EXISTS (SELECT 1 FROM anomaly) AS anomaly_recorded
              FROM assessment CROSS JOIN scored`,
           [workspaceId, parsedId.data, assessmentId, anomalyId, anomalyThreshold]
-        );
+        ));
         const row = result.rows[0];
         if (!row) return res.status(404).json({ error: 'SECURITY_EVENT_NOT_FOUND' });
 
@@ -183,7 +183,7 @@ export function createThreatIntelligenceRouter(
         return res.status(400).json({ error: 'INVALID_QUERY', details: parsed.error.flatten() });
       }
       try {
-        const result = await pool.query(
+        const result = await withWorkspaceTransaction(req.workspaceContext!.id, (client) => client.query(
           `SELECT id, security_event_id, risk_score, confidence, assessment_method,
                   model_version, evidence, assessed_at
              FROM threat_risk_assessments
@@ -191,7 +191,7 @@ export function createThreatIntelligenceRouter(
             ORDER BY assessed_at DESC, id
             LIMIT $2 OFFSET $3`,
           [req.workspaceContext!.id, parsed.data.limit, parsed.data.offset]
-        );
+        ));
         return res.status(200).json({
           status: 'ok',
           assessments: result.rows,
