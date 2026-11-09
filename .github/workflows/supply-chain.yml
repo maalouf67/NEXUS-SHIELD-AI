@@ -105,7 +105,7 @@ jobs:
           sbom-path: ${{ runner.temp }}/nexus-sbom/nexus-source.spdx.json
 
       - name: Verify the generated source SBOM attestation
-        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        if: github.event_name != 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
