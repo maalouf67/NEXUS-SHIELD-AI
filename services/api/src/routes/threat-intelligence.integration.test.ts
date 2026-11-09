@@ -88,6 +88,7 @@ const integrationSuite = describe.skipIf(!enabled)('PostgreSQL threat intelligen
       await pool.query('DELETE FROM security_events WHERE workspace_id = ANY($1::uuid[])', [workspaceIds]);
       await pool.query('DELETE FROM workspaces WHERE id = ANY($1::uuid[])', [workspaceIds]);
     } finally {
+      await pool.end();
       if (originalSecret === undefined) delete process.env.JWT_SECRET;
       else process.env.JWT_SECRET = originalSecret;
     }
