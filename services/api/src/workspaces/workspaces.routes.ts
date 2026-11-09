@@ -78,10 +78,7 @@ export function createWorkspacesRouter(repository: WorkspaceRepository = workspa
       const members = await repository.listMembers(req.workspaceContext!.id);
       res.setHeader('Cache-Control', 'no-store');
       return res.status(200).json({ members });
-    } catch (error) {
-      if (error instanceof WorkspaceAuthorizationError) {
-        return res.status(403).json({ error: 'WORKSPACE_ADMIN_REQUIRED' });
-      }
+    } catch {
       return res.status(503).json({ error: 'WORKSPACE_MEMBER_STORE_UNAVAILABLE' });
     }
   });
@@ -100,7 +97,10 @@ export function createWorkspacesRouter(repository: WorkspaceRepository = workspa
       );
       if (!member) return res.status(404).json({ error: 'ACTIVE_USER_NOT_FOUND' });
       return res.status(200).json({ member });
-    } catch {
+    } catch (error) {
+      if (error instanceof WorkspaceAuthorizationError) {
+        return res.status(403).json({ error: 'WORKSPACE_ADMIN_REQUIRED' });
+      }
       return res.status(503).json({ error: 'WORKSPACE_MEMBER_STORE_UNAVAILABLE' });
     }
   });
