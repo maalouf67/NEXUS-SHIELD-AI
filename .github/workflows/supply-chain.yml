@@ -6,6 +6,8 @@ on:
   pull_request:
     branches: ["main", "feat/**"]
   workflow_dispatch:
+  schedule:
+    - cron: "20 9 * * 1"
 
 permissions:
   contents: read
@@ -83,6 +85,51 @@ jobs:
             jq -e '.bomFormat == "CycloneDX" and (.components | type == "array")' "$file" >/dev/null
           done
 
+      - name: Restore main-branch vulnerability baseline
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/nexus-vulnerability-baseline.json
+          key: nexus-sbom-vulnerability-baseline-${{ github.sha }}-${{ github.run_id }}
+          restore-keys: |
+            nexus-sbom-vulnerability-baseline-
+
+      - name: Set up pinned Trivy CLI for SBOM scanning
+        uses: aquasecurity/setup-trivy@v0.2.0
+        with:
+          version: v0.76.1
+          cache: true
+
+      - name: Test SBOM vulnerability comparison logic
+        run: node --test scripts/supply-chain/compare-sbom-vulnerabilities.test.mjs
+
+      - name: Scan generated CycloneDX SBOMs for vulnerabilities
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/nexus-vuln"
+          trivy sbom "$RUNNER_TEMP/nexus-sbom/nexus-source.cdx.json" --scanners vuln --format json --output "$RUNNER_TEMP/nexus-vuln/source.json"
+          trivy sbom "$RUNNER_TEMP/nexus-sbom/nexus-postgres.cdx.json" --scanners vuln --format json --output "$RUNNER_TEMP/nexus-vuln/postgres.json"
+          trivy sbom "$RUNNER_TEMP/nexus-sbom/nexus-ai.cdx.json" --scanners vuln --format json --output "$RUNNER_TEMP/nexus-vuln/ai.json"
+          trivy sbom "$RUNNER_TEMP/nexus-sbom/clamav-1.5.4.cdx.json" --scanners vuln --format json --output "$RUNNER_TEMP/nexus-vuln/clamav.json"
+
+      - name: Compare SBOM vulnerabilities against the main baseline
+        id: vulnerability-comparison
+        env:
+          NEXUS_VULN_REPORT_DIR: ${{ runner.temp }}/nexus-vuln
+          NEXUS_VULN_BASELINE_FILE: ${{ runner.temp }}/nexus-vulnerability-baseline.json
+          GITHUB_REF: ${{ github.ref }}
+          GITHUB_SHA: ${{ github.sha }}
+          GITHUB_STEP_SUMMARY: ${{ github.step_summary }}
+          GITHUB_OUTPUT: ${{ github.output }}
+        run: node scripts/supply-chain/compare-sbom-vulnerabilities.mjs
+
+      - name: Save refreshed main-branch vulnerability baseline
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && steps.vulnerability-comparison.outputs.baseline_written == 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/nexus-vulnerability-baseline.json
+          key: nexus-sbom-vulnerability-baseline-${{ github.sha }}-${{ github.run_id }}
+
       - name: Create an immutable source archive and checksums
         shell: bash
         run: |
@@ -122,5 +169,6 @@ jobs:
             ${{ runner.temp }}/nexus-source.tar.gz
             ${{ runner.temp }}/nexus-sbom/*.json
             ${{ runner.temp }}/nexus-sbom/SHA256SUMS
+            ${{ runner.temp }}/nexus-vuln/*.json
           if-no-files-found: warn
           retention-days: 30
