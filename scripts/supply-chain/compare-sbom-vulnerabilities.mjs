@@ -108,7 +108,7 @@ function main() {
     schemaVersion: 1,
     generatedAt: new Date().toISOString(),
     sourceCommit: process.env.GITHUB_SHA || 'unknown',
-    scanner: { name: 'Trivy', version: '0.76.1' },
+    scanner: { name: 'Trivy', version: '0.76.2' },
     targets: collected.summaries,
     findings: collected.findings
   };
