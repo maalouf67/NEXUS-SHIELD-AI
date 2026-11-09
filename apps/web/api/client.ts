@@ -31,6 +31,7 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}): Promi
     '/api/nexus/alerts',
     '/api/nexus/security-events',
     '/api/nexus/threats',
+    '/api/nexus/threat-intelligence',
     '/api/nexus/assets',
     '/api/nexus/attack-paths',
     '/api/nexus/workspaces/members',
