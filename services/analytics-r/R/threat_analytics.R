@@ -34,14 +34,18 @@ score_threat_events <- function(events, velocity_window_hours = 24) {
   if (anyNA(observed)) stop("observed_at contains invalid timestamps")
 
   base <- severity_weight(events$severity)
-  event_hour <- as.numeric(cut(observed, breaks = "hour"))
-  hourly_counts <- ave(rep(1, length(observed)), event_hour, FUN = sum)
-  velocity <- pmin(20, pmax(0, (hourly_counts - 1) * 2))
+  observed_seconds <- as.numeric(observed)
+  window_seconds <- velocity_window_hours * 3600
+  velocity_counts <- vapply(seq_along(observed_seconds), function(i) {
+    sum(observed_seconds >= observed_seconds[i] - window_seconds &
+        observed_seconds <= observed_seconds[i])
+  }, integer(1))
+  velocity <- pmin(20, pmax(0, (velocity_counts - 1) * 2))
   risk <- pmin(100, pmax(0, base + velocity))
 
   data.frame(
     risk_score = round(risk, 2),
-    anomaly_z = round(robust_z_score(hourly_counts), 4),
+    anomaly_z = round(robust_z_score(velocity_counts), 4),
     model_version = "nexus-r-baseline-0.1.0",
     stringsAsFactors = FALSE
   )
