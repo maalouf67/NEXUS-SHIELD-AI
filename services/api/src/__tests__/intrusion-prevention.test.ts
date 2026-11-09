@@ -33,7 +33,7 @@ describe('active defense login protection', () => {
     app.use(express.json());
     app.use('/api', createAuthRouter(
       undefined,
-      createLoginAttemptLimiter({ windowMs: 60_000, limit: 1, useSharedStore: false })
+      createLoginAttemptLimiter({ windowMs: 60_000, limit: 1, useSharedStore: false, onLimit: vi.fn() })
     ));
 
     await request(app).post('/api/auth/login')
