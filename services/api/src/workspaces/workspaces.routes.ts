@@ -5,6 +5,7 @@ import { requireAuth } from '../auth/auth.middleware.js';
 import { createRequireWorkspace, requireWorkspaceRole } from './workspace.middleware.js';
 import {
   workspaceRepository,
+  WorkspaceAuthorizationError,
   type WorkspaceRepository,
   type WorkspaceRole,
   type WorkspaceIntegrationPermission
@@ -77,7 +78,10 @@ export function createWorkspacesRouter(repository: WorkspaceRepository = workspa
       const members = await repository.listMembers(req.workspaceContext!.id);
       res.setHeader('Cache-Control', 'no-store');
       return res.status(200).json({ members });
-    } catch {
+    } catch (error) {
+      if (error instanceof WorkspaceAuthorizationError) {
+        return res.status(403).json({ error: 'WORKSPACE_ADMIN_REQUIRED' });
+      }
       return res.status(503).json({ error: 'WORKSPACE_MEMBER_STORE_UNAVAILABLE' });
     }
   });
@@ -115,7 +119,10 @@ export function createWorkspacesRouter(repository: WorkspaceRepository = workspa
       });
       res.setHeader('Cache-Control', 'no-store');
       return res.status(201).json({ integration });
-    } catch {
+    } catch (error) {
+      if (error instanceof WorkspaceAuthorizationError) {
+        return res.status(403).json({ error: 'WORKSPACE_ADMIN_REQUIRED' });
+      }
       return res.status(503).json({ error: 'WORKSPACE_INTEGRATION_STORE_UNAVAILABLE' });
     }
   });
@@ -124,11 +131,14 @@ export function createWorkspacesRouter(repository: WorkspaceRepository = workspa
     const id = z.string().uuid().safeParse(req.params.integrationId);
     if (!id.success) return res.status(400).json({ error: 'INVALID_INTEGRATION_ID' });
     try {
-      const revoked = await repository.revokeIntegration(req.workspaceContext!.id, id.data);
+      const revoked = await repository.revokeIntegration(req.workspaceContext!.id, id.data, req.authUser!.id);
       return revoked
         ? res.status(200).json({ success: true })
         : res.status(404).json({ error: 'INTEGRATION_NOT_FOUND' });
-    } catch {
+    } catch (error) {
+      if (error instanceof WorkspaceAuthorizationError) {
+        return res.status(403).json({ error: 'WORKSPACE_ADMIN_REQUIRED' });
+      }
       return res.status(503).json({ error: 'WORKSPACE_INTEGRATION_STORE_UNAVAILABLE' });
     }
   });
