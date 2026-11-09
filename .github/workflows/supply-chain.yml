@@ -90,12 +90,15 @@ jobs:
           git archive --format=tar.gz \
             --output="$RUNNER_TEMP/nexus-source.tar.gz" "$GITHUB_SHA"
           test -s "$RUNNER_TEMP/nexus-source.tar.gz"
-          sha256sum "$RUNNER_TEMP/nexus-source.tar.gz" "$RUNNER_TEMP"/nexus-sbom/*.json \
-            > "$RUNNER_TEMP/nexus-sbom/SHA256SUMS"
+          (
+            cd "$RUNNER_TEMP"
+            sha256sum nexus-source.tar.gz nexus-sbom/*.json > nexus-sbom/SHA256SUMS
+            sha256sum --check nexus-sbom/SHA256SUMS
+          )
           cat "$RUNNER_TEMP/nexus-sbom/SHA256SUMS"
 
       - name: Generate signed SPDX SBOM attestation
-        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        if: github.event_name != 'pull_request'
         uses: actions/attest@v4.2.2
         with:
           subject-path: ${{ runner.temp }}/nexus-source.tar.gz
