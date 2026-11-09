@@ -34,7 +34,7 @@ score_threat_events <- function(events, velocity_window_hours = 24) {
   if (inherits(raw_observed, "POSIXt")) {
     observed <- as.POSIXct(raw_observed, tz = "UTC")
   } else {
-    raw_observed <- as.character(raw_observed)
+    raw_observed <- sub("Z$", "", as.character(raw_observed))
     # Parse ISO-8601 UTC timestamps explicitly; relying on R's default format
     # can discard the time component on some platform/R locale combinations.
     observed <- as.POSIXct(raw_observed, format = "%Y-%m-%dT%H:%M:%OS", tz = "UTC")
