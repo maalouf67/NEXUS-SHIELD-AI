@@ -100,6 +100,15 @@ describe('OCSF 1.9.0 security event normalizer', () => {
     expect(normalized.message).toBe('authentication failure');
   });
 
+  it('removes repeated non-whitespace control characters from the summary', () => {
+    const normalized = normalizeSecurityEventToOcsf({
+      ...event,
+      summary: 'first\u0000second\u0007third'
+    });
+    expect(normalized.message).toBe('first second third');
+    expect(/[\u0000-\u001f\u007f]/.test(normalized.message)).toBe(false);
+  });
+
   it('omits an absent asset identifier', () => {
     const normalized = normalizeSecurityEventToOcsf({ ...event, assetId: undefined });
     expect(normalized.unmapped).toEqual({ nexus_event_type: 'auth.login.failed' });
