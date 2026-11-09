@@ -117,10 +117,6 @@ jobs:
         env:
           NEXUS_VULN_REPORT_DIR: ${{ runner.temp }}/nexus-vuln
           NEXUS_VULN_BASELINE_FILE: ${{ runner.temp }}/nexus-vulnerability-baseline.json
-          GITHUB_REF: ${{ github.ref }}
-          GITHUB_SHA: ${{ github.sha }}
-          GITHUB_STEP_SUMMARY: ${{ github.step_summary }}
-          GITHUB_OUTPUT: ${{ github.output }}
         run: node scripts/supply-chain/compare-sbom-vulnerabilities.mjs
 
       - name: Save refreshed main-branch vulnerability baseline
@@ -139,7 +135,7 @@ jobs:
           test -s "$RUNNER_TEMP/nexus-source.tar.gz"
           (
             cd "$RUNNER_TEMP"
-            sha256sum nexus-source.tar.gz nexus-sbom/*.json > nexus-sbom/SHA256SUMS
+            sha256sum nexus-source.tar.gz nexus-sbom/*.json nexus-vuln/*.json > nexus-sbom/SHA256SUMS
             sha256sum --check nexus-sbom/SHA256SUMS
           )
           cat "$RUNNER_TEMP/nexus-sbom/SHA256SUMS"
