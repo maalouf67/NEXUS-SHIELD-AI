@@ -2,6 +2,7 @@ import { Router, type RequestHandler } from 'express';
 import { z } from 'zod';
 
 import { requireAuth } from '../auth/auth.middleware.js';
+import { OcsfNormalizationError, OCSF_SCHEMA_VERSION } from './ocsf-normalizer.js';
 import { createRequireWorkspace, createRequireWorkspaceIntegration, requireWorkspaceRole } from '../workspaces/workspace.middleware.js';
 import {
   securityEventRepository,
@@ -85,13 +86,20 @@ export function createSecurityEventsRouter(
           status: 'accepted',
           ...result,
           batch_size: parsed.data.events.length,
+          ocsf_schema_version: OCSF_SCHEMA_VERSION,
           idempotent_key: 'source + externalEventId',
           incidents_created: 0,
           alerts_created: 0,
           automated_response_performed: false,
           note: 'Events were stored for analyst review. Ingestion does not independently verify detections or perform containment.'
         });
-      } catch {
+      } catch (error) {
+        if (error instanceof OcsfNormalizationError) {
+          return res.status(400).json({
+            error: 'INVALID_OCSF_EVENT',
+            code: error.code
+          });
+        }
         return res.status(503).json({
           error: 'SECURITY_EVENT_STORE_UNAVAILABLE',
           message: 'The event batch could not be committed. No partial batch was retained.'

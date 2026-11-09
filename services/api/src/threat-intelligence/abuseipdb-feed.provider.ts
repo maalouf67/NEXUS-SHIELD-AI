@@ -1,4 +1,5 @@
 import { normalizePublicIp } from '../ip-reputation/ip-reputation.provider.js';
+import { withOtelSpan } from '../observability/otel-tracing.middleware.js';
 
 export interface AbuseIpDbFeedIndicator {
   ipAddress: string;
@@ -48,13 +49,17 @@ export class AbuseIpDbBlacklistProvider {
 
     let response: Response;
     try {
-      response = await this.fetcher(endpoint, {
-        method: 'GET',
-        headers: { Accept: 'application/json', Key: apiKey },
-        cache: 'no-store',
-        redirect: 'error',
-        signal: AbortSignal.timeout(15000)
-      });
+      response = await withOtelSpan(
+        'http.client.abuseipdb.blacklist.fetch',
+        { 'server.address': 'api.abuseipdb.com', 'http.request.method': 'GET' },
+        () => this.fetcher(endpoint, {
+          method: 'GET',
+          headers: { Accept: 'application/json', Key: apiKey },
+          cache: 'no-store',
+          redirect: 'error',
+          signal: AbortSignal.timeout(15000)
+        })
+      );
     } catch (error) {
       if (error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError')) {
         throw new ThreatFeedProviderError('TIMEOUT');

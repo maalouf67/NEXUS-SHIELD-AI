@@ -53,8 +53,12 @@ describe.skipIf(!enabled)('PostgreSQL security event ingestion integration', () 
 
     const primary = await repository.list(workspaceId, { source, limit: 100, offset: 0 });
     const secondary = await repository.list(otherWorkspaceId, { source, limit: 100, offset: 0 });
-    expect(primary.events.some((item) => item.externalEventId === event.externalEventId)).toBe(true);
-    expect(secondary.events.some((item) => item.externalEventId === event.externalEventId)).toBe(true);
+    const primaryEvent = primary.events.find((item) => item.externalEventId === event.externalEventId);
+    const secondaryEvent = secondary.events.find((item) => item.externalEventId === event.externalEventId);
+    expect(primaryEvent?.ocsfEvent).toMatchObject({ class_uid: 0, metadata: { source, version: '1.9.0' } });
+    expect(secondaryEvent?.ocsfEvent).toMatchObject({ class_uid: 0, metadata: { source, version: '1.9.0' } });
+    expect(primaryEvent?.ocsfEvent?.unmapped.nexus_event_type).toBe(event.eventType);
+    expect(secondaryEvent?.ocsfEvent?.unmapped.nexus_event_type).toBe(event.eventType);
     expect(primary.events.find((item) => item.externalEventId === event.externalEventId)?.id)
       .not.toBe(secondary.events.find((item) => item.externalEventId === event.externalEventId)?.id);
   });
@@ -84,6 +88,12 @@ describe.skipIf(!enabled)('PostgreSQL security event ingestion integration', () 
     });
     expect(fresh.total).toBe(1);
     expect(fresh.events[0]?.attributes.signal).toBe('authentication');
+    expect(fresh.events[0]?.ocsfEvent?.class_uid).toBe(0);
+    const projectionCount = await pool.query(
+      'SELECT COUNT(*)::int AS count FROM security_event_ocsf_records WHERE workspace_id = $1 AND security_event_id = $2',
+      [workspaceId, fresh.events[0]?.id]
+    );
+    expect(projectionCount.rows[0]?.count).toBe(1);
 
     const review = await repository.review(workspaceId, fresh.events[0].id, actorId, 'CI analyst review.');
     expect(review.outcome).toBe('reviewed');
