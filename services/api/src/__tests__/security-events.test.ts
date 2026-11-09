@@ -7,6 +7,7 @@ import request from 'supertest';
 import { authTokenConfig } from '../auth/auth.middleware.js';
 import { registerTestAuthSession } from '../auth/auth-session.repository.js';
 import { createSecurityEventsRouter } from '../security-events/security-events.routes.js';
+import { normalizeSecurityEventToOcsf } from '../security-events/ocsf-normalizer.js';
 import type {
   IngestSecurityEventsResult,
   ReviewSecurityEventResult,
@@ -41,7 +42,8 @@ const sampleEvent: SecurityEvent = {
   receivedAt: '2026-11-03T04:01:00.000Z',
   reviewStatus: 'new',
   reviewedAt: null,
-  reviewedByUserId: null
+  reviewedByUserId: null,
+  ocsfEvent: normalizeSecurityEventToOcsf(sampleInput)
 };
 
 function createRepository(
@@ -153,6 +155,7 @@ describe('Normalized security event API', () => {
     expect(response.body.inserted).toBe(1);
     expect(response.body.duplicates).toBe(0);
     expect(response.body.incidents_created).toBe(0);
+    expect(response.body.ocsf_schema_version).toBe('1.9.0');
     expect(response.body.automated_response_performed).toBe(false);
   });
 
@@ -202,6 +205,7 @@ describe('Normalized security event API', () => {
 
     expect(response.status).toBe(200);
     expect(response.body.events[0].source).toBe('test-edr');
+    expect(response.body.events[0].ocsfEvent.class_uid).toBe(0);
     expect(response.body.pagination.total).toBe(1);
   });
 
