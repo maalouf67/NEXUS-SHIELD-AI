@@ -21,7 +21,7 @@ The outbox closes the database-to-broker dual-write gap. A crash after publish b
 
 ## Database and tenant isolation
 
-Migration `012_agent_platform_foundation.sql` is additive. Both tables use forced PostgreSQL RLS and policies bound to `current_setting('nexus.tenant_id', true)`. The application role must be a non-superuser, must not have `BYPASSRLS`, and must not own these tables. Use a dedicated runtime role with only required SELECT/INSERT/UPDATE privileges; use a separate migration owner to apply DDL. Missing tenant context returns no rows and rejects writes. Never use a pooled connection outside the transaction after setting tenant context.
+Migration `013_agent_platform_foundation.sql` is additive. Both tables use forced PostgreSQL RLS and policies bound to `current_setting('nexus.tenant_id', true)`. The application role must be a non-superuser, must not have `BYPASSRLS`, and must not own these tables. Use a dedicated runtime role with only required SELECT/INSERT/UPDATE privileges; use a separate migration owner to apply DDL. Missing tenant context returns no rows and rejects writes. Never use a pooled connection outside the transaction after setting tenant context.
 
 Before production, validate that the target PostgreSQL version provides `gen_random_uuid()` (or adapt through a reviewed migration), grant least-privilege table/sequence access, and run cross-tenant negative tests with the exact production runtime role. Existing workspace records are not modified and no existing tables are altered.
 
