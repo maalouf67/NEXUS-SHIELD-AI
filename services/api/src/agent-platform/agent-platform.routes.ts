@@ -1,8 +1,9 @@
 import { randomUUID } from 'node:crypto';
-import { Router } from 'express';
+import { Router, type RequestHandler } from 'express';
 import { z } from 'zod';
 
 import { requireAuth } from '../auth/auth.middleware.js';
+import { agentPlatformRateLimiter } from './agent-platform.rate-limit.js';
 import {
   createRequireWorkspace,
   requireWorkspaceRole
@@ -31,7 +32,8 @@ type TriageSubmitter = (
 
 export function createAgentPlatformRouter(
   repository: WorkspaceRepository = workspaceRepository,
-  submit: TriageSubmitter = submitSecurityTriage
+  submit: TriageSubmitter = submitSecurityTriage,
+  rateLimiter: RequestHandler = agentPlatformRateLimiter
 ) {
   const router = Router();
   const requireWorkspace = createRequireWorkspace(repository);
@@ -41,6 +43,7 @@ export function createAgentPlatformRouter(
     requireAuth,
     requireWorkspace,
     requireWorkspaceRole('admin', 'analyst'),
+    rateLimiter,
     async (req, res) => {
       const parsed = SubmitTriageSchema.safeParse(req.body);
       if (!parsed.success) {
