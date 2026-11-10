@@ -6,9 +6,8 @@ import request from 'supertest';
 
 import { authTokenConfig } from '../auth/auth.middleware.js';
 import { registerTestAuthSession } from '../auth/auth-session.repository.js';
-import {
-  createAgentPlatformRouter
-} from './agent-platform.routes.js';
+import { createAgentPlatformRateLimiter } from './agent-platform.rate-limit.js';
+import { createAgentPlatformRouter } from './agent-platform.routes.js';
 import type {
   AgentPlatformResult,
   AgentTriageSubmission
@@ -88,7 +87,8 @@ function accessToken() {
 
 function appWith(
   repository: WorkspaceRepository,
-  submit: (input: AgentTriageSubmission) => Promise<AgentPlatformResult>
+  submit: (input: AgentTriageSubmission) => Promise<AgentPlatformResult>,
+  limiter?: RequestHandler
 ) {
   const app = express();
   app.use(express.json());
@@ -262,7 +262,6 @@ describe('authenticated agent platform gateway', () => {
     expect(response.status).toBe(502);
     expect(response.body.error).toBe('AGENT_PLATFORM_INVALID_RESPONSE');
   });
-});
 
   it('rate limits authenticated requests by workspace and user', async () => {
     const token = accessToken();
@@ -300,3 +299,4 @@ describe('authenticated agent platform gateway', () => {
     expect(second.body.error).toBe('AGENT_TRIAGE_RATE_LIMITED');
     expect(captured).toHaveLength(1);
   });
+});
