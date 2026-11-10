@@ -4,7 +4,7 @@ from nats.js.api import StreamConfig, RetentionPolicy, StorageType
 from nats.js.errors import NotFoundError
 
 STREAM = "NEXUS_AGENT_EVENTS"
-SUBJECT = "nexus.agent.events.v1"
+SUBJECT = "nexus.agent.events.*"
 
 
 async def ensure_stream(js) -> None:
