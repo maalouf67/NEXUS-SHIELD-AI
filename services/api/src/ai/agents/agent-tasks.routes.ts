@@ -50,7 +50,7 @@ export function createAgentTasksRouter(options: {
   requireAuthentication?: RequestHandler;
   requireWorkspace?: RequestHandler;
   findEvent?: FindWorkspaceEvent;
-  supervisor?: Pick<NexusSupervisor, 'executeThreatIntelligenceTask'>;
+  supervisor?: { executeThreatIntelligenceTask: (input: Parameters<NexusSupervisor['executeThreatIntelligenceTask']>[0]) => Promise<unknown> };
 } = {}) {
   const router = Router();
   const authenticate = options.requireAuthentication ?? requireAuth;
