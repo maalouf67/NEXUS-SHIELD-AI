@@ -14,7 +14,6 @@ class AgentExecutionPlan:
     output_contract: str
     read_only: bool
     workflow_execution_timeout_seconds: int
-    activity_max_attempts: int
     max_concurrent_activities: int
     max_concurrent_workflow_tasks: int
     max_activities_per_second: float
@@ -51,7 +50,6 @@ def build_execution_plan(
         output_contract=definition.output_contract,
         read_only=definition.read_only,
         workflow_execution_timeout_seconds=definition.workflow_execution_timeout_seconds,
-        activity_max_attempts=definition.activity_max_attempts,
         max_concurrent_activities=definition.max_concurrent_activities,
         max_concurrent_workflow_tasks=definition.max_concurrent_workflow_tasks,
         max_activities_per_second=definition.max_activities_per_second,
