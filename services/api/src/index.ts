@@ -21,6 +21,7 @@ import { phoneReputationRouter } from './phone-reputation/phone-reputation.route
 import { ipReputationRouter } from './ip-reputation/ip-reputation.routes.js';
 import { workspacesRouter } from './workspaces/workspaces.routes.js';
 import { otelTracingMiddleware } from './observability/otel-tracing.middleware.js';
+import { agentTasksRouter } from './ai/agents/agent-tasks.routes.js';
 
 export const app = express();
 
@@ -72,6 +73,7 @@ app.use('/api', securityEventsRouter);
 app.use('/api', malwareScanRouter);
 app.use('/api', phoneReputationRouter);
 app.use('/api', ipReputationRouter);
+app.use('/api', agentTasksRouter);
 
 app.get('/', (_req, res) => {
   res.json({
