@@ -16,7 +16,7 @@ The API runtime database role must be a dedicated non-superuser role with `NOSUP
 `PostgresAgentApprovalVerifier` atomically changes an approved record to consumed only when every action-binding field matches, the approval has not expired, the workspace is active, the requester remains an active member, and the approver remains an active workspace administrator. A replay or mismatch returns false. The verifier accepts an injectable workspace transaction runner for testing under a non-bypass role.
 
 ## Audit immutability
-Audit rows are append-only. The database trigger rejects UPDATE, DELETE, and TRUNCATE. The application repository writes only event metadata and a SHA-256 input digest; it does not persist raw tool arguments or provider secrets.
+Audit events are append-only for application operations: direct UPDATE and DELETE of event rows are rejected, and TRUNCATE is separately blocked. The one narrowly permitted database-managed change is the foreign-key `ON DELETE SET NULL` anonymization of `actor_user_id` when a referenced user is erased; the trigger allows only this nested FK action when every other event column remains byte-for-byte equivalent as JSONB. The application repository writes only event metadata and a SHA-256 input digest; it does not persist raw tool arguments or provider secrets. Runtime application credentials must not have TRUNCATE privileges.
 
 ## Operational note
 The audit log currently has no automated retention/purge workflow. Do not promise indefinite retention as a compliance guarantee; retention and workspace-erasure policy must be designed and approved before production.

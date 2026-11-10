@@ -133,6 +133,33 @@ describe.skipIf(!enabled)('NEXUS Intelligence Fabric PostgreSQL foundation', () 
     expect(await repository.consumeApproval(base)).toBe(false);
   });
 
+  it('allows only FK-driven actor anonymization when the referenced user is deleted', async () => {
+    const auditId = randomUUID();
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query("SELECT set_config('app.workspace_id', $1, TRUE)", [workspaceA]);
+      await client.query(
+        `INSERT INTO agent_tool_audit_logs (
+           id, workspace_id, run_id, request_id, agent_id, actor_user_id,
+           tool_name, tool_version, risk, event_type, input_hash, idempotency_key
+         ) VALUES ($1, $2, $3, 'request-audit-fk', 'cti-agent', $4,
+                   'cti.lookup', '1.0.0', 'read', 'started', $5, 'audit-fk-key')`,
+        [auditId, workspaceA, runId, userA, inputHash]
+      );
+
+      await client.query('DELETE FROM users WHERE id = $1', [userA]);
+      const result = await client.query(
+        'SELECT actor_user_id FROM agent_tool_audit_logs WHERE id = $1',
+        [auditId]
+      );
+      expect(result.rows[0]?.actor_user_id).toBeNull();
+    } finally {
+      await client.query('ROLLBACK');
+      client.release();
+    }
+  });
+
   it('keeps audit events append-only for an authorized workspace', async () => {
     const auditId = randomUUID();
     const client = await pool.connect();

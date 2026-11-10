@@ -70,12 +70,32 @@ CREATE INDEX IF NOT EXISTS idx_agent_tool_audit_workspace_run_created ON agent_t
 CREATE OR REPLACE FUNCTION reject_agent_tool_audit_mutation()
 RETURNS TRIGGER LANGUAGE plpgsql AS $function$
 BEGIN
-  RAISE EXCEPTION 'agent tool audit events are append-only' USING ERRCODE = '55000';
+  -- Allow only PostgreSQL's nested FK action that anonymizes the actor pointer
+  -- after the referenced user is deleted. All event content remains unchanged.
+  IF TG_OP = 'UPDATE'
+     AND pg_trigger_depth() > 1
+     AND OLD.actor_user_id IS NOT NULL
+     AND NEW.actor_user_id IS NULL
+     AND (to_jsonb(OLD) - 'actor_user_id') = (to_jsonb(NEW) - 'actor_user_id') THEN
+    RETURN NEW;
+  END IF;
+
+  RAISE EXCEPTION 'agent tool audit events are append-only'
+    USING ERRCODE = '55000';
 END;
 $function$;
+
 DROP TRIGGER IF EXISTS trg_agent_tool_audit_immutable ON agent_tool_audit_logs;
+DROP TRIGGER IF EXISTS trg_agent_tool_audit_no_truncate ON agent_tool_audit_logs;
+
+-- Row-level enforcement avoids rejecting no-op FK checks against an empty table.
 CREATE TRIGGER trg_agent_tool_audit_immutable
-  BEFORE UPDATE OR DELETE OR TRUNCATE ON agent_tool_audit_logs
+  BEFORE UPDATE OR DELETE ON agent_tool_audit_logs
+  FOR EACH ROW EXECUTE FUNCTION reject_agent_tool_audit_mutation();
+
+-- Keep bulk truncation blocked independently of row-level UPDATE/DELETE checks.
+CREATE TRIGGER trg_agent_tool_audit_no_truncate
+  BEFORE TRUNCATE ON agent_tool_audit_logs
   FOR EACH STATEMENT EXECUTE FUNCTION reject_agent_tool_audit_mutation();
 
 ALTER TABLE agent_runs ENABLE ROW LEVEL SECURITY;
