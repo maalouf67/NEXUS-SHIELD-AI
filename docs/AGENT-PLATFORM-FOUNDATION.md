@@ -8,6 +8,16 @@ This additive foundation introduces one executable agent, the Temporal workflow/
 
 `nexus.security-triage.v1` classifies analyst- or trusted-source-submitted security event text using explicit, versioned indicators. The output includes classification, score, matched evidence, recommendations, and `read_only=true`. It does not scan hosts, validate exploitability, call external threat feeds, or block traffic. This first vertical slice is deterministic rather than an LLM-backed reasoning agent; a model adapter is a later, separately governed addition.
 
+## Agent registry and orchestration guardrails
+
+The initial registry is immutable and code-reviewed. It currently contains exactly one enabled executable entry: `nexus.security-triage.v1`. Each entry declares a semantic version, supported capabilities, input/output contract versions, approved workflow name and task queue, authorized workspace roles, read-only status, activity/workflow concurrency ceilings, task-queue activity rate, timeout and retry limits.
+
+The orchestrator creates an execution plan only by resolving an agent ID and requested capability through this registry. Unknown agents, unregistered capabilities, invalid tenant/task identity and agents marked as non-read-only are rejected before a Temporal workflow is started. The client cannot select a workflow name, Temporal task queue, worker limit or retry policy. There is no dynamic Python import or client-defined agent registration.
+
+The current worker is capped at four concurrent activities and eight workflow tasks, with a five-activities-per-second worker limit and a five-activities-per-second Temporal task-queue limit. The worker-level cap applies per worker process; the task-queue limit is enforced by Temporal for the task queue. These are global queue/worker guardrails, not per-tenant concurrency quotas. Per-tenant fair scheduling and quotas must be implemented and load-tested before horizontal expansion.
+
+Adding another agent requires a reviewed registry entry, versioned input/output contracts, a dedicated workflow/activity implementation, permissions and resource limits, unit and isolation tests, and live integration evidence. A name in the registry is not proof of an implemented or enabled capability.
+
 ## Runtime flow
 
 1. An analyst/admin calls the Express endpoint `POST /api/agents/security-triage` with a valid bearer session and `X-NEXUS-WORKSPACE-ID`.
@@ -92,5 +102,7 @@ Expected result: `critical` classification, score 95, evidence referencing the s
 - [ ] Configure NATS account/subject ACLs so tenant consumers cannot subscribe across tenant subjects; subject naming by itself is not an authorization boundary.
 - Configure a separate migration role and least-privilege runtime DB role; test RLS with non-owner credentials.
 - Add integration tests for retry, worker restart, duplicate delivery, tenant isolation, malformed input, and database/broker outage.
-- Add rate limits, per-tenant quotas, cost budgets, trace correlation, metrics and alerting before increasing concurrency.
+- [x] Add an immutable server-side agent registry and capability-gated execution-plan resolver; unknown agents/capabilities fail closed.
+- [x] Bound the first worker to four concurrent activities, eight workflow tasks and five activities/second at worker and task-queue levels.
+- [ ] Add per-tenant fair scheduling/quotas, cost budgets, trace correlation, metrics and alerting; do this before adding more workers or increasing concurrency.
 - The local overlay binds ports to loopback and is not a production deployment recipe.
