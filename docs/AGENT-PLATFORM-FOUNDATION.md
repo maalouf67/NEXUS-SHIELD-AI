@@ -11,7 +11,7 @@ This additive foundation introduces one executable agent, the Temporal workflow/
 ## Runtime flow
 
 1. An analyst/admin calls the Express endpoint `POST /api/agents/security-triage` with a valid bearer session and `X-NEXUS-WORKSPACE-ID`.
-2. The existing API middleware verifies the signed token and active server-side session, then validates that the user is an active member of the selected workspace with the `admin` or `analyst` workspace role. The body schema is strict; clients cannot provide `tenant_id` or `task_id`.
+2. The existing API middleware verifies the signed token and active server-side session, then validates that the user is an active member of the selected workspace with the `admin` or `analyst` workspace role. The body schema is strict; clients cannot provide `tenant_id` or `task_id`. A dedicated 10 requests / 15 minutes limiter keys by validated workspace and authenticated user.
 3. Express derives `tenant_id` from the validated `workspaceContext.id`, generates a new task ID server-side, and submits the payload to the private FastAPI agent gateway using the server-only `NEXUS_AGENT_PLATFORM_TOKEN`.
 4. The gateway verifies the bearer token with a constant-time comparison, validates the payload, and starts `NexusSecurityTriageWorkflow` in Temporal. Its health endpoint is the only unauthenticated route; API documentation/OpenAPI endpoints are disabled.
 5. Temporal schedules `execute_security_triage` and retries bounded failures. The activity validates and analyzes the submitted event.
