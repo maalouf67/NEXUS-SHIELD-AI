@@ -55,7 +55,7 @@ async def main() -> None:
     nc = await nats.connect(os.environ["NATS_URL"])
     try:
         js = nc.jetstream()
-        sub = await js.pull_subscribe("nexus.agent.events.v1", durable="nexus-agent-ci-smoke", stream="NEXUS_AGENT_EVENTS")
+        sub = await js.pull_subscribe("nexus.agent.events.*", durable="nexus-agent-ci-smoke", stream="NEXUS_AGENT_EVENTS")
         messages = await sub.fetch(1, timeout=10)
         event = json.loads(messages[0].data.decode("utf-8"))
         assert event["tenant_id"] == tenant_a
