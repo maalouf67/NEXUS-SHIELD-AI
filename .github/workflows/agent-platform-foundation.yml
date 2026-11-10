@@ -105,4 +105,9 @@ jobs:
           }
           trap cleanup EXIT
           sleep 5
-          python services/agent-platform/tests/smoke_test.py
+          if ! kill -0 "$worker_pid" 2>/dev/null; then
+            cat /tmp/nexus-agent-worker.log
+            echo "Temporal worker exited before workflow submission." >&2
+            exit 1
+          fi
+          timeout 150s python services/agent-platform/tests/smoke_test.py
