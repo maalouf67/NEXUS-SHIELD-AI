@@ -5,6 +5,9 @@ on:
     branches: ["main", "feat/**"]
     paths:
       - "services/agent-platform/**"
+      - "services/api/src/agent-platform/**"
+      - "services/api/src/index.ts"
+      - "services/api/src/config/env.ts"
       - "database/init/013_agent_platform_foundation.sql"
       - "infra/agent-platform/**"
       - ".github/workflows/agent-platform-foundation.yml"
@@ -12,6 +15,9 @@ on:
     branches: ["feat/multi-agent-foundation"]
     paths:
       - "services/agent-platform/**"
+      - "services/api/src/agent-platform/**"
+      - "services/api/src/index.ts"
+      - "services/api/src/config/env.ts"
       - "database/init/013_agent_platform_foundation.sql"
       - "infra/agent-platform/**"
       - ".github/workflows/agent-platform-foundation.yml"
@@ -42,6 +48,8 @@ jobs:
       DATABASE_URL: postgresql://nexus_agent_runtime:nexus-ci-runtime-password@127.0.0.1:5432/nexus_ci
       TEMPORAL_ADDRESS: 127.0.0.1:7233
       NATS_URL: nats://127.0.0.1:4222
+      AGENT_GATEWAY_URL: http://127.0.0.1:8090
+      NEXUS_AGENT_PLATFORM_TOKEN: nexus-agent-platform-ci-only-token-never-reuse-outside-ci
 
     steps:
       - name: Checkout repository
@@ -88,20 +96,24 @@ jobs:
           test "$temporal_ok" = true
           test "$nats_ok" = true
 
-      - name: Run deterministic agent unit tests
-        run: pytest -q services/agent-platform/tests/test_agent.py
+      - name: Run agent and gateway unit tests
+        run: pytest -q services/agent-platform/tests/test_agent.py services/agent-platform/tests/test_gateway.py
 
-      - name: Start worker and run end-to-end smoke test
+      - name: Start worker and authenticated gateway; run end-to-end smoke test
         env:
           PYTHONPATH: services/agent-platform/src
         run: |
           set -euo pipefail
           python -m nexus_agents.worker > /tmp/nexus-agent-worker.log 2>&1 &
           worker_pid=$!
+          python -m uvicorn nexus_agents.gateway:app --host 127.0.0.1 --port 8090 > /tmp/nexus-agent-gateway.log 2>&1 &
+          gateway_pid=$!
           cleanup() {
-            kill "$worker_pid" >/dev/null 2>&1 || true
+            kill "$gateway_pid" "$worker_pid" >/dev/null 2>&1 || true
             echo "--- Temporal worker log ---"
             cat /tmp/nexus-agent-worker.log || true
+            echo "--- Agent gateway log ---"
+            cat /tmp/nexus-agent-gateway.log || true
           }
           trap cleanup EXIT
           sleep 5
@@ -110,4 +122,15 @@ jobs:
             echo "Temporal worker exited before workflow submission." >&2
             exit 1
           fi
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8090/healthz >/dev/null; then
+              echo "Authenticated agent gateway is ready."
+              break
+            fi
+            if [ "$attempt" -eq 30 ]; then
+              cat /tmp/nexus-agent-gateway.log
+              exit 1
+            fi
+            sleep 1
+          done
           timeout 150s python services/agent-platform/tests/smoke_test.py
