@@ -14,7 +14,7 @@ This additive foundation introduces one executable agent, the Temporal workflow/
 2. Temporal schedules `execute_security_triage` and retries bounded failures.
 3. The activity validates and analyzes the submitted event.
 4. In one PostgreSQL transaction, the worker sets the transaction-local `nexus.tenant_id`, inserts the result and a transactional outbox row.
-5. A second activity publishes the outbox payload to NATS JetStream using a deterministic `Nats-Msg-Id` for deduplication, then marks it delivered.
+5. A second activity publishes the outbox payload to NATS JetStream using a tenant-scoped subject (`nexus.agent.events.<tenant-uuid>`) and deterministic `Nats-Msg-Id` for deduplication, then marks it delivered. Configure NATS account/subject permissions so each tenant consumer can only subscribe to its own subject.
 6. The workflow reads the persisted result under the same tenant context and returns it.
 
 The outbox closes the database-to-broker dual-write gap. A crash after publish but before marking delivery can cause a retry; JetStream message de-duplication reduces duplicates within its configured duplicate window. Consumers must still be idempotent.
