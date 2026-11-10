@@ -1,31 +1,40 @@
 import asyncio
 import json
 import os
-from datetime import timedelta
 from uuid import uuid4
 
 import asyncpg
+import httpx
 import nats
-from temporalio.client import Client
-
-from nexus_agents.contracts import TriageRequest
-from nexus_agents.workflows import SecurityTriageWorkflow
 
 
 async def main() -> None:
     tenant_a = str(uuid4())
     tenant_b = str(uuid4())
     task_id = "ci-triage-00000001"
-    request = TriageRequest(tenant_a, task_id, "security.alert", "ci-sensor", "ci-asset", "Possible data exfiltration detected", "2026-11-10T12:00:00Z")
+    gateway_url = os.getenv("AGENT_GATEWAY_URL", "http://127.0.0.1:8090")
+    service_token = os.environ["NEXUS_AGENT_PLATFORM_TOKEN"]
 
-    temporal = await Client.connect(os.environ["TEMPORAL_ADDRESS"])
-    result = await temporal.execute_workflow(
-        SecurityTriageWorkflow.run, request,
-        id=f"ci:{tenant_a}:{task_id}", task_queue="nexus-agent-foundation",
-        execution_timeout=timedelta(seconds=120),
-    )
-    assert result.classification == "critical", result
-    assert result.risk_score == 95 and result.read_only is True
+    async with httpx.AsyncClient(timeout=100) as client:
+        response = await client.post(
+            f"{gateway_url.rstrip('/')}/v1/triage",
+            headers={"Authorization": f"Bearer {service_token}"},
+            json={
+                "tenant_id": tenant_a,
+                "task_id": task_id,
+                "event_type": "security.alert",
+                "source": "ci-sensor",
+                "target": "ci-asset",
+                "details": "Possible data exfiltration detected",
+                "observed_at": "2026-11-10T12:00:00Z",
+            },
+        )
+    assert response.status_code == 200, response.text
+    result = response.json()
+    assert result["tenant_id"] == tenant_a, result
+    assert result["task_id"] == task_id, result
+    assert result["classification"] == "critical", result
+    assert result["risk_score"] == 95 and result["read_only"] is True
 
     pool = await asyncpg.create_pool(os.environ["DATABASE_URL"])
     try:
@@ -66,7 +75,7 @@ async def main() -> None:
     finally:
         await nc.drain()
 
-    print("PASS: Temporal workflow, deterministic agent, PostgreSQL persistence/RLS, and NATS JetStream delivery")
+    print("PASS: authenticated HTTP gateway, Temporal workflow, deterministic agent, PostgreSQL persistence/RLS, and NATS JetStream delivery")
 
 
 if __name__ == "__main__":
