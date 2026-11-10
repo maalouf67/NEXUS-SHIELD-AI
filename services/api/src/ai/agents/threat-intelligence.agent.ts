@@ -2,8 +2,7 @@ import { runOrchestrator } from '../orchestrator.js';
 import { ThreatAnalysisSchema, type ThreatAnalysis } from './threat-analysis.js';
 import {
   isWorkspaceContextValid,
-  type AgentExecutionContext,
-  type AgentId
+  type AgentExecutionContext
 } from './control-plane.contracts.js';
 
 export interface AgentSecurityEvent {
