@@ -43,6 +43,8 @@ const envSchema = z.object({
   SESSION_SECRET: z.string().min(32),
   NEXUS_SERVICE_API_TOKEN: optionalServiceToken,
   NEXUS_EVENT_INGESTION_TOKEN: optionalServiceToken,
+  AGENT_PLATFORM_URL: z.string().url().optional(),
+  NEXUS_AGENT_PLATFORM_TOKEN: optionalServiceToken,
   IPQS_API_KEY: optionalApiKey,
   IPQS_PHONE_STRICTNESS: z.preprocess(
     (value) => value === "" || value === undefined ? 0 : value,
