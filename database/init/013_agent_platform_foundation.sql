@@ -10,18 +10,22 @@ CREATE TABLE IF NOT EXISTS nexus_agent_runs (
     status VARCHAR(24) NOT NULL CHECK (status IN ('completed', 'failed')),
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    UNIQUE (tenant_id, task_id)
+    UNIQUE (tenant_id, task_id),
+    UNIQUE (tenant_id, id)
 );
 
 CREATE TABLE IF NOT EXISTS nexus_agent_outbox (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id UUID NOT NULL,
-    run_id UUID NOT NULL REFERENCES nexus_agent_runs(id) ON DELETE CASCADE,
+    run_id UUID NOT NULL,
     subject VARCHAR(200) NOT NULL,
     payload JSONB NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     delivered_at TIMESTAMPTZ,
-    UNIQUE (tenant_id, run_id)
+    UNIQUE (tenant_id, run_id),
+    CONSTRAINT nexus_agent_outbox_run_tenant_fk
+        FOREIGN KEY (tenant_id, run_id)
+        REFERENCES nexus_agent_runs (tenant_id, id) ON DELETE CASCADE
 );
 
 CREATE INDEX IF NOT EXISTS nexus_agent_runs_tenant_created_idx
