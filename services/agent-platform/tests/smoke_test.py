@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+from datetime import timedelta
 from uuid import uuid4
 
 import asyncpg
@@ -21,6 +22,7 @@ async def main() -> None:
     result = await temporal.execute_workflow(
         SecurityTriageWorkflow.run, request,
         id=f"ci:{tenant_a}:{task_id}", task_queue="nexus-agent-foundation",
+        execution_timeout=timedelta(seconds=120),
     )
     assert result.classification == "critical", result
     assert result.risk_score == 95 and result.read_only is True
