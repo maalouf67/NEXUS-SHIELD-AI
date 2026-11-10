@@ -1,4 +1,3 @@
-import json
 from datetime import timedelta
 from nats.js.api import StreamConfig, RetentionPolicy, StorageType
 from nats.js.errors import NotFoundError
