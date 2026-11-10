@@ -12,7 +12,7 @@ on:
     branches: ["feat/multi-agent-foundation"]
     paths:
       - "services/agent-platform/**"
-      - "database/init/012_agent_platform_foundation.sql"
+      - "database/init/013_agent_platform_foundation.sql"
       - "infra/agent-platform/**"
       - ".github/workflows/agent-platform-foundation.yml"
 
@@ -64,7 +64,7 @@ jobs:
           set -euo pipefail
           psql -h 127.0.0.1 -U nexus_migrator -d nexus_ci -v ON_ERROR_STOP=1 \
             -c "CREATE ROLE nexus_agent_runtime LOGIN PASSWORD 'nexus-ci-runtime-password' NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOBYPASSRLS"
-          psql -h 127.0.0.1 -U nexus_migrator -d nexus_ci -v ON_ERROR_STOP=1 -f database/init/012_agent_platform_foundation.sql
+          psql -h 127.0.0.1 -U nexus_migrator -d nexus_ci -v ON_ERROR_STOP=1 -f database/init/013_agent_platform_foundation.sql
           psql -h 127.0.0.1 -U nexus_migrator -d nexus_ci -v ON_ERROR_STOP=1 \
             -c "GRANT CONNECT ON DATABASE nexus_ci TO nexus_agent_runtime" \
             -c "GRANT USAGE ON SCHEMA public TO nexus_agent_runtime" \
