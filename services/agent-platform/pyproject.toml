@@ -9,12 +9,15 @@ description = "NEXUS SHIELD AI multi-agent execution foundation"
 requires-python = ">=3.12"
 dependencies = [
   "asyncpg>=0.30,<1",
+  "fastapi>=0.115,<1",
   "nats-py>=2.9,<3",
+  "pydantic>=2.8,<3",
   "temporalio>=1.9,<2",
+  "uvicorn>=0.30,<1",
 ]
 
 [project.optional-dependencies]
-test = ["pytest>=8.3,<9", "pytest-asyncio>=0.25,<1"]
+test = ["httpx>=0.27,<1", "pytest>=8.3,<9", "pytest-asyncio>=0.25,<1"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
