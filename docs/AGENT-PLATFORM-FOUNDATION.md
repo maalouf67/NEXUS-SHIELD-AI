@@ -64,7 +64,7 @@ pip install -e "services/agent-platform[test]"
 Provision a dedicated PostgreSQL runtime login that is not a superuser, does not have `BYPASSRLS`, and does not own the new tables. Grant only CONNECT, schema USAGE, and SELECT/INSERT/UPDATE on the two agent tables. Set `AGENT_DATABASE_URL` to that role's local connection string. The overlay starts the worker and gateway as restricted containers. The API gateway receives no PostgreSQL or NATS credentials; only the worker receives the dedicated PostgreSQL runtime connection.
 
 ```bash
-docker compose -f docker-compose.yml -f infra/agent-platform/docker-compose.agent-platform.yml up -d postgres temporal nats agent-worker
+docker compose -f docker-compose.yml -f infra/agent-platform/docker-compose.agent-platform.yml up -d postgres temporal nats agent-worker agent-gateway
 ```
 
 The normal application path is the Express endpoint, not a public Temporal endpoint. The caller must present an active API access token and a workspace membership header. Example request (replace placeholders with local test credentials and a workspace the user belongs to):
