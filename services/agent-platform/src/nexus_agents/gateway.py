@@ -15,7 +15,10 @@ from nexus_agents.workflows import SecurityTriageWorkflow
 from nexus_agents.orchestrator import build_execution_plan
 from nexus_agents.registry import SECURITY_TRIAGE_AGENT_ID, SECURITY_TRIAGE_CAPABILITY
 
-TASK_QUEUE = "nexus-agent-foundation"
+
+WORKFLOW_RUNNERS = {
+    "NexusSecurityTriageWorkflow": SecurityTriageWorkflow.run,
+}
 
 
 class GatewayTriageRequest(BaseModel):
@@ -44,6 +47,10 @@ class TemporalSubmitter:
             tenant_id=request.tenant_id,
             task_id=request.task_id,
         )
+        workflow_runner = WORKFLOW_RUNNERS.get(plan.workflow_name)
+        if workflow_runner is None:
+            raise RuntimeError("registered workflow implementation is unavailable")
+
         async with self._lock:
             if self._client is None:
                 address = os.getenv("TEMPORAL_ADDRESS", "temporal:7233")
@@ -51,7 +58,7 @@ class TemporalSubmitter:
             client = self._client
 
         return await client.execute_workflow(
-            SecurityTriageWorkflow.run,
+            workflow_runner,
             request,
             id=f"nexus-triage:{request.tenant_id}:{request.task_id}",
             task_queue=plan.task_queue,
