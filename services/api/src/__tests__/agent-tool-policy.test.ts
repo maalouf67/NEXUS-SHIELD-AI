@@ -37,12 +37,15 @@ const readTool: NexusTool<{ indicator: string }, { verdict: string }> = {
   }
 };
 
-function gateway(approvalValid = false) {
+function gateway(
+  approvalValid = false,
+  registeredTool: NexusTool<any, any> = readTool
+) {
   const verifier = {
-    isValidApproval: vi.fn(async () => approvalValid)
+    consumeApproval: vi.fn(async () => approvalValid)
   };
   const registry = new ToolRegistry();
-  registry.register(readTool);
+  registry.register(registeredTool);
   return {
     instance: new ToolExecutionGateway(registry, new ToolPolicyEngine(verifier)),
     registry,
@@ -89,9 +92,8 @@ describe('NEXUS tool execution policy', () => {
   });
 
   it('denies cross-workspace execution before invoking the tool', async () => {
-    const { instance, registry } = gateway();
-    const registered = registry.get('cti.lookup', '1.0.0');
-    const execute = vi.spyOn(registered, 'execute');
+    const execute = vi.fn(readTool.execute);
+    const { instance } = gateway(false, { ...readTool, execute });
     await expect(instance.execute(
       'cti.lookup', '1.0.0', { indicator: 'bad.example' }, context, 'workspace-b'
     )).rejects.toMatchObject({ reason: 'WORKSPACE_MISMATCH' });
@@ -99,22 +101,31 @@ describe('NEXUS tool execution policy', () => {
   });
 
   it('denies missing permission before invoking the tool', async () => {
-    const { instance, registry } = gateway();
-    const execute = vi.spyOn(registry.get('cti.lookup', '1.0.0'), 'execute');
+    const execute = vi.fn(readTool.execute);
+    const { instance } = gateway(false, { ...readTool, execute });
     await expect(instance.execute(
       'cti.lookup', '1.0.0', { indicator: 'bad.example' }, { ...context, permissions: [] }, 'workspace-a'
     )).rejects.toMatchObject({ reason: 'MISSING_PERMISSION' });
     expect(execute).not.toHaveBeenCalled();
   });
 
-  it('rejects invalid tool input', async () => {
-    const { instance } = gateway();
+  it('rejects invalid tool input before calling the approval verifier or tool', async () => {
+    const execute = vi.fn(readTool.execute);
+    const { instance, verifier } = gateway(false, { ...readTool, execute });
     await expect(instance.execute(
       'cti.lookup', '1.0.0', { indicator: '' }, context, 'workspace-a'
     )).rejects.toMatchObject({ reason: 'INVALID_TOOL_INPUT' });
+    expect(verifier.consumeApproval).not.toHaveBeenCalled();
+    expect(execute).not.toHaveBeenCalled();
   });
 
-  it('requires a validated approval for defensive actions', async () => {
+  it('requires a validated, action-bound approval for defensive actions', async () => {
+    const actionExecute = vi.fn(async () => ({
+      success: true,
+      data: { accepted: true },
+      evidenceRefs: [],
+      executedAt: new Date().toISOString()
+    }));
     const actionTool: NexusTool<{ target: string }, { accepted: boolean }> = {
       name: 'defense.block',
       version: '1.0.0',
@@ -122,42 +133,39 @@ describe('NEXUS tool execution policy', () => {
       risk: 'defensive_action',
       requiredPermissions: ['defense:block'],
       inputSchema: z.object({ target: z.string().min(1) }).strict(),
-      async execute() {
-        return {
-          success: true,
-          data: { accepted: true },
-          evidenceRefs: [],
-          executedAt: new Date().toISOString()
-        };
-      }
+      execute: actionExecute
     };
-    const noApproval = new ToolRegistry();
-    noApproval.register(actionTool);
-    const deniedGateway = new ToolExecutionGateway(
-      noApproval,
-      new ToolPolicyEngine({ isValidApproval: async () => false })
-    );
+    const denied = gateway(false, actionTool);
     const authorizedContext = { ...context, permissions: ['defense:block'] };
-    await expect(deniedGateway.execute(
+    await expect(denied.instance.execute(
       'defense.block', '1.0.0', { target: '198.51.100.7' }, authorizedContext, 'workspace-a'
     )).rejects.toMatchObject({ reason: 'APPROVAL_REQUIRED', approvalRequired: true });
+    expect(denied.verifier.consumeApproval).not.toHaveBeenCalled();
+    expect(actionExecute).not.toHaveBeenCalled();
 
-    const approvedGateway = new ToolExecutionGateway(
-      noApproval,
-      new ToolPolicyEngine({
-        isValidApproval: vi.fn(async () => true)
-      })
-    );
+    const approved = gateway(true, actionTool);
     const approvedContext = { ...authorizedContext, approvedActionId: 'approval-1' };
-    const result = await approvedGateway.execute(
+    const result = await approved.instance.execute(
       'defense.block', '1.0.0', { target: '198.51.100.7' }, approvedContext, 'workspace-a'
     );
     expect(result.success).toBe(true);
+    expect(approved.verifier.consumeApproval).toHaveBeenCalledWith(expect.objectContaining({
+      approvalId: 'approval-1',
+      workspaceId: 'workspace-a',
+      actorUserId: 'user-a',
+      agentId: 'cti-agent',
+      runId: 'run-1',
+      toolName: 'defense.block',
+      toolVersion: '1.0.0',
+      idempotencyKey: 'idempotency-1',
+      inputHash: expect.stringMatching(/^[a-f0-9]{64}$/)
+    }));
+    expect(actionExecute).toHaveBeenCalledTimes(1);
   });
 
-  it('rejects expired execution deadlines before calling tools', async () => {
-    const { instance, registry } = gateway();
-    const execute = vi.spyOn(registry.get('cti.lookup', '1.0.0'), 'execute');
+  it('rejects expired or incomplete execution contexts before calling tools', async () => {
+    const execute = vi.fn(readTool.execute);
+    const { instance } = gateway(false, { ...readTool, execute });
     await expect(instance.execute(
       'cti.lookup',
       '1.0.0',
@@ -165,6 +173,14 @@ describe('NEXUS tool execution policy', () => {
       { ...context, deadlineAt: new Date(Date.now() - 1).toISOString() },
       'workspace-a'
     )).rejects.toMatchObject({ reason: 'EXECUTION_DEADLINE_EXPIRED' });
+
+    await expect(instance.execute(
+      'cti.lookup',
+      '1.0.0',
+      { indicator: 'bad.example' },
+      { ...context, idempotencyKey: '' },
+      'workspace-a'
+    )).rejects.toMatchObject({ reason: 'INVALID_EXECUTION_CONTEXT' });
     expect(execute).not.toHaveBeenCalled();
   });
 });

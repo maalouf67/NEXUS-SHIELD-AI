@@ -10,6 +10,9 @@ export type PolicyDenialReason =
 export interface ToolPolicyRequest {
   context: ToolExecutionContext;
   targetWorkspaceId: string;
+  toolName: string;
+  toolVersion: string;
+  inputHash: string;
   risk: ToolRisk;
   requiredPermissions: readonly string[];
 }
@@ -21,11 +24,20 @@ export interface ToolPolicyDecision {
 }
 
 export interface ApprovalVerifier {
-  isValidApproval(input: {
+  /**
+   * Atomically consumes a one-time approval bound to this exact action.
+   * Implementations must verify approver authority and persist consumption.
+   */
+  consumeApproval(input: {
     approvalId: string;
     workspaceId: string;
     actorUserId: string;
+    agentId: string;
     runId: string;
+    toolName: string;
+    toolVersion: string;
+    inputHash: string;
+    idempotencyKey: string;
   }): Promise<boolean>;
 }
 
@@ -39,7 +51,15 @@ export class ToolPolicyEngine {
   constructor(private readonly approvalVerifier: ApprovalVerifier) {}
 
   async authorize(request: ToolPolicyRequest): Promise<ToolPolicyDecision> {
-    const { context, targetWorkspaceId, risk, requiredPermissions } = request;
+    const {
+      context,
+      targetWorkspaceId,
+      toolName,
+      toolVersion,
+      inputHash,
+      risk,
+      requiredPermissions
+    } = request;
 
     if (!context.workspaceId || context.workspaceId !== targetWorkspaceId) {
       return { allowed: false, reason: 'WORKSPACE_MISMATCH', approvalRequired: false };
@@ -58,14 +78,19 @@ export class ToolPolicyEngine {
       return { allowed: false, reason: 'APPROVAL_REQUIRED', approvalRequired: true };
     }
 
-    const valid = await this.approvalVerifier.isValidApproval({
+    const consumed = await this.approvalVerifier.consumeApproval({
       approvalId: context.approvedActionId,
       workspaceId: context.workspaceId,
       actorUserId: context.actorUserId,
-      runId: context.runId
+      agentId: context.agentId,
+      runId: context.runId,
+      toolName,
+      toolVersion,
+      inputHash,
+      idempotencyKey: context.idempotencyKey
     });
 
-    if (!valid) {
+    if (!consumed) {
       return { allowed: false, reason: 'APPROVAL_INVALID', approvalRequired: true };
     }
 
