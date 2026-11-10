@@ -1,0 +1,136 @@
+name: NEXUS Agent Platform Foundation
+
+on:
+  pull_request:
+    branches: ["main", "feat/**"]
+    paths:
+      - "services/agent-platform/**"
+      - "services/api/src/agent-platform/**"
+      - "services/api/src/index.ts"
+      - "services/api/src/config/env.ts"
+      - "database/init/013_agent_platform_foundation.sql"
+      - "infra/agent-platform/**"
+      - ".github/workflows/agent-platform-foundation.yml"
+  push:
+    branches: ["feat/multi-agent-foundation"]
+    paths:
+      - "services/agent-platform/**"
+      - "services/api/src/agent-platform/**"
+      - "services/api/src/index.ts"
+      - "services/api/src/config/env.ts"
+      - "database/init/013_agent_platform_foundation.sql"
+      - "infra/agent-platform/**"
+      - ".github/workflows/agent-platform-foundation.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agent-platform-foundation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit-and-integration:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: nexus_ci
+          POSTGRES_USER: nexus_migrator
+          POSTGRES_PASSWORD: nexus-ci-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U nexus_migrator -d nexus_ci"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      DATABASE_URL: postgresql://nexus_agent_runtime:nexus-ci-runtime-password@127.0.0.1:5432/nexus_ci
+      TEMPORAL_ADDRESS: 127.0.0.1:7233
+      NATS_URL: nats://127.0.0.1:4222
+      AGENT_GATEWAY_URL: http://127.0.0.1:8090
+      NEXUS_AGENT_PLATFORM_TOKEN: nexus-agent-platform-ci-only-token-never-reuse-outside-ci
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: services/agent-platform/pyproject.toml
+
+      - name: Install agent platform and tests
+        run: python -m pip install -e "services/agent-platform[test]"
+
+      - name: Apply additive agent schema and provision least-privilege runtime role
+        env:
+          PGPASSWORD: nexus-ci-password
+        run: |
+          set -euo pipefail
+          psql -h 127.0.0.1 -U nexus_migrator -d nexus_ci -v ON_ERROR_STOP=1 \
+            -c "CREATE ROLE nexus_agent_runtime LOGIN PASSWORD 'nexus-ci-runtime-password' NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOBYPASSRLS"
+          psql -h 127.0.0.1 -U nexus_migrator -d nexus_ci -v ON_ERROR_STOP=1 -f database/init/013_agent_platform_foundation.sql
+          psql -h 127.0.0.1 -U nexus_migrator -d nexus_ci -v ON_ERROR_STOP=1 \
+            -c "GRANT CONNECT ON DATABASE nexus_ci TO nexus_agent_runtime" \
+            -c "GRANT USAGE ON SCHEMA public TO nexus_agent_runtime" \
+            -c "GRANT SELECT, INSERT, UPDATE ON nexus_agent_runs, nexus_agent_outbox TO nexus_agent_runtime"
+
+      - name: Start Temporal development server and NATS JetStream
+        run: |
+          set -euo pipefail
+          docker run -d --name nexus-temporal -p 7233:7233 \
+            temporalio/temporal:1.10.0 server start-dev --ip 0.0.0.0
+          docker run -d --name nexus-nats -p 4222:4222 -p 8222:8222 \
+            nats:2.10-alpine -js -m 8222
+          for attempt in $(seq 1 60); do
+            temporal_ok=false
+            nats_ok=false
+            docker exec nexus-temporal temporal workflow list --address 127.0.0.1:7233 >/dev/null 2>&1 && temporal_ok=true
+            curl -fsS http://127.0.0.1:8222/healthz >/dev/null 2>&1 && nats_ok=true
+            if [ "$temporal_ok" = true ] && [ "$nats_ok" = true ]; then break; fi
+            sleep 2
+          done
+          test "$temporal_ok" = true
+          test "$nats_ok" = true
+
+      - name: Run agent registry, orchestrator, gateway and agent unit tests
+        run: pytest -q services/agent-platform/tests/test_agent.py services/agent-platform/tests/test_gateway.py services/agent-platform/tests/test_registry.py
+
+      - name: Start worker and authenticated gateway; run end-to-end smoke test
+        env:
+          PYTHONPATH: services/agent-platform/src
+        run: |
+          set -euo pipefail
+          python -m nexus_agents.worker > /tmp/nexus-agent-worker.log 2>&1 &
+          worker_pid=$!
+          python -m uvicorn nexus_agents.gateway:app --host 127.0.0.1 --port 8090 > /tmp/nexus-agent-gateway.log 2>&1 &
+          gateway_pid=$!
+          cleanup() {
+            kill "$gateway_pid" "$worker_pid" >/dev/null 2>&1 || true
+            echo "--- Temporal worker log ---"
+            cat /tmp/nexus-agent-worker.log || true
+            echo "--- Agent gateway log ---"
+            cat /tmp/nexus-agent-gateway.log || true
+          }
+          trap cleanup EXIT
+          sleep 5
+          if ! kill -0 "$worker_pid" 2>/dev/null; then
+            cat /tmp/nexus-agent-worker.log
+            echo "Temporal worker exited before workflow submission." >&2
+            exit 1
+          fi
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8090/healthz >/dev/null; then
+              echo "Authenticated agent gateway is ready."
+              break
+            fi
+            if [ "$attempt" -eq 30 ]; then
+              cat /tmp/nexus-agent-gateway.log
+              exit 1
+            fi
+            sleep 1
+          done
+          timeout 150s python services/agent-platform/tests/smoke_test.py

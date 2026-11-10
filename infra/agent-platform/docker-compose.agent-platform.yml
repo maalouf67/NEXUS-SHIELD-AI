@@ -1,0 +1,92 @@
+# Local development overlay. Reuses the existing postgres service and named project network.
+# Set AGENT_DATABASE_URL to a dedicated non-owner PostgreSQL runtime role.
+# Set AGENT_PLATFORM_URL=http://127.0.0.1:8090 and NEXUS_AGENT_PLATFORM_TOKEN
+# in the trusted API process; the token must match the value injected below.
+# Run: docker compose -f docker-compose.yml -f infra/agent-platform/docker-compose.agent-platform.yml up -d postgres temporal nats agent-worker agent-gateway
+services:
+  temporal:
+    image: temporalio/temporal:1.10.0
+    command: ["server", "start-dev", "--ip", "0.0.0.0", "--db-filename", "/var/lib/temporal/temporal.db"]
+    ports:
+      - "127.0.0.1:7233:7233"
+      - "127.0.0.1:8233:8233"
+    volumes:
+      - temporal_data:/var/lib/temporal
+    healthcheck:
+      test: ["CMD", "temporal", "workflow", "list", "--address", "127.0.0.1:7233"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
+  nats:
+    image: nats:2.10-alpine
+    command: ["-js", "-m", "8222", "-sd", "/data"]
+    ports:
+      - "127.0.0.1:4222:4222"
+      - "127.0.0.1:8222:8222"
+    volumes:
+      - nats_agent_data:/data
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8222/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  agent-worker:
+    build:
+      context: .
+      dockerfile: services/agent-platform/Dockerfile
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: ${AGENT_DATABASE_URL:?Set AGENT_DATABASE_URL to the dedicated tenant-scoped runtime role}
+      TEMPORAL_ADDRESS: temporal:7233
+      NATS_URL: nats://nats:4222
+    depends_on:
+      postgres:
+        condition: service_healthy
+      temporal:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 512m
+    cpus: 1.0
+
+  agent-gateway:
+    build:
+      context: .
+      dockerfile: services/agent-platform/Dockerfile
+    command: ["uvicorn", "nexus_agents.gateway:app", "--host", "0.0.0.0", "--port", "8090"]
+    restart: unless-stopped
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+      NEXUS_AGENT_PLATFORM_TOKEN: ${NEXUS_AGENT_PLATFORM_TOKEN:?Set a unique 32+ character internal gateway token}
+    depends_on:
+      temporal:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8090:8090"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/healthz', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 512m
+    cpus: 1.0
+
+volumes:
+  temporal_data:
+  nats_agent_data:

@@ -81,7 +81,7 @@ npm run db:migrate
 npm run db:check
 ```
 
-The migration runner applies numbered files 001–009, uses a PostgreSQL advisory lock, records SHA-256 checksums, and refuses modified historical migrations. It is safe to re-run against a database whose schema is already present, provided the schema matches the repository migration files. Back up an existing or production database and inspect pending SQL before migration. See [Database migrations and connectivity](docs/DATABASE-MIGRATIONS.md).
+The migration runner applies numbered files 001–013, uses a PostgreSQL advisory lock, records SHA-256 checksums, and refuses modified historical migrations. It is safe to re-run against a database whose schema is already present, provided the schema matches the repository migration files. Back up an existing or production database and inspect pending SQL before migration. See [Database migrations and connectivity](docs/DATABASE-MIGRATIONS.md).
 
 The API database pool supports explicit local non-TLS mode and verified TLS mode. Supabase hosts use the bundled Supabase CA by default; other providers use Node's trusted system roots unless DATABASE_SSL_CA_PATH explicitly supplies a provider CA. Certificate verification remains enabled.
 

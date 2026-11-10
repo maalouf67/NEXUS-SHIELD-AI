@@ -20,6 +20,7 @@ import { malwareScanRouter } from './malware-scans/malware-scans.routes.js';
 import { phoneReputationRouter } from './phone-reputation/phone-reputation.routes.js';
 import { ipReputationRouter } from './ip-reputation/ip-reputation.routes.js';
 import { workspacesRouter } from './workspaces/workspaces.routes.js';
+import { agentPlatformRouter } from './agent-platform/agent-platform.routes.js';
 import { otelTracingMiddleware } from './observability/otel-tracing.middleware.js';
 
 export const app = express();
@@ -63,6 +64,7 @@ app.use('/api', attackPathsRouter);
 app.use('/api', assetInventoryRouter);
 app.use('/api', authRouter);
 app.use('/api', workspacesRouter);
+app.use('/api', agentPlatformRouter);
 // The legacy global /users directory and account-creation API is intentionally
 // not mounted. Workspace membership is managed only through /workspaces/members,
 // which requires an active workspace administrator and an existing active account.
