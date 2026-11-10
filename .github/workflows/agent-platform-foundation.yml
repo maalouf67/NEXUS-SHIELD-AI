@@ -5,7 +5,7 @@ on:
     branches: ["main", "feat/**"]
     paths:
       - "services/agent-platform/**"
-      - "database/init/012_agent_platform_foundation.sql"
+      - "database/init/013_agent_platform_foundation.sql"
       - "infra/agent-platform/**"
       - ".github/workflows/agent-platform-foundation.yml"
   push:
