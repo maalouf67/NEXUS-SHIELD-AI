@@ -13,8 +13,10 @@ from nexus_agents.contracts import TriageRequest, TriageResult
 from nexus_agents.messaging import ensure_stream, publish_event
 from nexus_agents.persistence import persist_result, load_outbox, mark_delivered
 from nexus_agents.workflows import SecurityTriageWorkflow
+from nexus_agents.registry import SECURITY_TRIAGE_AGENT_ID, get_agent
 
-TASK_QUEUE = "nexus-agent-foundation"
+AGENT_DEFINITION = get_agent(SECURITY_TRIAGE_AGENT_ID)
+TASK_QUEUE = AGENT_DEFINITION.task_queue
 _pool = None
 _js = None
 
@@ -68,6 +70,10 @@ async def main() -> None:
         task_queue=TASK_QUEUE,
         workflows=[SecurityTriageWorkflow],
         activities=[execute_security_triage, publish_security_triage_event, read_security_triage_result],
+        max_concurrent_activities=AGENT_DEFINITION.max_concurrent_activities,
+        max_concurrent_workflow_tasks=AGENT_DEFINITION.max_concurrent_workflow_tasks,
+        max_activities_per_second=AGENT_DEFINITION.max_activities_per_second,
+        max_task_queue_activities_per_second=AGENT_DEFINITION.max_task_queue_activities_per_second,
     )
     try:
         await worker.run()
