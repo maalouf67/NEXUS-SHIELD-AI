@@ -1,7 +1,6 @@
 import asyncio
 import json
 import os
-from dataclasses import asdict
 
 import asyncpg
 import nats
@@ -32,7 +31,6 @@ async def publish_security_triage_event(args: dict) -> str:
     if row is None:
         raise RuntimeError("outbox record not found")
     if row["delivered_at"] is None:
-        result = json.loads(row["payload"])
         await publish_event(_js, args["tenant_id"], args["task_id"], row["subject"], row["payload"])
         await mark_delivered(_pool, args["tenant_id"], str(row["id"]))
     return "published"
