@@ -26,7 +26,6 @@ class AgentDefinition:
     max_activities_per_second: float
     max_task_queue_activities_per_second: float
     workflow_execution_timeout_seconds: int
-    activity_max_attempts: int
 
 
 SECURITY_TRIAGE_AGENT_ID = "nexus.security-triage.v1"
@@ -56,7 +55,6 @@ _AGENT_REGISTRY: Mapping[str, AgentDefinition] = MappingProxyType({
         max_activities_per_second=5.0,
         max_task_queue_activities_per_second=5.0,
         workflow_execution_timeout_seconds=90,
-        activity_max_attempts=3,
     ),
 })
 
