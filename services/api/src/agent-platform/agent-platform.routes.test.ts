@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import express from 'express';
+import express, { type RequestHandler } from 'express';
 import jwt from 'jsonwebtoken';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import request from 'supertest';
@@ -92,7 +92,7 @@ function appWith(
 ) {
   const app = express();
   app.use(express.json());
-  app.use('/api', createAgentPlatformRouter(repository, submit));
+  app.use('/api', createAgentPlatformRouter(repository, submit, limiter));
   return app;
 }
 
@@ -263,3 +263,40 @@ describe('authenticated agent platform gateway', () => {
     expect(response.body.error).toBe('AGENT_PLATFORM_INVALID_RESPONSE');
   });
 });
+
+  it('rate limits authenticated requests by workspace and user', async () => {
+    const token = accessToken();
+    const captured: AgentTriageSubmission[] = [];
+    const submit = async (input: AgentTriageSubmission) => {
+      captured.push(input);
+      return resultFor(input);
+    };
+    const limiter = createAgentPlatformRateLimiter({
+      windowMs: 60_000,
+      limit: 1,
+      useSharedStore: false
+    });
+    const app = appWith(makeRepository(), submit, limiter);
+    const body = {
+      event_type: 'security.alert',
+      source: 'sensor-a',
+      target: 'asset-a',
+      details: 'Possible data exfiltration detected'
+    };
+
+    const first = await request(app)
+      .post('/api/agents/security-triage')
+      .set('Authorization', `Bearer ${token}`)
+      .set('X-NEXUS-WORKSPACE-ID', WORKSPACE_A)
+      .send(body);
+    const second = await request(app)
+      .post('/api/agents/security-triage')
+      .set('Authorization', `Bearer ${token}`)
+      .set('X-NEXUS-WORKSPACE-ID', WORKSPACE_A)
+      .send(body);
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(429);
+    expect(second.body.error).toBe('AGENT_TRIAGE_RATE_LIMITED');
+    expect(captured).toHaveLength(1);
+  });
