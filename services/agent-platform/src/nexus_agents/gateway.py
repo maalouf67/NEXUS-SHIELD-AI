@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from typing import Awaitable, Callable
 from uuid import UUID
 
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import FastAPI, Header, HTTPException, Response
 from pydantic import BaseModel, ConfigDict, Field
 from temporalio.client import Client
 
@@ -82,9 +82,11 @@ def create_app(
     @app.post("/v1/triage")
     async def submit_triage(
         payload: GatewayTriageRequest,
+        response: Response,
         authorization: str | None = Header(default=None),
     ) -> dict:
         verify_internal_token(authorization)
+        response.headers["Cache-Control"] = "no-store"
         request = TriageRequest(
             tenant_id=str(payload.tenant_id),
             task_id=payload.task_id,
