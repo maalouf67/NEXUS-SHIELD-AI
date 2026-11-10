@@ -12,6 +12,8 @@ from temporalio.client import Client
 
 from nexus_agents.contracts import TriageRequest, TriageResult
 from nexus_agents.workflows import SecurityTriageWorkflow
+from nexus_agents.orchestrator import build_execution_plan
+from nexus_agents.registry import SECURITY_TRIAGE_AGENT_ID, SECURITY_TRIAGE_CAPABILITY
 
 TASK_QUEUE = "nexus-agent-foundation"
 
@@ -36,6 +38,12 @@ class TemporalSubmitter:
         self._lock = asyncio.Lock()
 
     async def __call__(self, request: TriageRequest) -> TriageResult:
+        plan = build_execution_plan(
+            agent_id=SECURITY_TRIAGE_AGENT_ID,
+            capability=SECURITY_TRIAGE_CAPABILITY,
+            tenant_id=request.tenant_id,
+            task_id=request.task_id,
+        )
         async with self._lock:
             if self._client is None:
                 address = os.getenv("TEMPORAL_ADDRESS", "temporal:7233")
@@ -46,8 +54,8 @@ class TemporalSubmitter:
             SecurityTriageWorkflow.run,
             request,
             id=f"nexus-triage:{request.tenant_id}:{request.task_id}",
-            task_queue=TASK_QUEUE,
-            execution_timeout=timedelta(seconds=90),
+            task_queue=plan.task_queue,
+            execution_timeout=timedelta(seconds=plan.workflow_execution_timeout_seconds),
         )
 
 
