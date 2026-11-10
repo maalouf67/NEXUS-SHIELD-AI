@@ -37,7 +37,7 @@ Start the existing PostgreSQL plus the local Temporal/NATS overlay:
 docker compose -f docker-compose.yml -f infra/agent-platform/docker-compose.agent-platform.yml up -d postgres temporal nats
 ```
 
-The current repository migration runner discovers every numbered SQL file matching `NNN_name.sql` in `database/init`, so migration 012 is included automatically. Back up the disposable local database and review the SQL before running `npm run db:migrate`. Never point this command at production without a separately approved migration window and verified backup.
+The current repository migration runner discovers every numbered SQL file matching `NNN_name.sql` in `database/init`, so migration 013 is included automatically. Back up the disposable local database and review the SQL before running `npm run db:migrate`. Never point this command at production without a separately approved migration window and verified backup.
 
 Install the isolated package:
 
