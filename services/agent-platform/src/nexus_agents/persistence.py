@@ -31,9 +31,9 @@ async def persist_result(pool: Pool, request: TriageRequest, result: TriageResul
                 run_id = row["id"]
                 await conn.execute(
                     """INSERT INTO nexus_agent_outbox (tenant_id, run_id, subject, payload)
-                       VALUES ($1::uuid, $2, 'nexus.agent.events.v1', $3::jsonb)
+                       VALUES ($1::uuid, $2, $3, $4::jsonb)
                        ON CONFLICT (tenant_id, run_id) DO NOTHING""",
-                    request.tenant_id, run_id, result_json,
+                    request.tenant_id, run_id, f'nexus.agent.events.{request.tenant_id}', result_json,
                 )
             return str(run_id)
 
