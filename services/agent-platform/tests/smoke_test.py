@@ -36,6 +36,19 @@ async def main() -> None:
                 foreign_rows = await conn.fetchval("SELECT count(*) FROM nexus_agent_runs WHERE tenant_id=$1::uuid", tenant_a)
         assert own_rows == 1, own_rows
         assert foreign_rows == 0, foreign_rows
+        try:
+            async with conn.transaction():
+                await conn.execute("SELECT set_config('nexus.tenant_id', $1, true)", tenant_b)
+                await conn.execute(
+                    """INSERT INTO nexus_agent_runs
+                       (tenant_id, task_id, agent_id, request_json, result_json, status)
+                       VALUES ($1::uuid, 'cross-tenant-write', 'test', '{}'::jsonb, '{}'::jsonb, 'completed')""",
+                    tenant_a,
+                )
+        except asyncpg.InsufficientPrivilegeError:
+            pass
+        else:
+            raise AssertionError("RLS accepted a cross-tenant write")
     finally:
         await pool.close()
 
