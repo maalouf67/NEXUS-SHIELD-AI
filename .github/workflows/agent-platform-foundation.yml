@@ -96,8 +96,8 @@ jobs:
           test "$temporal_ok" = true
           test "$nats_ok" = true
 
-      - name: Run agent and gateway unit tests
-        run: pytest -q services/agent-platform/tests/test_agent.py services/agent-platform/tests/test_gateway.py
+      - name: Run agent registry, orchestrator, gateway and agent unit tests
+        run: pytest -q services/agent-platform/tests/test_agent.py services/agent-platform/tests/test_gateway.py services/agent-platform/tests/test_registry.py
 
       - name: Start worker and authenticated gateway; run end-to-end smoke test
         env:
