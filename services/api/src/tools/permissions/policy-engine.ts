@@ -38,6 +38,7 @@ export interface ApprovalVerifier {
     toolVersion: string;
     inputHash: string;
     idempotencyKey: string;
+    risk: ToolRisk;
   }): Promise<boolean>;
 }
 
@@ -87,7 +88,8 @@ export class ToolPolicyEngine {
       toolName,
       toolVersion,
       inputHash,
-      idempotencyKey: context.idempotencyKey
+      idempotencyKey: context.idempotencyKey,
+      risk
     });
 
     if (!consumed) {
