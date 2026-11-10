@@ -4,8 +4,8 @@ import {
   getAgentDefinition,
   isValidAgentFinding,
   isWorkspaceContextValid
-} from '../control-plane.contracts.js';
-import type { AgentExecutionContext, AgentFinding } from '../control-plane.contracts.js';
+} from '../agents/control-plane.contracts.js';
+import type { AgentExecutionContext, AgentFinding } from '../agents/control-plane.contracts.js';
 
 const context: AgentExecutionContext = {
   taskId: 'task-1',
