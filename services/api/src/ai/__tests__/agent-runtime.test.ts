@@ -6,6 +6,8 @@ import {
   type AgentSecurityEvent
 } from '../agents/threat-intelligence.agent.js';
 import { NexusSupervisor } from '../agents/supervisor.runtime.js';
+import type { AgentExecutionContext } from '../agents/control-plane.contracts.js';
+import type { ThreatIntelligenceAgentResult } from '../agents/threat-intelligence.agent.js';
 
 const event: AgentSecurityEvent = {
   id: '8f14e45f-ea4e-4f3b-9a2b-1b2c3d4e5f60',
@@ -104,12 +106,12 @@ describe('Threat Intelligence Agent runtime', () => {
 
 describe('NEXUS Supervisor runtime', () => {
   it('delegates a scoped event task to the Threat Intelligence Agent', async () => {
-    const execute = vi.fn(async (ctx, suppliedEvent) => ({
+    const execute = vi.fn(async (ctx: AgentExecutionContext, suppliedEvent: AgentSecurityEvent): Promise<ThreatIntelligenceAgentResult> => ({
       agentId: 'threat-intelligence' as const,
       taskId: ctx.taskId,
       workspaceId: ctx.workspaceId,
       status: 'completed' as const,
-      analysis: orchestratorResult.analysis as never,
+      analysis: orchestratorResult.analysis as ThreatIntelligenceAgentResult['analysis'],
       evidence: [{
         kind: 'security-event' as const,
         referenceId: suppliedEvent.id,
