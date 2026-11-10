@@ -2,6 +2,7 @@ from dataclasses import FrozenInstanceError
 
 import pytest
 
+from nexus_agents.gateway import WORKFLOW_RUNNERS
 from nexus_agents.orchestrator import build_execution_plan
 from nexus_agents.registry import (
     AgentNotRegisteredError,
@@ -91,3 +92,10 @@ def test_execution_plan_rejects_invalid_identity(tenant_id, task_id):
             tenant_id=tenant_id,
             task_id=task_id,
         )
+
+
+def test_every_enabled_registry_agent_has_an_explicit_workflow_implementation():
+    registered_workflows = {agent.workflow_name for agent in list_agents()}
+    assert registered_workflows
+    assert registered_workflows.issubset(WORKFLOW_RUNNERS)
+    assert all(callable(WORKFLOW_RUNNERS[name]) for name in registered_workflows)
