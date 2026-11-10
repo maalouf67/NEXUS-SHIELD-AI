@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { Router, type RequestHandler } from 'express';
+import { Router } from 'express';
 import { z } from 'zod';
 
 import { requireAuth } from '../auth/auth.middleware.js';
