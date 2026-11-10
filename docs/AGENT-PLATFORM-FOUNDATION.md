@@ -36,7 +36,7 @@ Before production, validate that the target PostgreSQL version provides `gen_ran
 Start the existing PostgreSQL plus the local Temporal/NATS overlay. Set a unique random `NEXUS_AGENT_PLATFORM_TOKEN` (at least 32 characters) in the local `.env`; use the exact same value only in the trusted API process and the gateway container. Set `AGENT_PLATFORM_URL=http://127.0.0.1:8090` for an API process running directly on the host:
 
 ```bash
-docker compose -f docker-compose.yml -f infra/agent-platform/docker-compose.agent-platform.yml up -d postgres temporal nats agent-worker agent-gateway
+docker compose -f docker-compose.yml -f infra/agent-platform/docker-compose.agent-platform.yml up -d postgres temporal nats
 ```
 
 The gateway listens on host loopback only in this local overlay. Do not publish it on a public interface. For hosted environments, put API and gateway on a private network, use HTTPS or authenticated service-mesh transport, and inject the shared token from the secret manager.
