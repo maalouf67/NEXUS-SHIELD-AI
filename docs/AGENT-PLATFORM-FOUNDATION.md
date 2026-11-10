@@ -37,7 +37,7 @@ Start the existing PostgreSQL plus the local Temporal/NATS overlay:
 docker compose -f docker-compose.yml -f infra/agent-platform/docker-compose.agent-platform.yml up -d postgres temporal nats
 ```
 
-Apply migration 012 only after the repository's numbered migration runner has been updated to include it and a local database backup has been taken. The migration runner's current range must be inspected before use; do not assume it automatically discovers 012.
+The current repository migration runner discovers every numbered SQL file matching `NNN_name.sql` in `database/init`, so migration 012 is included automatically. Back up the disposable local database and review the SQL before running `npm run db:migrate`. Never point this command at production without a separately approved migration window and verified backup.
 
 Install the isolated package:
 
@@ -47,11 +47,13 @@ python -m venv .venv-agent
 pip install -e "services/agent-platform[test]"
 ```
 
-Set `DATABASE_URL` to the local PostgreSQL database using the dedicated non-owner runtime role, plus `TEMPORAL_ADDRESS=localhost:7233` and `NATS_URL=nats://localhost:4222`. Start the worker:
+Provision a dedicated PostgreSQL runtime login that is not a superuser, does not have `BYPASSRLS`, and does not own the new tables. Grant only CONNECT, schema USAGE, and SELECT/INSERT/UPDATE on the two agent tables. Set `AGENT_DATABASE_URL` to that role's local connection string. The overlay starts the worker as a restricted container:
 
 ```bash
-PYTHONPATH=services/agent-platform/src python -m nexus_agents.worker
+docker compose -f docker-compose.yml -f infra/agent-platform/docker-compose.agent-platform.yml up -d postgres temporal nats agent-worker
 ```
+
+For local submission from the host, install the package and set `TEMPORAL_ADDRESS=localhost:7233` before running the CLI example below.
 
 In another terminal, submit a benign test event using `nexus_agents.submit` after adding the package source to `PYTHONPATH`. Example:
 
