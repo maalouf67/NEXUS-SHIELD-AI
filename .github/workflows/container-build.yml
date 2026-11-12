@@ -1,0 +1,61 @@
+name: NEXUS SHIELD AI - Container Build
+
+on:
+  push:
+    branches: ["main", "feat/**", "feature/**"]
+  pull_request:
+    branches: ["main"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: container-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build production containers and validate Compose
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate production Compose configuration
+        run: |
+          cp deploy/.env.production.example .env.production
+          docker compose --env-file .env.production -f docker-compose.production.yml config --quiet
+
+      - name: Build web image
+        run: docker build --pull -f apps/web/Dockerfile -t nexus-web:ci .
+
+      - name: Build API image
+        run: docker build --pull -f services/api/Dockerfile -t nexus-api:ci .
+
+      - name: Build AI service image
+        run: docker build --pull -f services/ai/Dockerfile -t nexus-ai:ci .
+
+      - name: Build PostgreSQL runtime image
+        run: docker build --pull -f database/Dockerfile.railway -t nexus-postgres:ci .
+
+      - name: Scan web image for HIGH and CRITICAL findings
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          version: v0.76.1
+          scan-type: image
+          image-ref: nexus-web:ci
+          scanners: vuln,misconfig,secret
+          severity: HIGH,CRITICAL
+          ignore-unfixed: "false"
+          exit-code: "1"
+
+      - name: Scan API image for HIGH and CRITICAL findings
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          version: v0.76.1
+          scan-type: image
+          image-ref: nexus-api:ci
+          scanners: vuln,misconfig,secret
+          severity: HIGH,CRITICAL
+          ignore-unfixed: "false"
+          exit-code: "1"
