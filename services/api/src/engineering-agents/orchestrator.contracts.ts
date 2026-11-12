@@ -140,6 +140,8 @@ export const TaskEventSchema = z.object({
   ]),
   previousStatus: TaskStatusSchema.nullable(),
   nextStatus: TaskStatusSchema,
+  previousRevision: z.number().int().min(0).nullable(),
+  nextRevision: z.number().int().min(0),
   actor: TaskActorSchema,
   reason: z.string().trim().max(2000).optional(),
   occurredAt: isoDateTimeSchema
