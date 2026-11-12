@@ -81,6 +81,7 @@ describe('workspace-scoped agent task route', () => {
       .send({ agentId: 'threat-intelligence', securityEventId: eventId });
 
     expect(response.status).toBe(200);
+    expect(response.headers['cache-control']).toBe('no-store');
     expect(response.body.status).toBe('completed');
     expect(findEvent).toHaveBeenCalledOnce();
     expect(executeThreatIntelligenceTask).toHaveBeenCalledOnce();

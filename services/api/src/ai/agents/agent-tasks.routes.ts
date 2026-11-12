@@ -64,6 +64,7 @@ export function createAgentTasksRouter(options: {
     workspace,
     requireWorkspaceRole('admin', 'analyst'),
     async (req, res) => {
+      res.setHeader('Cache-Control', 'no-store');
       const parsed = TaskRequestSchema.safeParse(req.body);
       if (!parsed.success) {
         return res.status(400).json({
