@@ -1,6 +1,6 @@
 # NEXUS Engineering Agents — Implementation Roadmap
 
-**Status:** Proposed implementation plan  
+**Status:** Active staged implementation plan  
 **Policy baseline:** 0.1.0  
 **Rollout rule:** no broad autonomous write access until the preceding stage is accepted and tested.
 
@@ -22,50 +22,76 @@ Acceptance:
 - target controls are clearly distinguished from active controls;
 - no application code or production settings are changed by this stage.
 
-## Stage 1 — Orchestrator foundation
+**Status:** adopted in `main` through PR #63.
 
-**Goal:** create a deterministic control plane with no autonomous source-code writes.
+## Stage 1 — First operational agent: Product Planner
 
-Deliverables:
-- typed task, result, event, approval, and audit contracts;
-- task state machine;
-- idempotent webhook receiver;
-- GitHub App authentication using least-privilege installation tokens;
-- task/agent registry and capability checks;
-- PostgreSQL execution history;
-- human-readable status reporting.
-
-Acceptance:
-- webhook signatures are verified;
-- duplicate events do not create duplicate work;
-- invalid scopes and permissions are rejected;
-- every execution is traceable by task and correlation ID;
-- service restarts do not lose workflow state;
-- no agent can write to repository contents.
-
-## Stage 2 — Product Planner in read-only / Issue-limited mode
-
-**Goal:** convert a human request into an Issue proposal.
+**Goal:** prove one engineering agent can perform a useful, bounded task before building multi-agent coordination.
 
 Deliverables:
-- requirement extraction and clarification flags;
-- user-story and acceptance-criteria generation;
-- duplicate Issue detection;
-- priority and proposed label mapping;
-- Issue creation through an approved GitHub App permission.
+- Product Planner runtime using the existing server-side AI provider integration;
+- versioned input and structured-output schemas;
+- requirement analysis, user stories and measurable acceptance criteria;
+- risk, dependency, scope and verification planning;
+- workspace-authenticated API route;
+- secret-input rejection and bounded per-user request rate;
+- runtime and route regression tests.
 
 Acceptance:
-- a human can review the proposed Issue before or immediately after creation according to configured approval policy;
-- generated Issues include measurable acceptance criteria;
-- the Planner cannot create branches, commit source code, merge, or release;
-- repeated webhook delivery is idempotent.
+- only authenticated active workspace members with an allowed role can call the planner;
+- viewer and cross-workspace access are rejected;
+- input and output schemas fail closed;
+- likely credentials are rejected before a provider call;
+- every result is marked draft and requires human review;
+- the agent has no repository-write, GitHub mutation, merge, release or deployment tools;
+- CI proves the behavior with an injected test executor;
+- a real provider call is verified separately only after a valid server-side `OPENAI_API_KEY` is configured.
+
+**Status:** implementation merged through PR #66. The runtime and API tests are green. External inference still depends on API server provider configuration and a separate live smoke test.
+
+## Stage 2 — Durable Engineering Orchestrator (no autonomous source writes)
+
+**Goal:** coordinate task lifecycle and agent handoffs using tenant-isolated, persistent, auditable state.
+
+Deliverables:
+- workspace-scoped task, result, event, approval and audit contracts;
+- deterministic task state machine with workspace and revision checks;
+- PostgreSQL task persistence and append-only event/audit history;
+- idempotency constraints for task creation and event intake;
+- authenticated task intake and status APIs;
+- HMAC-verified, idempotent GitHub webhook intake after raw-body handling is proven;
+- agent registry, capability allow-list and task-to-agent routing;
+- bounded retry, timeout, cancellation and manual recovery behavior;
+- human-readable status and audit reporting.
+
+Acceptance:
+- every task and related event is bound to one workspace, and cross-workspace reads or writes are rejected;
+- repeated task submissions and webhook deliveries do not create duplicate work;
+- invalid signatures and invalid task scopes are rejected before processing;
+- state changes use optimistic revision checks and legal state transitions only;
+- each state change is persisted with actor, task, workspace, correlation ID and timestamp;
+- audit records contain no secret values or arbitrary request payloads;
+- a service restart does not lose accepted task state;
+- the initial GitHub App permission set is read-only;
+- no engineering agent can write repository contents, merge, publish or deploy;
+- database migration tests run only against disposable CI PostgreSQL, never production.
+
+Implementation order inside this stage:
+1. finish tenant-scoped contracts and negative tests;
+2. add the migration and PostgreSQL repository;
+3. test idempotent create/read/transition behavior and append-only audit events;
+4. add API intake/status routes with workspace authorization;
+5. add signed GitHub webhook intake and duplicate-delivery tests;
+6. add deterministic agent registry and routing with Product Planner as the first registered runtime.
+
+Temporal and NATS JetStream remain deferred. Add neither until the persisted task lifecycle, failure model, retry behavior and idempotency guarantees are proven with the simpler implementation.
 
 ## Stage 3 — System Architect
 
-**Goal:** produce design artifacts and implementation dependencies.
+**Goal:** produce design artifacts and implementation dependencies from approved requests.
 
 Deliverables:
-- repository-aware impact analysis;
+- repository-aware impact analysis using explicitly supplied or read-authorized repository context;
 - ADR templates and generated proposals;
 - API/data contract recommendations;
 - dependency graph and path ownership plan.
