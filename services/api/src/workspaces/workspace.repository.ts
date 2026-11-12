@@ -174,13 +174,13 @@ export class PostgresWorkspaceRepository implements WorkspaceRepository {
                revoked_by_user_id = NULL,
                created_by_user_id = EXCLUDED.created_by_user_id
          WHERE workspace_memberships.status = 'revoked'
-         RETURNING user_id, role, status, created_at`,
+         RETURNING user_id, role, status, created_at, revoked_at, revoked_by_user_id`,
         [workspaceId, user.rows[0].id, role, actorUserId]
       );
       if (!inserted.rowCount) {
         await client.query('ROLLBACK');
         const existing = await client.query(
-          `SELECT user_id, role, status, created_at
+          `SELECT user_id, role, status, created_at, revoked_at, revoked_by_user_id
            FROM workspace_memberships
            WHERE workspace_id = $1 AND user_id = $2`,
           [workspaceId, user.rows[0].id]
@@ -191,7 +191,9 @@ export class PostgresWorkspaceRepository implements WorkspaceRepository {
           email: user.rows[0].email,
           role: row.role as WorkspaceRole,
           status: row.status as WorkspaceMember['status'],
-          createdAt: iso(row.created_at)
+          createdAt: iso(row.created_at),
+          revokedAt: row.revoked_at ? iso(row.revoked_at) : null,
+          revokedByUserId: row.revoked_by_user_id ?? null
         } : null;
       }
       await client.query('COMMIT');
@@ -200,7 +202,9 @@ export class PostgresWorkspaceRepository implements WorkspaceRepository {
         email: user.rows[0].email,
         role: inserted.rows[0].role as WorkspaceRole,
         status: inserted.rows[0].status as WorkspaceMember['status'],
-        createdAt: iso(inserted.rows[0].created_at)
+        createdAt: iso(inserted.rows[0].created_at),
+        revokedAt: inserted.rows[0].revoked_at ? iso(inserted.rows[0].revoked_at) : null,
+        revokedByUserId: inserted.rows[0].revoked_by_user_id ?? null
       };
     } catch (error) {
       try { await client.query('ROLLBACK'); } catch { /* preserve original error */ }
