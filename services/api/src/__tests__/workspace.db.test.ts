@@ -11,6 +11,7 @@ describe.skipIf(!enabled)('PostgreSQL workspace isolation foundation', () => {
   const userB = randomUUID();
   const workspaceA = randomUUID();
   const workspaceB = randomUUID();
+  const workspaceC = randomUUID();
   const assetA = 'ws-a-' + randomUUID();
   const assetB = 'ws-b-' + randomUUID();
   const externalEventId = 'external-' + randomUUID();
@@ -18,13 +19,13 @@ describe.skipIf(!enabled)('PostgreSQL workspace isolation foundation', () => {
   const emailB = 'workspace-b-' + userB + '@example.test';
 
   afterAll(async () => {
-    await pool.query('DELETE FROM workspace_integrations WHERE workspace_id = ANY($1::uuid[])', [[workspaceA, workspaceB]]);
+    await pool.query('DELETE FROM workspace_integrations WHERE workspace_id = ANY($1::uuid[])', [[workspaceA, workspaceB, workspaceC]]);
     await pool.query(
       'DELETE FROM security_events WHERE workspace_id = ANY($1::uuid[]) OR (workspace_id IS NULL AND source = \'ci-legacy\' AND external_event_id = $2)',
-      [[workspaceA, workspaceB], externalEventId]
+      [[workspaceA, workspaceB, workspaceC], externalEventId]
     );
     await pool.query('DELETE FROM assets WHERE id = ANY($1::varchar[])', [[assetA, assetB]]);
-    await pool.query('DELETE FROM workspaces WHERE id = ANY($1::uuid[])', [[workspaceA, workspaceB]]);
+    await pool.query('DELETE FROM workspaces WHERE id = ANY($1::uuid[])', [[workspaceA, workspaceB, workspaceC]]);
     await pool.query('DELETE FROM users WHERE id = ANY($1::uuid[])', [[userA, userB]]);
     await pool.end();
   });
@@ -41,6 +42,7 @@ describe.skipIf(!enabled)('PostgreSQL workspace isolation foundation', () => {
     expect(await repository.findActiveMembership(userA, workspaceA)).toMatchObject({ id: workspaceA, role: 'admin' });
     expect(await repository.findActiveMembership(userA, workspaceB)).toBeNull();
     expect(await repository.findActiveMembership(userB, workspaceA)).toBeNull();
+    expect(await repository.revokeMember(workspaceB, userA, userB)).toMatchObject({ outcome: 'not_found' });
 
     await pool.query(
       'INSERT INTO assets (id, workspace_id, asset_type, name) VALUES ($1, $2, \'server\', \'workspace A asset\'), ($3, $4, \'server\', \'workspace B asset\')',
@@ -100,6 +102,38 @@ describe.skipIf(!enabled)('PostgreSQL workspace isolation foundation', () => {
       previous_role: 'analyst',
       new_role: 'admin'
     });
+  });
+
+  it('serializes concurrent administrator revocations so at least one admin remains', async () => {
+    await repository.createWorkspace({
+      id: workspaceC,
+      name: 'CI Workspace C',
+      slug: 'ci-c-' + workspaceC.slice(0, 8),
+      ownerUserId: userA
+    });
+    const secondAdmin = await repository.addMemberByEmail(workspaceC, emailB, 'admin', userA);
+    expect(secondAdmin).toMatchObject({ id: userB, role: 'admin', status: 'active' });
+
+    const [revokeA, revokeB] = await Promise.all([
+      repository.revokeMember(workspaceC, userA, userB),
+      repository.revokeMember(workspaceC, userB, userA)
+    ]);
+    expect([revokeA.outcome, revokeB.outcome].sort()).toEqual(['actor_not_admin', 'revoked']);
+
+    const activeA = await repository.findActiveMembership(userA, workspaceC);
+    const activeB = await repository.findActiveMembership(userB, workspaceC);
+    expect(Number(Boolean(activeA)) + Number(Boolean(activeB))).toBe(1);
+    const remainingAdminId = activeA ? userA : userB;
+    expect(await repository.revokeMember(workspaceC, remainingAdminId, remainingAdminId)).toMatchObject({
+      outcome: 'last_admin'
+    });
+
+    const audit = await pool.query(
+      "SELECT event_type, attributes FROM security_events WHERE workspace_id = $1 AND source = 'nexus.workspace.access'",
+      [workspaceC]
+    );
+    expect(audit.rows).toHaveLength(1);
+    expect(audit.rows[0].event_type).toBe('workspace.member_revoked');
   });
 
   it('permits duplicate external event identifiers in separate workspaces and stores only integration-token hashes', async () => {
