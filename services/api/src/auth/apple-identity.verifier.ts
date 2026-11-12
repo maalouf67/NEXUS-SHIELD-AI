@@ -92,6 +92,7 @@ interface CachedAppleJwks {
 
 let appleJwksCache: CachedAppleJwks | null = null;
 let appleJwksFetchInFlight: Promise<AppleJwks> | null = null;
+let appleJwksLastForcedRefreshAt = 0;
 
 function verificationError(
   code: AppleIdentityVerificationErrorCode
@@ -204,7 +205,7 @@ async function loadAppleJwks(forceRefresh: boolean): Promise<AppleJwks> {
   if (
     forceRefresh &&
     appleJwksCache &&
-    now - appleJwksCache.fetchedAt < FORCED_REFRESH_COOLDOWN_MS
+    now - appleJwksLastForcedRefreshAt < FORCED_REFRESH_COOLDOWN_MS
   ) {
     return appleJwksCache.value;
   }
@@ -232,6 +233,7 @@ async function loadAppleJwks(forceRefresh: boolean): Promise<AppleJwks> {
         fetchedAt,
         expiresAt: fetchedAt + JWKS_CACHE_TTL_MS
       };
+      if (forceRefresh) appleJwksLastForcedRefreshAt = fetchedAt;
       return jwks;
     } catch {
       throw verificationError('AUTH_PROVIDER_UNAVAILABLE');
