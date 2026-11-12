@@ -1,0 +1,126 @@
+name: NEXUS SHIELD AI - Publish GHCR Images
+
+on:
+  workflow_run:
+    workflows:
+      - NEXUS SHIELD AI - Build and Test
+      - NEXUS SHIELD AI - Security Checks
+      - NEXUS SHIELD AI - Container Build
+    types: [completed]
+
+permissions:
+  contents: read
+  actions: read
+  packages: write
+
+concurrency:
+  group: ghcr-publish-${{ github.event.workflow_run.head_sha }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: >-
+      ${{ github.event.workflow_run.conclusion == 'success' &&
+          github.event.workflow_run.head_branch == 'main' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify all main-branch quality gates passed for this exact commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${SOURCE_SHA}&per_page=100" > runs.json
+          jq -e --arg sha "$SOURCE_SHA" '
+            [.workflow_runs[] | select(
+              .head_sha == $sha and
+              .head_branch == "main" and
+              .event == "push"
+            )] as $runs
+            |
+            ([$runs[] | select(.name == "NEXUS SHIELD AI - Build and Test" and .conclusion == "success")] | length) > 0
+            and
+            ([$runs[] | select(.name == "NEXUS SHIELD AI - Security Checks" and .conclusion == "success")] | length) > 0
+            and
+            ([$runs[] | select(.name == "NEXUS SHIELD AI - Container Build" and .conclusion == "success")] | length) > 0
+          ' runs.json >/dev/null
+
+      - name: Checkout the verified main commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Build all production images
+        env:
+          SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          prefix="ghcr.io/$owner/nexus-shield-ai"
+          tag="sha-$SOURCE_SHA"
+          docker build --pull -f apps/web/Dockerfile -t "$prefix-web:$tag" .
+          docker build --pull -f services/api/Dockerfile -t "$prefix-api:$tag" .
+          docker build --pull -f services/ai/Dockerfile -t "$prefix-ai:$tag" .
+          docker build --pull -f database/Dockerfile.railway -t "$prefix-postgres:$tag" .
+          echo "IMAGE_PREFIX=$prefix" >> "$GITHUB_ENV"
+          echo "IMAGE_TAG=$tag" >> "$GITHUB_ENV"
+
+      - name: Scan web image
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          version: v0.76.1
+          scan-type: image
+          image-ref: ghcr.io/${{ github.repository_owner }}/nexus-shield-ai-web:sha-${{ github.event.workflow_run.head_sha }}
+          scanners: vuln,misconfig,secret
+          severity: HIGH,CRITICAL
+          ignore-unfixed: "false"
+          exit-code: "1"
+
+      - name: Scan API image
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          version: v0.76.1
+          scan-type: image
+          image-ref: ghcr.io/${{ github.repository_owner }}/nexus-shield-ai-api:sha-${{ github.event.workflow_run.head_sha }}
+          scanners: vuln,misconfig,secret
+          severity: HIGH,CRITICAL
+          ignore-unfixed: "false"
+          exit-code: "1"
+
+      - name: Scan AI image
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          version: v0.76.1
+          scan-type: image
+          image-ref: ghcr.io/${{ github.repository_owner }}/nexus-shield-ai-ai:sha-${{ github.event.workflow_run.head_sha }}
+          scanners: vuln,misconfig,secret
+          severity: HIGH,CRITICAL
+          ignore-unfixed: "false"
+          exit-code: "1"
+
+      - name: Scan PostgreSQL image
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          version: v0.76.1
+          scan-type: image
+          image-ref: ghcr.io/${{ github.repository_owner }}/nexus-shield-ai-postgres:sha-${{ github.event.workflow_run.head_sha }}
+          scanners: vuln,misconfig,secret
+          severity: HIGH,CRITICAL
+          ignore-unfixed: "false"
+          exit-code: "1"
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish immutable commit tags and latest
+        run: |
+          set -euo pipefail
+          for service in web api ai postgres; do
+            docker tag "$IMAGE_PREFIX-$service:$IMAGE_TAG" "$IMAGE_PREFIX-$service:latest"
+            docker push "$IMAGE_PREFIX-$service:$IMAGE_TAG"
+            docker push "$IMAGE_PREFIX-$service:latest"
+          done
