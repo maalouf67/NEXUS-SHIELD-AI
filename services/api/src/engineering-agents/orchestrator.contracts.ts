@@ -37,21 +37,25 @@ export type TaskStatus = z.infer<typeof TaskStatusSchema>;
 export const TaskPrioritySchema = z.enum(['low', 'normal', 'high', 'urgent']);
 export const TaskRiskLevelSchema = z.enum(['low', 'medium', 'high', 'critical']);
 
-export const TaskActorSchema = z.object({
-  kind: z.enum(['human', 'orchestrator', 'agent', 'github']),
-  id: z.string().trim().min(1).max(128)
-}).strict();
+const actorIdSchema = z.string().trim().min(1).max(128);
+export const TaskActorSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('human'), id: actorIdSchema }).strict(),
+  z.object({ kind: z.literal('orchestrator'), id: z.literal('orchestrator') }).strict(),
+  z.object({ kind: z.literal('agent'), id: EngineeringAgentIdSchema }).strict(),
+  z.object({ kind: z.literal('github'), id: actorIdSchema }).strict()
+]);
 export type TaskActor = z.infer<typeof TaskActorSchema>;
 
 const isoDateTimeSchema = z.string().datetime({ offset: true });
+const backslash = String.fromCharCode(92);
 const relativeRepositoryPathSchema = z.string()
   .trim()
   .min(1)
   .max(500)
   .refine((value) =>
     !value.startsWith('/') &&
-    !value.startsWith('\\\\') &&
-    !value.includes('\\\\') &&
+    !value.startsWith(backslash) &&
+    !value.includes(backslash) &&
     !value.split('/').some((segment) => segment === '..' || segment === '.'),
   'Paths must be repository-relative and must not traverse parent directories.');
 
@@ -152,10 +156,7 @@ export const ApprovalDecisionSchema = z.object({
 }).strict();
 export type ApprovalDecision = z.infer<typeof ApprovalDecisionSchema>;
 
-/**
- * Audit records deliberately exclude arbitrary payloads and secret-bearing
- * metadata. Persist only identifiers, outcome, reason code and timestamps.
- */
+/** Audit records omit arbitrary payloads and secret-bearing metadata. */
 export const TaskAuditRecordSchema = z.object({
   auditId: z.string().uuid(),
   taskId: z.string().uuid(),
