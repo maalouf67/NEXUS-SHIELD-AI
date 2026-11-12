@@ -19,10 +19,10 @@ concurrency:
 
 jobs:
   publish:
-    if: github.event.workflow_run.head_branch == 'main'
     runs-on: ubuntu-latest
     steps:
       - name: Verify all main-branch quality gates passed for this exact commit
+        id: gate
         env:
           GH_TOKEN: ${{ github.token }}
           SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
@@ -33,7 +33,11 @@ jobs:
         run: |
           set -euo pipefail
           echo "Publisher trigger: workflow=$TRIGGER_NAME conclusion=$TRIGGER_CONCLUSION branch=$TRIGGER_BRANCH event=$TRIGGER_EVENT sha=$SOURCE_SHA"
-          test "$TRIGGER_BRANCH" = "main"
+          if [[ "$TRIGGER_BRANCH" != "main" ]]; then
+            echo "Not a main-branch workflow run; image publishing is skipped."
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           gh api "/repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${SOURCE_SHA}&per_page=100" > runs.json
           jq -e --arg sha "$SOURCE_SHA" '
             [.workflow_runs[] | select(
@@ -47,14 +51,20 @@ jobs:
             ([$runs[] | select(.name == "NEXUS SHIELD AI - Security Checks" and .conclusion == "success")] | length) > 0
             and
             ([$runs[] | select(.name == "NEXUS SHIELD AI - Container Build" and .conclusion == "success")] | length) > 0
-          ' runs.json >/dev/null
+          ' runs.json >/dev/null || {
+            echo "At least one required main-branch quality gate is incomplete or unsuccessful."
+            exit 1
+          }
+          echo "publish=true" >> "$GITHUB_OUTPUT"
 
       - name: Checkout the verified main commit
+        if: steps.gate.outputs.publish == 'true'
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
 
       - name: Build all production images
+        if: steps.gate.outputs.publish == 'true'
         env:
           SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
@@ -70,6 +80,7 @@ jobs:
           echo "IMAGE_TAG=$tag" >> "$GITHUB_ENV"
 
       - name: Scan web image
+        if: steps.gate.outputs.publish == 'true'
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           version: v0.76.1
@@ -81,6 +92,7 @@ jobs:
           exit-code: "1"
 
       - name: Scan API image
+        if: steps.gate.outputs.publish == 'true'
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           version: v0.76.1
@@ -92,6 +104,7 @@ jobs:
           exit-code: "1"
 
       - name: Scan AI image
+        if: steps.gate.outputs.publish == 'true'
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           version: v0.76.1
@@ -103,6 +116,7 @@ jobs:
           exit-code: "1"
 
       - name: Scan PostgreSQL image
+        if: steps.gate.outputs.publish == 'true'
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           version: v0.76.1
@@ -114,6 +128,7 @@ jobs:
           exit-code: "1"
 
       - name: Log in to GitHub Container Registry
+        if: steps.gate.outputs.publish == 'true'
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -121,6 +136,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Publish immutable commit tags and latest
+        if: steps.gate.outputs.publish == 'true'
         run: |
           set -euo pipefail
           for service in web api ai postgres; do
