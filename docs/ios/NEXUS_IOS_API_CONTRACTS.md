@@ -97,9 +97,9 @@ The workspace repository confirms the available membership roles: `admin`, `anal
 
 ### GET /api/workspaces
 
-List active workspaces for the authenticated user. Response item shape:
+List active workspaces for the authenticated user. The endpoint returns a `workspaces` array; each item has this shape:
 ```json
-{ "id": "<uuid>", "name": "Operations", "slug": "operations", "role": "admin" }
+{ "workspaces": [ { "id": "<uuid>", "name": "Operations", "slug": "operations", "role": "admin" } ] }
 ```
 
 ### Workspace-scoped resources
