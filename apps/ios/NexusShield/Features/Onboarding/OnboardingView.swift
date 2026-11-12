@@ -38,7 +38,7 @@ struct OnboardingView: View {
 
                 Spacer(minLength: 24)
                 VStack(spacing: 14) {
-                    Text("Your digital world.\\nUnder your control.")
+                    Text("Your digital world.\nUnder your control.")
                         .font(.system(size: 34, weight: .bold, design: .rounded))
                         .tracking(-0.8)
                         .multilineTextAlignment(.center)
