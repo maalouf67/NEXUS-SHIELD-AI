@@ -32,7 +32,11 @@ struct NexusPrimaryButton: View {
 
 /// Shared bordered surface used for dashboard sections and status summaries.
 struct NexusCard<Content: View>: View {
-    @ViewBuilder let content: Content
+    let content: Content
+
+    init(@ViewBuilder content: () -> Content) {
+        self.content = content()
+    }
 
     var body: some View {
         content
@@ -65,7 +69,7 @@ struct NexusLoadingState: View {
 
 /// Inline informational/warning notice. It communicates state without claiming a security verdict.
 struct NexusNotice: View {
-    enum Kind {
+    enum Kind: Equatable {
         case information
         case warning
     }
