@@ -61,6 +61,30 @@ function makeRepository(
         createdAt: '2026-11-08T00:00:00.000Z'
       };
     },
+    async updateMemberRole(_workspaceId, userId, role) {
+      return {
+        outcome: 'updated',
+        member: {
+          id: userId,
+          email: 'member@example.test',
+          role,
+          status: 'active',
+          createdAt: '2026-11-08T00:00:00.000Z'
+        }
+      };
+    },
+    async revokeMember(_workspaceId, userId) {
+      return {
+        outcome: 'revoked',
+        member: {
+          id: userId,
+          email: 'member@example.test',
+          role: 'analyst',
+          status: 'revoked',
+          createdAt: '2026-11-08T00:00:00.000Z'
+        }
+      };
+    },
     async createIntegration(input) {
       return {
         id: randomUUID(),
@@ -182,6 +206,89 @@ describe('Workspace identity and access controls', () => {
 
     expect(response.status).toBe(403);
     expect(response.body.error).toBe('FORBIDDEN');
+  });
+
+
+  it('allows a workspace administrator to change a member role', async () => {
+    const token = accessToken(ADMIN_ID);
+    const response = await request(appWith(makeRepository()))
+      .patch(`/api/workspaces/members/${VIEWER_ID}`)
+      .set('Authorization', `Bearer ${token}`)
+      .set('X-NEXUS-WORKSPACE-ID', WORKSPACE_ID)
+      .send({ role: 'analyst' });
+
+    expect(response.status).toBe(200);
+    expect(response.body.changed).toBe(true);
+    expect(response.body.member).toMatchObject({ id: VIEWER_ID, role: 'analyst', status: 'active' });
+  });
+
+  it('allows a workspace administrator to revoke an active member', async () => {
+    const token = accessToken(ADMIN_ID);
+    const response = await request(appWith(makeRepository()))
+      .delete(`/api/workspaces/members/${VIEWER_ID}`)
+      .set('Authorization', `Bearer ${token}`)
+      .set('X-NEXUS-WORKSPACE-ID', WORKSPACE_ID);
+
+    expect(response.status).toBe(200);
+    expect(response.body.success).toBe(true);
+    expect(response.body.member).toMatchObject({ id: VIEWER_ID, status: 'revoked' });
+  });
+
+  it('prevents a workspace viewer from changing or revoking memberships', async () => {
+    const viewerMembership: WorkspaceMembership = {
+      id: WORKSPACE_ID,
+      name: 'Workspace A',
+      slug: 'workspace-a-test',
+      role: 'viewer'
+    };
+    const token = accessToken(ADMIN_ID);
+    const app = appWith(makeRepository(viewerMembership));
+
+    const roleChange = await request(app)
+      .patch(`/api/workspaces/members/${VIEWER_ID}`)
+      .set('Authorization', `Bearer ${token}`)
+      .set('X-NEXUS-WORKSPACE-ID', WORKSPACE_ID)
+      .send({ role: 'admin' });
+    expect(roleChange.status).toBe(403);
+
+    const revoke = await request(app)
+      .delete(`/api/workspaces/members/${VIEWER_ID}`)
+      .set('Authorization', `Bearer ${token}`)
+      .set('X-NEXUS-WORKSPACE-ID', WORKSPACE_ID);
+    expect(revoke.status).toBe(403);
+  });
+
+  it('preserves the final workspace administrator', async () => {
+    const token = accessToken(ADMIN_ID);
+    const repository = makeRepository();
+    repository.revokeMember = async () => ({ outcome: 'last_admin' });
+    const response = await request(appWith(repository))
+      .delete(`/api/workspaces/members/${ADMIN_ID}`)
+      .set('Authorization', `Bearer ${token}`)
+      .set('X-NEXUS-WORKSPACE-ID', WORKSPACE_ID);
+
+    expect(response.status).toBe(409);
+    expect(response.body.error).toBe('LAST_WORKSPACE_ADMIN');
+  });
+
+  it('rejects malformed member IDs and role payloads', async () => {
+    const token = accessToken(ADMIN_ID);
+    const app = appWith(makeRepository());
+
+    const invalidId = await request(app)
+      .delete('/api/workspaces/members/not-a-uuid')
+      .set('Authorization', `Bearer ${token}`)
+      .set('X-NEXUS-WORKSPACE-ID', WORKSPACE_ID);
+    expect(invalidId.status).toBe(400);
+    expect(invalidId.body.error).toBe('INVALID_MEMBER_ID');
+
+    const invalidRole = await request(app)
+      .patch(`/api/workspaces/members/${VIEWER_ID}`)
+      .set('Authorization', `Bearer ${token}`)
+      .set('X-NEXUS-WORKSPACE-ID', WORKSPACE_ID)
+      .send({ role: 'owner', isAdmin: true });
+    expect(invalidRole.status).toBe(400);
+    expect(invalidRole.body.error).toBe('INVALID_REQUEST');
   });
 
   it('hashes integration credentials before lookup and requires the requested permission', async () => {

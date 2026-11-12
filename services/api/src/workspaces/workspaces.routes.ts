@@ -19,6 +19,12 @@ const AddMemberSchema = z.object({
   role: z.enum(['admin', 'analyst', 'viewer'])
 }).strict();
 
+const UpdateMemberRoleSchema = z.object({
+  role: z.enum(['admin', 'analyst', 'viewer'])
+}).strict();
+
+const WorkspaceMemberIdSchema = z.string().uuid();
+
 const CreateIntegrationSchema = z.object({
   name: z.string().trim().min(1).max(120),
   permissions: z.array(z.enum(['assets:read', 'assets:write', 'events:write'])).min(1).max(3)
@@ -96,6 +102,54 @@ export function createWorkspacesRouter(repository: WorkspaceRepository = workspa
       );
       if (!member) return res.status(404).json({ error: 'ACTIVE_USER_NOT_FOUND' });
       return res.status(200).json({ member });
+    } catch {
+      return res.status(503).json({ error: 'WORKSPACE_MEMBER_STORE_UNAVAILABLE' });
+    }
+  });
+
+
+  router.patch('/workspaces/members/:userId', requireAuth, requireWorkspace, requireWorkspaceRole('admin'), async (req, res) => {
+    const userId = WorkspaceMemberIdSchema.safeParse(req.params.userId);
+    const parsed = UpdateMemberRoleSchema.safeParse(req.body);
+    if (!userId.success) return res.status(400).json({ error: 'INVALID_MEMBER_ID' });
+    if (!parsed.success) {
+      return res.status(400).json({ error: 'INVALID_REQUEST', details: parsed.error.flatten() });
+    }
+
+    try {
+      const result = await repository.updateMemberRole(
+        req.workspaceContext!.id,
+        userId.data,
+        parsed.data.role,
+        req.authUser!.id
+      );
+      if (result.outcome === 'not_found') return res.status(404).json({ error: 'WORKSPACE_MEMBER_NOT_FOUND' });
+      if (result.outcome === 'not_active') return res.status(409).json({ error: 'WORKSPACE_MEMBER_NOT_ACTIVE' });
+      if (result.outcome === 'actor_not_admin') return res.status(403).json({ error: 'WORKSPACE_ADMIN_REQUIRED' });
+      if (result.outcome === 'last_admin') return res.status(409).json({ error: 'LAST_WORKSPACE_ADMIN' });
+      res.setHeader('Cache-Control', 'no-store');
+      return res.status(200).json({ member: result.member, changed: result.outcome === 'updated' });
+    } catch {
+      return res.status(503).json({ error: 'WORKSPACE_MEMBER_STORE_UNAVAILABLE' });
+    }
+  });
+
+  router.delete('/workspaces/members/:userId', requireAuth, requireWorkspace, requireWorkspaceRole('admin'), async (req, res) => {
+    const userId = WorkspaceMemberIdSchema.safeParse(req.params.userId);
+    if (!userId.success) return res.status(400).json({ error: 'INVALID_MEMBER_ID' });
+
+    try {
+      const result = await repository.revokeMember(
+        req.workspaceContext!.id,
+        userId.data,
+        req.authUser!.id
+      );
+      if (result.outcome === 'not_found') return res.status(404).json({ error: 'WORKSPACE_MEMBER_NOT_FOUND' });
+      if (result.outcome === 'not_active') return res.status(409).json({ error: 'WORKSPACE_MEMBER_NOT_ACTIVE' });
+      if (result.outcome === 'actor_not_admin') return res.status(403).json({ error: 'WORKSPACE_ADMIN_REQUIRED' });
+      if (result.outcome === 'last_admin') return res.status(409).json({ error: 'LAST_WORKSPACE_ADMIN' });
+      res.setHeader('Cache-Control', 'no-store');
+      return res.status(200).json({ success: true, member: result.member });
     } catch {
       return res.status(503).json({ error: 'WORKSPACE_MEMBER_STORE_UNAVAILABLE' });
     }
