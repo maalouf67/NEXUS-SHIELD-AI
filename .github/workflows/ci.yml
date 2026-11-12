@@ -69,6 +69,67 @@ jobs:
           test "$tables" = "api_rate_limit_counters,auth_sessions,workspaces,workspace_memberships,workspace_integrations,apple_identities,auth_refresh_token_families,auth_refresh_tokens"
           migration_count="$(psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -Atqc "SELECT COUNT(*) FROM nexus_schema_migrations")"
           test "$migration_count" = "13"
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
+          DO $
+          BEGIN
+            IF NOT EXISTS (
+              SELECT 1 FROM pg_constraint
+              WHERE conrelid = 'public.apple_identities'::regclass
+                AND conname = 'pk_apple_identities' AND contype = 'p'
+            ) THEN
+              RAISE EXCEPTION 'Apple identity provider/subject primary key is missing';
+            END IF;
+
+            IF NOT EXISTS (
+              SELECT 1 FROM pg_constraint
+              WHERE conrelid = 'public.auth_refresh_token_families'::regclass
+                AND conname = 'fk_auth_refresh_families_session_user' AND contype = 'f'
+            ) THEN
+              RAISE EXCEPTION 'Refresh family is not bound to its owning access session and user';
+            END IF;
+
+            IF NOT EXISTS (
+              SELECT 1 FROM pg_constraint
+              WHERE conrelid = 'public.auth_refresh_tokens'::regclass
+                AND conname = 'uq_auth_refresh_tokens_token_hash' AND contype = 'u'
+            ) THEN
+              RAISE EXCEPTION 'Refresh token hashes are not unique';
+            END IF;
+
+            IF NOT EXISTS (
+              SELECT 1 FROM pg_constraint
+              WHERE conrelid = 'public.auth_refresh_tokens'::regclass
+                AND conname = 'chk_auth_refresh_tokens_hash' AND contype = 'c'
+            ) THEN
+              RAISE EXCEPTION 'Refresh token hash format constraint is missing';
+            END IF;
+
+            IF NOT EXISTS (
+              SELECT 1 FROM pg_constraint
+              WHERE conrelid = 'public.auth_refresh_tokens'::regclass
+                AND conname = 'fk_auth_refresh_tokens_family_parent' AND contype = 'f'
+            ) THEN
+              RAISE EXCEPTION 'Refresh-token parent is not constrained to the same family';
+            END IF;
+
+            IF NOT EXISTS (
+              SELECT 1 FROM pg_indexes
+              WHERE schemaname = 'public'
+                AND indexname = 'idx_auth_refresh_tokens_active_expiry'
+            ) THEN
+              RAISE EXCEPTION 'Active refresh-token expiry index is missing';
+            END IF;
+
+            IF EXISTS (
+              SELECT 1 FROM information_schema.columns
+              WHERE table_schema = 'public'
+                AND table_name = 'auth_refresh_tokens'
+                AND column_name IN ('token', 'raw_token', 'refresh_token')
+            ) THEN
+              RAISE EXCEPTION 'Raw refresh-token column must never be persisted';
+            END IF;
+          END $;
+          SQL
           echo "PostgreSQL connection verified and all 13 numbered migrations are recorded."
 
       - name: Build web and API workspaces
