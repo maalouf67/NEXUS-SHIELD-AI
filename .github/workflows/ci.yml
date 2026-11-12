@@ -35,6 +35,7 @@ jobs:
       DATABASE_URL: postgresql://nexus_test:nexus_test_password@127.0.0.1:5432/nexus_test
       DATABASE_SSL: "false"
       NEXUS_RUN_DB_INTEGRATION: "true"
+      NEXUS_RUN_DB_INTEGRATION_TESTS: "true"
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -63,13 +64,13 @@ jobs:
         run: |
           second_run="$(npm run db:migrate 2>&1)"
           echo "$second_run"
-          echo "$second_run" | grep -F "0 applied, 12 already current, 12 total"
+          echo "$second_run" | grep -F "0 applied, 13 already current, 13 total"
           npm run db:check
-          tables="$(psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -Atqc "SELECT to_regclass('public.api_rate_limit_counters')::text || ',' || to_regclass('public.auth_sessions')::text || ',' || to_regclass('public.workspaces')::text || ',' || to_regclass('public.workspace_memberships')::text || ',' || to_regclass('public.workspace_integrations')::text")"
-          test "$tables" = "api_rate_limit_counters,auth_sessions,workspaces,workspace_memberships,workspace_integrations"
+          tables="$(psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -Atqc "SELECT to_regclass('public.api_rate_limit_counters')::text || ',' || to_regclass('public.auth_sessions')::text || ',' || to_regclass('public.workspaces')::text || ',' || to_regclass('public.workspace_memberships')::text || ',' || to_regclass('public.workspace_integrations')::text || ',' || to_regclass('public.threat_feeds')::text || ',' || to_regclass('public.threat_feed_runs')::text || ',' || to_regclass('public.threat_indicator_matches')::text")"
+          test "$tables" = "api_rate_limit_counters,auth_sessions,workspaces,workspace_memberships,workspace_integrations,threat_feeds,threat_feed_runs,threat_indicator_matches"
           migration_count="$(psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -Atqc "SELECT COUNT(*) FROM nexus_schema_migrations")"
-          test "$migration_count" = "12"
-          echo "PostgreSQL connection verified and all 12 numbered migrations are recorded."
+          test "$migration_count" = "13"
+          echo "PostgreSQL connection verified and all 13 numbered migrations are recorded."
 
       - name: Build web and API workspaces
         run: npm run build
@@ -104,7 +105,6 @@ jobs:
         env:
           PYTHONPATH: services/ai
         run: python -m unittest discover -s services/ai/tests -v
-
 
   android-build:
     name: Android companion debug build
@@ -229,7 +229,7 @@ jobs:
             fi
             sleep 2
           done
-          docker compose exec -T ai python -c "import socket; s=socket.create_connection(('clamav', 3310), timeout=3); s.sendall(b'zPING\\0'); response=s.recv(64); s.close(); assert response == b'PONG\\0', response; print('ClamAV INSTREAM TCP service is reachable')"
+          docker compose exec -T ai python -c "import socket; s=socket.create_connection(('clamav', 3310), timeout=3); s.sendall(b'zPING\0'); response=s.recv(64); s.close(); assert response == b'PONG\0', response; print('ClamAV INSTREAM TCP service is reachable')"
 
       - name: Verify Compose migrations and seed isolated test users
         env:
