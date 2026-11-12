@@ -70,7 +70,7 @@ jobs:
           migration_count="$(psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -Atqc "SELECT COUNT(*) FROM nexus_schema_migrations")"
           test "$migration_count" = "13"
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
-          DO $
+          DO $nexus_assertions$
           BEGIN
             IF NOT EXISTS (
               SELECT 1 FROM pg_constraint
@@ -128,7 +128,7 @@ jobs:
             ) THEN
               RAISE EXCEPTION 'Raw refresh-token column must never be persisted';
             END IF;
-          END $;
+          END $nexus_assertions$;
           SQL
           echo "PostgreSQL connection verified and all 13 numbered migrations are recorded."
 
