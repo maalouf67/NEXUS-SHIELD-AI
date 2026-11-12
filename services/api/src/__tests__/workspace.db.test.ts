@@ -101,7 +101,8 @@ describe.skipIf(!enabled)('PostgreSQL workspace isolation foundation', () => {
     const reactivationEvents = await repository.listMembershipEvents(workspaceA, revokedUserId);
     expect(reactivationEvents.map((event) => event.eventType)).toContain('membership_reactivated');
 
-    expect(await repository.revokeMembership(workspaceA, remainingAdminId, remainingAdminId)).toBe('last_admin');
+    expect(await repository.revokeMembership(workspaceA, remainingAdminId, revokedUserId)).toBe('revoked');
+    expect(await repository.revokeMembership(workspaceA, revokedUserId, revokedUserId)).toBe('last_admin');
   });
 
   it('permits duplicate external event identifiers in separate workspaces and stores only integration-token hashes', async () => {

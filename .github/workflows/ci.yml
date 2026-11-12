@@ -66,8 +66,8 @@ jobs:
           echo "$second_run"
           echo "$second_run" | grep -F "0 applied, ${expected_migrations} already current, ${expected_migrations} total"
           npm run db:check
-          tables="$(psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -Atqc "SELECT to_regclass('public.api_rate_limit_counters')::text || ',' || to_regclass('public.auth_sessions')::text || ',' || to_regclass('public.workspaces')::text || ',' || to_regclass('public.workspace_memberships')::text || ',' || to_regclass('public.workspace_integrations')::text || ',' || to_regclass('public.apple_identities')::text || ',' || to_regclass('public.auth_refresh_token_families')::text || ',' || to_regclass('public.auth_refresh_tokens')::text")"
-          test "$tables" = "api_rate_limit_counters,auth_sessions,workspaces,workspace_memberships,workspace_integrations,apple_identities,auth_refresh_token_families,auth_refresh_tokens"
+          tables="$(psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -Atqc "SELECT to_regclass('public.api_rate_limit_counters')::text || ',' || to_regclass('public.auth_sessions')::text || ',' || to_regclass('public.workspaces')::text || ',' || to_regclass('public.workspace_memberships')::text || ',' || to_regclass('public.workspace_integrations')::text || ',' || to_regclass('public.apple_identities')::text || ',' || to_regclass('public.auth_refresh_token_families')::text || ',' || to_regclass('public.auth_refresh_tokens')::text || ',' || to_regclass('public.workspace_membership_events')::text")"
+          test "$tables" = "api_rate_limit_counters,auth_sessions,workspaces,workspace_memberships,workspace_integrations,apple_identities,auth_refresh_token_families,auth_refresh_tokens,workspace_membership_events"
           migration_count="$(psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -Atqc "SELECT COUNT(*) FROM nexus_schema_migrations")"
           test "$migration_count" = "$expected_migrations"
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
