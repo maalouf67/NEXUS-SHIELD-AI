@@ -9,11 +9,50 @@ import {
   TaskRiskLevelSchema
 } from './orchestrator.contracts.js';
 
+const CREDENTIAL_PATTERNS = [
+  /-----BEGIN [A-Z ]*PRIVATE KEY-----/i,
+  /sk-[A-Za-z0-9_-]{24,}/,
+  /gh[pousr]_[A-Za-z0-9_]{24,}/,
+  /AKIA[0-9A-Z]{16}/,
+  /Bearer +[A-Za-z0-9._~+/-]{24,}/i,
+  /(?:OPENAI_API_KEY|NEXUS_SERVICE_API_TOKEN|JWT_SECRET|SESSION_SECRET|DATABASE_URL)\s*[:=]\s*["']?[A-Za-z0-9./_+=-]{16,}/i
+];
+
+function containsCredentialMaterial(value: string): boolean {
+  return CREDENTIAL_PATTERNS.some((pattern) => pattern.test(value));
+}
+
 export const ProductPlannerInputSchema = z.object({
   request: z.string().trim().min(10).max(6000),
   repositoryContext: z.string().trim().max(4000).optional(),
   constraints: z.array(z.string().trim().min(1).max(500)).max(20).default([])
-}).strict();
+}).strict().superRefine((value, context) => {
+  if (containsCredentialMaterial(value.request)) {
+    context.addIssue({
+      code: 'custom',
+      path: ['request'],
+      message: 'Potential credential material detected. Remove secrets before requesting AI planning.'
+    });
+  }
+
+  if (value.repositoryContext && containsCredentialMaterial(value.repositoryContext)) {
+    context.addIssue({
+      code: 'custom',
+      path: ['repositoryContext'],
+      message: 'Potential credential material detected. Remove secrets before requesting AI planning.'
+    });
+  }
+
+  value.constraints.forEach((constraint, index) => {
+    if (containsCredentialMaterial(constraint)) {
+      context.addIssue({
+        code: 'custom',
+        path: ['constraints', index],
+        message: 'Potential credential material detected. Remove secrets before requesting AI planning.'
+      });
+    }
+  });
+});
 export type ProductPlannerInput = z.infer<typeof ProductPlannerInputSchema>;
 
 const UserStorySchema = z.object({
