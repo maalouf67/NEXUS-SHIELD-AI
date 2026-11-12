@@ -173,15 +173,16 @@ describe('engineering task state machine', () => {
     });
   });
 
-  it('accepts the complete happy-path lifecycle and emits workspace-scoped events', () => {
+  it('accepts the complete happy-path lifecycle and emits workspace-scoped revisioned events', () => {
     let state = createInitialTaskState(taskId, workspaceId, timestamp);
     const nextStates = ['triaged', 'ready', 'running', 'review', 'verified', 'completed'] as const;
 
     nextStates.forEach((nextStatus, index) => {
+      const previousRevision = state.revision;
       const result = transitionTask(state, transitionCommand({
         eventId: `88888888-8888-4888-8888-88888888888${index + 1}`,
         expectedStatus: state.status,
-        expectedRevision: state.revision,
+        expectedRevision: previousRevision,
         nextStatus
       }));
 
@@ -190,6 +191,8 @@ describe('engineering task state machine', () => {
       expect(result.state.revision).toBe(index + 1);
       expect(result.state.workspaceId).toBe(workspaceId);
       expect(result.event.workspaceId).toBe(workspaceId);
+      expect(result.event.previousRevision).toBe(previousRevision);
+      expect(result.event.nextRevision).toBe(previousRevision + 1);
       expect(result.event.previousStatus).toBe(state.status);
       expect(result.event.nextStatus).toBe(nextStatus);
       state = result.state;
