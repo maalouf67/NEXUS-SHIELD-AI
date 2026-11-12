@@ -103,7 +103,7 @@ The iOS project file and target settings must be generated/edited on macOS with 
 - Inject clock/JWKS retrieval in tests; production verifier uses Apple's published signing keys with bounded cache and key rotation handling.
 
 - [ ] Write tests for valid token and invalid signature, issuer, audience, nonce, expiry, missing subject and malformed claims.
-- [ ] Run `npm test -- --runInBand services/api/src/auth/apple-identity.verifier.test.ts` (adapt only to the actual package test script if different).
+- [ ] Run `npm exec --workspace @nexus-shield/api -- vitest run src/auth/apple-identity.verifier.test.ts`.
 - [ ] Implement verifier with strict allow-list of issuer and expected audience.
 - [ ] Re-run verifier tests, including JWKS key rotation and unknown key ID.
 - [ ] Commit verifier and tests.
