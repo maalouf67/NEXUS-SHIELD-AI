@@ -19,17 +19,21 @@ concurrency:
 
 jobs:
   publish:
-    if: >-
-      ${{ github.event.workflow_run.conclusion == 'success' &&
-          github.event.workflow_run.head_branch == 'main' }}
+    if: github.event.workflow_run.head_branch == 'main'
     runs-on: ubuntu-latest
     steps:
       - name: Verify all main-branch quality gates passed for this exact commit
         env:
           GH_TOKEN: ${{ github.token }}
           SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+          TRIGGER_NAME: ${{ github.event.workflow_run.name }}
+          TRIGGER_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          TRIGGER_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          TRIGGER_EVENT: ${{ github.event.workflow_run.event }}
         run: |
           set -euo pipefail
+          echo "Publisher trigger: workflow=$TRIGGER_NAME conclusion=$TRIGGER_CONCLUSION branch=$TRIGGER_BRANCH event=$TRIGGER_EVENT sha=$SOURCE_SHA"
+          test "$TRIGGER_BRANCH" = "main"
           gh api "/repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${SOURCE_SHA}&per_page=100" > runs.json
           jq -e --arg sha "$SOURCE_SHA" '
             [.workflow_runs[] | select(
