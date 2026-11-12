@@ -123,6 +123,18 @@ export function createWorkspacesRouter(repository: WorkspaceRepository = workspa
     }
   });
 
+  router.get('/workspaces/members/:userId/events', requireAuth, requireWorkspace, requireWorkspaceRole('admin'), async (req, res) => {
+    const userId = z.string().uuid().safeParse(req.params.userId);
+    if (!userId.success) return res.status(400).json({ error: 'INVALID_WORKSPACE_MEMBER_ID' });
+    try {
+      const events = await repository.listMembershipEvents(req.workspaceContext!.id, userId.data);
+      res.setHeader('Cache-Control', 'no-store');
+      return res.status(200).json({ events });
+    } catch {
+      return res.status(503).json({ error: 'WORKSPACE_MEMBER_AUDIT_UNAVAILABLE' });
+    }
+  });
+
   router.post('/workspaces/integrations', requireAuth, requireWorkspace, requireWorkspaceRole('admin'), async (req, res) => {
     const parsed = CreateIntegrationSchema.safeParse(req.body);
     if (!parsed.success) {

@@ -16,7 +16,8 @@ import {
   hashWorkspaceIntegrationToken,
   type WorkspaceRepository,
   type WorkspaceMembership,
-  type WorkspaceIntegration
+  type WorkspaceIntegration,
+  type WorkspaceMembershipEvent
 } from '../workspaces/workspace.repository.js';
 
 const SECRET = 'nexus-workspace-test-secret-at-least-32-characters';
@@ -32,7 +33,8 @@ function makeRepository(
     slug: 'workspace-a-test',
     role: 'admin'
   },
-  revokeResult: 'revoked' | 'not_found' | 'last_admin' = 'revoked'
+  revokeResult: 'revoked' | 'not_found' | 'last_admin' = 'revoked',
+  membershipEvents: WorkspaceMembershipEvent[] = []
 ): WorkspaceRepository {
   return {
     async createWorkspace(input) {
@@ -68,6 +70,9 @@ function makeRepository(
     },
     async revokeMembership() {
       return revokeResult;
+    },
+    async listMembershipEvents() {
+      return membershipEvents;
     },
     async createIntegration(input) {
       return {
@@ -241,6 +246,26 @@ describe('Workspace identity and access controls', () => {
 
     expect(response.status).toBe(403);
     expect(response.body.error).toBe('FORBIDDEN');
+  });
+
+  it('allows workspace admins to inspect scoped membership audit history without caching it', async () => {
+    const token = accessToken(ADMIN_ID);
+    const event: WorkspaceMembershipEvent = {
+      id: randomUUID(),
+      workspaceId: WORKSPACE_ID,
+      memberUserId: VIEWER_ID,
+      actorUserId: ADMIN_ID,
+      eventType: 'membership_revoked',
+      createdAt: '2026-11-12T00:00:00.000Z'
+    };
+    const response = await request(appWith(makeRepository(undefined, 'revoked', [event])))
+      .get('/api/workspaces/members/' + VIEWER_ID + '/events')
+      .set('Authorization', `Bearer ${token}`)
+      .set('X-NEXUS-WORKSPACE-ID', WORKSPACE_ID);
+
+    expect(response.status).toBe(200);
+    expect(response.body.events).toEqual([event]);
+    expect(response.headers['cache-control']).toBe('no-store');
   });
 
   it('hashes integration credentials before lookup and requires the requested permission', async () => {

@@ -81,6 +81,26 @@ describe.skipIf(!enabled)('PostgreSQL workspace isolation foundation', () => {
     });
     expect(audit.rows[0].revoked_at).toBeTruthy();
 
+    const initialEvents = await repository.listMembershipEvents(workspaceA, revokedUserId);
+    expect(initialEvents.map((event) => event.eventType)).toContain('member_added');
+    const revocationEvent = initialEvents.find((event) => event.eventType === 'membership_revoked');
+    expect(revocationEvent).toMatchObject({ actorUserId: remainingAdminId, memberUserId: revokedUserId });
+
+    await expect(pool.query(
+      "UPDATE workspace_membership_events SET event_type = 'tampered' WHERE id = $1",
+      [revocationEvent!.id]
+    )).rejects.toThrow('append-only');
+    await expect(pool.query(
+      "DELETE FROM workspace_membership_events WHERE id = $1",
+      [revocationEvent!.id]
+    )).rejects.toThrow('append-only');
+
+    const revokedEmail = revokedUserId === userA ? emailA : emailB;
+    const reactivated = await repository.addMemberByEmail(workspaceA, revokedEmail, 'admin', remainingAdminId);
+    expect(reactivated).toMatchObject({ id: revokedUserId, status: 'active' });
+    const reactivationEvents = await repository.listMembershipEvents(workspaceA, revokedUserId);
+    expect(reactivationEvents.map((event) => event.eventType)).toContain('membership_reactivated');
+
     expect(await repository.revokeMembership(workspaceA, remainingAdminId, remainingAdminId)).toBe('last_admin');
   });
 

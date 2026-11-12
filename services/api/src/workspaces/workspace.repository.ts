@@ -5,6 +5,16 @@ export type WorkspaceRole = 'admin' | 'analyst' | 'viewer';
 export type WorkspaceStatus = 'active' | 'suspended' | 'closed';
 export type WorkspaceIntegrationPermission = 'assets:read' | 'assets:write' | 'events:write';
 export type WorkspaceMembershipRevocationResult = 'revoked' | 'not_found' | 'last_admin';
+export type WorkspaceMembershipEventType = 'member_added' | 'membership_reactivated' | 'membership_revoked';
+
+export interface WorkspaceMembershipEvent {
+  id: string;
+  workspaceId: string;
+  memberUserId: string;
+  actorUserId: string | null;
+  eventType: WorkspaceMembershipEventType;
+  createdAt: string;
+}
 
 export interface WorkspaceMembership {
   id: string;
@@ -41,6 +51,7 @@ export interface WorkspaceRepository {
   listMembers(workspaceId: string): Promise<WorkspaceMember[]>;
   addMemberByEmail(workspaceId: string, email: string, role: WorkspaceRole, actorUserId: string): Promise<WorkspaceMember | null>;
   revokeMembership(workspaceId: string, userId: string, actorUserId: string): Promise<WorkspaceMembershipRevocationResult>;
+  listMembershipEvents(workspaceId: string, userId: string): Promise<WorkspaceMembershipEvent[]>;
   createIntegration(input: { workspaceId: string; name: string; permissions: WorkspaceIntegrationPermission[]; actorUserId: string }): Promise<CreatedWorkspaceIntegration>;
   findActiveIntegrationByHash(tokenHash: string): Promise<WorkspaceIntegration | null>;
   revokeIntegration(workspaceId: string, integrationId: string): Promise<boolean>;
@@ -70,6 +81,11 @@ export class PostgresWorkspaceRepository implements WorkspaceRepository {
            (workspace_id, user_id, role, status, created_by_user_id)
          VALUES ($1, $2, 'admin', 'active', $2)`,
         [input.id, input.ownerUserId]
+      );
+      await client.query(
+        `INSERT INTO workspace_membership_events (id, workspace_id, member_user_id, actor_user_id, event_type)
+         VALUES ($1, $2, $3, $4, 'member_added')`,
+        [randomUUID(), input.id, input.ownerUserId, input.ownerUserId]
       );
       await client.query('COMMIT');
       return {
@@ -165,6 +181,10 @@ export class PostgresWorkspaceRepository implements WorkspaceRepository {
         return null;
       }
 
+      const existingMembership = await client.query(
+        'SELECT status FROM workspace_memberships WHERE workspace_id = $1 AND user_id = $2 FOR UPDATE',
+        [workspaceId, user.rows[0].id]
+      );
       const inserted = await client.query(
         `INSERT INTO workspace_memberships
            (workspace_id, user_id, role, status, created_by_user_id)
@@ -196,6 +216,17 @@ export class PostgresWorkspaceRepository implements WorkspaceRepository {
           revokedByUserId: row.revoked_by_user_id ?? null
         } : null;
       }
+      await client.query(
+        `INSERT INTO workspace_membership_events (id, workspace_id, member_user_id, actor_user_id, event_type)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [
+          randomUUID(),
+          workspaceId,
+          user.rows[0].id,
+          actorUserId,
+          existingMembership.rowCount ? 'membership_reactivated' : 'member_added'
+        ]
+      );
       await client.query('COMMIT');
       return {
         id: inserted.rows[0].user_id,
@@ -256,6 +287,13 @@ export class PostgresWorkspaceRepository implements WorkspaceRepository {
         "UPDATE workspace_memberships SET status = 'revoked', revoked_at = NOW(), revoked_by_user_id = $3 WHERE workspace_id = $1 AND user_id = $2 AND status = 'active' RETURNING user_id",
         [workspaceId, userId, actorUserId]
       );
+      if ((revoked.rowCount ?? 0) > 0) {
+        await client.query(
+          `INSERT INTO workspace_membership_events (id, workspace_id, member_user_id, actor_user_id, event_type)
+           VALUES ($1, $2, $3, $4, 'membership_revoked')`,
+          [randomUUID(), workspaceId, userId, actorUserId]
+        );
+      }
       await client.query('COMMIT');
       return (revoked.rowCount ?? 0) > 0 ? 'revoked' : 'not_found';
     } catch (error) {
@@ -264,6 +302,24 @@ export class PostgresWorkspaceRepository implements WorkspaceRepository {
     } finally {
       client.release();
     }
+  }
+
+  async listMembershipEvents(workspaceId: string, userId: string): Promise<WorkspaceMembershipEvent[]> {
+    const result = await pool.query(
+      `SELECT id, workspace_id, member_user_id, actor_user_id, event_type, created_at
+       FROM workspace_membership_events
+       WHERE workspace_id = $1 AND member_user_id = $2
+       ORDER BY created_at ASC, id ASC`,
+      [workspaceId, userId]
+    );
+    return result.rows.map((row) => ({
+      id: row.id,
+      workspaceId: row.workspace_id,
+      memberUserId: row.member_user_id,
+      actorUserId: row.actor_user_id ?? null,
+      eventType: row.event_type as WorkspaceMembershipEventType,
+      createdAt: iso(row.created_at)
+    }));
   }
 
   async createIntegration(input: {
