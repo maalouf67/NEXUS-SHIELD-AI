@@ -41,16 +41,11 @@ const uuidSchema = z.string().uuid();
 const actorIdSchema = z.string().trim().min(1).max(128);
 
 export const TaskActorSchema = z.discriminatedUnion('kind', [
-  z.object({ kind: z.literal('human'), id: uuidSchema }),
-  z.object({ kind: z.literal('orchestrator'), id: z.literal('orchestrator') }),
-  z.object({ kind: z.literal('agent'), id: EngineeringAgentIdSchema }),
-  z.object({ kind: z.literal('github'), id: actorIdSchema })
-]).pipe(z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('human'), id: uuidSchema }).strict(),
   z.object({ kind: z.literal('orchestrator'), id: z.literal('orchestrator') }).strict(),
   z.object({ kind: z.literal('agent'), id: EngineeringAgentIdSchema }).strict(),
   z.object({ kind: z.literal('github'), id: actorIdSchema }).strict()
-]));
+]);
 export type TaskActor = z.infer<typeof TaskActorSchema>;
 
 const isoDateTimeSchema = z.string().datetime({ offset: true });
