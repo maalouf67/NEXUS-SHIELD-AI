@@ -8,8 +8,7 @@ enum NexusTheme {
     static let accent = Color(red: 0.25, green: 0.62, blue: 0.98)
     static let secondaryText = Color(red: 0.68, green: 0.74, blue: 0.83)
     static let border = Color.white.opacity(0.09)
-
-    static let spacing: CGFloat = 24
-    static let cornerRadius: CGFloat = 22
-    static let controlCornerRadius: CGFloat = 16
+    static let padding: CGFloat = 24
+    static let radius: CGFloat = 22
+    static let controlRadius: CGFloat = 16
 }
