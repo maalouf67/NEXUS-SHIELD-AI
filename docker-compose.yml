@@ -55,9 +55,8 @@ services:
       dockerfile: services/ai/Dockerfile
     container_name: nexus-shield-ai
     restart: unless-stopped
+    # The Python AI service is the malware scanner; OpenAI credentials belong only to the Express API.
     environment:
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
       NEXUS_SERVICE_API_TOKEN: ${NEXUS_SERVICE_API_TOKEN:-}
       NEXUS_QUARANTINE_DIR: /var/lib/nexus/quarantine
       NEXUS_MAX_UPLOAD_BYTES: ${NEXUS_MAX_UPLOAD_BYTES:-104857600}

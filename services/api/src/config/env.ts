@@ -43,6 +43,9 @@ const envSchema = z.object({
   SESSION_SECRET: z.string().min(32),
   NEXUS_SERVICE_API_TOKEN: optionalServiceToken,
   NEXUS_EVENT_INGESTION_TOKEN: optionalServiceToken,
+  // Optional LLM credentials are consumed only by the Express API provider registry.
+  OPENAI_API_KEY: optionalApiKey,
+  OPENAI_MODEL: z.string().trim().min(1).max(100).default('gpt-4o-mini'),
   IPQS_API_KEY: optionalApiKey,
   IPQS_PHONE_STRICTNESS: z.preprocess(
     (value) => value === "" || value === undefined ? 0 : value,
