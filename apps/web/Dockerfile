@@ -25,6 +25,9 @@ COPY --from=build --chown=node:node /workspace/apps/web/next.config.js ./next.co
 COPY --from=build --chown=node:node /workspace/apps/web/public ./public
 COPY --from=build --chown=node:node /workspace/apps/web/.next ./.next
 
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack \
+    /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack
+
 USER node
 EXPOSE 3000
 CMD ["node", "../../node_modules/next/dist/bin/next", "start", "--port", "3000"]

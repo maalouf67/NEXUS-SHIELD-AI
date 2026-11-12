@@ -24,6 +24,9 @@ COPY --from=build --chown=node:node /workspace/services/api/dist ./services/api/
 COPY --from=build --chown=node:node /workspace/services/api/certs ./services/api/certs
 COPY --from=build --chown=node:node /workspace/database/init ./database/init
 
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack \
+    /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack
+
 USER node
 EXPOSE 4000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
