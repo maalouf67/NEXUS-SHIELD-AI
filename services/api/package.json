@@ -15,13 +15,13 @@
     "db:check": "tsx src/scripts/check-database-connection.ts"
   },
   "dependencies": {
-    "@ai-sdk/openai": "^4.0.106",
-    "ai": "^7.0.159",
+    "@ai-sdk/openai": "^4.0.109",
+    "ai": "^7.0.163",
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
-    "express-rate-limit": "^8.7.2",
+    "express-rate-limit": "^8.7.3",
     "helmet": "^8.3.0",
     "jsonwebtoken": "^9.0.3",
     "pg": "^8.23.1",
@@ -37,6 +37,6 @@
     "supertest": "^7.0.0",
     "tsx": "^4.17.0",
     "typescript": "^5.5.4",
-    "vitest": "^5.0.5"
+    "vitest": "^5.1.0"
   }
 }
