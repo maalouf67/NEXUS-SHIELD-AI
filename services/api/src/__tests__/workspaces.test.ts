@@ -31,7 +31,8 @@ function makeRepository(
     name: 'Workspace A',
     slug: 'workspace-a-test',
     role: 'admin'
-  }
+  },
+  revokeResult: 'revoked' | 'not_found' | 'last_admin' = 'revoked'
 ): WorkspaceRepository {
   return {
     async createWorkspace(input) {
@@ -49,7 +50,9 @@ function makeRepository(
         email: 'admin@example.test',
         role: 'admin',
         status: 'active',
-        createdAt: '2026-11-08T00:00:00.000Z'
+        createdAt: '2026-11-08T00:00:00.000Z',
+        revokedAt: null,
+        revokedByUserId: null
       }];
     },
     async addMemberByEmail(_workspaceId, email, role) {
@@ -60,6 +63,9 @@ function makeRepository(
         status: 'active',
         createdAt: '2026-11-08T00:00:00.000Z'
       };
+    },
+    async revokeMembership() {
+      return revokeResult;
     },
     async createIntegration(input) {
       return {
@@ -177,6 +183,57 @@ describe('Workspace identity and access controls', () => {
     };
     const response = await request(appWith(makeRepository(viewerMembership)))
       .get('/api/workspaces/members')
+      .set('Authorization', `Bearer ${token}`)
+      .set('X-NEXUS-WORKSPACE-ID', WORKSPACE_ID);
+
+    expect(response.status).toBe(403);
+    expect(response.body.error).toBe('FORBIDDEN');
+  });
+
+  it('allows a workspace admin to revoke a member and returns a no-store response', async () => {
+    const token = accessToken(ADMIN_ID);
+    const response = await request(appWith(makeRepository(undefined, 'revoked')))
+      .delete('/api/workspaces/members/' + VIEWER_ID)
+      .set('Authorization', `Bearer ${token}`)
+      .set('X-NEXUS-WORKSPACE-ID', WORKSPACE_ID);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({ success: true, member: { id: VIEWER_ID, status: 'revoked' } });
+    expect(response.headers['cache-control']).toBe('no-store');
+  });
+
+  it('prevents revoking the final active workspace administrator', async () => {
+    const token = accessToken(ADMIN_ID);
+    const response = await request(appWith(makeRepository(undefined, 'last_admin')))
+      .delete('/api/workspaces/members/' + ADMIN_ID)
+      .set('Authorization', `Bearer ${token}`)
+      .set('X-NEXUS-WORKSPACE-ID', WORKSPACE_ID);
+
+    expect(response.status).toBe(409);
+    expect(response.body.error).toBe('LAST_WORKSPACE_ADMIN_REQUIRED');
+  });
+
+  it('returns not found for a membership that is not active in the selected workspace', async () => {
+    const token = accessToken(ADMIN_ID);
+    const response = await request(appWith(makeRepository(undefined, 'not_found')))
+      .delete('/api/workspaces/members/' + VIEWER_ID)
+      .set('Authorization', `Bearer ${token}`)
+      .set('X-NEXUS-WORKSPACE-ID', WORKSPACE_ID);
+
+    expect(response.status).toBe(404);
+    expect(response.body.error).toBe('WORKSPACE_MEMBER_NOT_FOUND');
+  });
+
+  it('does not allow workspace viewers to revoke memberships', async () => {
+    const token = accessToken(ADMIN_ID);
+    const viewerMembership: WorkspaceMembership = {
+      id: WORKSPACE_ID,
+      name: 'Workspace A',
+      slug: 'workspace-a-test',
+      role: 'viewer'
+    };
+    const response = await request(appWith(makeRepository(viewerMembership)))
+      .delete('/api/workspaces/members/' + VIEWER_ID)
       .set('Authorization', `Bearer ${token}`)
       .set('X-NEXUS-WORKSPACE-ID', WORKSPACE_ID);
 

@@ -4,6 +4,7 @@ import { pool } from '../db/pool.js';
 export type WorkspaceRole = 'admin' | 'analyst' | 'viewer';
 export type WorkspaceStatus = 'active' | 'suspended' | 'closed';
 export type WorkspaceIntegrationPermission = 'assets:read' | 'assets:write' | 'events:write';
+export type WorkspaceMembershipRevocationResult = 'revoked' | 'not_found' | 'last_admin';
 
 export interface WorkspaceMembership {
   id: string;
@@ -18,6 +19,8 @@ export interface WorkspaceMember {
   role: WorkspaceRole;
   status: 'active' | 'invited' | 'revoked';
   createdAt: string;
+  revokedAt: string | null;
+  revokedByUserId: string | null;
 }
 
 export interface WorkspaceIntegration {
@@ -37,6 +40,7 @@ export interface WorkspaceRepository {
   findActiveMembership(userId: string, workspaceId: string): Promise<WorkspaceMembership | null>;
   listMembers(workspaceId: string): Promise<WorkspaceMember[]>;
   addMemberByEmail(workspaceId: string, email: string, role: WorkspaceRole, actorUserId: string): Promise<WorkspaceMember | null>;
+  revokeMembership(workspaceId: string, userId: string, actorUserId: string): Promise<WorkspaceMembershipRevocationResult>;
   createIntegration(input: { workspaceId: string; name: string; permissions: WorkspaceIntegrationPermission[]; actorUserId: string }): Promise<CreatedWorkspaceIntegration>;
   findActiveIntegrationByHash(tokenHash: string): Promise<WorkspaceIntegration | null>;
   revokeIntegration(workspaceId: string, integrationId: string): Promise<boolean>;
@@ -124,7 +128,7 @@ export class PostgresWorkspaceRepository implements WorkspaceRepository {
 
   async listMembers(workspaceId: string): Promise<WorkspaceMember[]> {
     const result = await pool.query(
-      `SELECT u.id, u.email, m.role, m.status, m.created_at
+      `SELECT u.id, u.email, m.role, m.status, m.created_at, m.revoked_at, m.revoked_by_user_id
        FROM workspace_memberships m
        INNER JOIN users u ON u.id = m.user_id
        WHERE m.workspace_id = $1
@@ -137,7 +141,9 @@ export class PostgresWorkspaceRepository implements WorkspaceRepository {
       email: row.email,
       role: row.role as WorkspaceRole,
       status: row.status as WorkspaceMember['status'],
-      createdAt: iso(row.created_at)
+      createdAt: iso(row.created_at),
+      revokedAt: row.revoked_at ? iso(row.revoked_at) : null,
+      revokedByUserId: row.revoked_by_user_id ?? null
     }));
   }
 
@@ -165,6 +171,7 @@ export class PostgresWorkspaceRepository implements WorkspaceRepository {
          VALUES ($1, $2, $3, 'active', $4)
          ON CONFLICT (workspace_id, user_id) DO UPDATE
            SET role = EXCLUDED.role, status = 'active', revoked_at = NULL,
+               revoked_by_user_id = NULL,
                created_by_user_id = EXCLUDED.created_by_user_id
          WHERE workspace_memberships.status = 'revoked'
          RETURNING user_id, role, status, created_at`,
@@ -195,6 +202,58 @@ export class PostgresWorkspaceRepository implements WorkspaceRepository {
         status: inserted.rows[0].status as WorkspaceMember['status'],
         createdAt: iso(inserted.rows[0].created_at)
       };
+    } catch (error) {
+      try { await client.query('ROLLBACK'); } catch { /* preserve original error */ }
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async revokeMembership(
+    workspaceId: string,
+    userId: string,
+    actorUserId: string
+  ): Promise<WorkspaceMembershipRevocationResult> {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      // Serialize revocations within a workspace to protect its final active administrator.
+      const workspace = await client.query(
+        "SELECT id FROM workspaces WHERE id = $1 AND status = 'active' FOR UPDATE",
+        [workspaceId]
+      );
+      if (!workspace.rowCount) {
+        await client.query('ROLLBACK');
+        return 'not_found';
+      }
+
+      const membership = await client.query(
+        "SELECT role FROM workspace_memberships WHERE workspace_id = $1 AND user_id = $2 AND status = 'active' FOR UPDATE",
+        [workspaceId, userId]
+      );
+      if (!membership.rowCount) {
+        await client.query('ROLLBACK');
+        return 'not_found';
+      }
+
+      if (membership.rows[0].role === 'admin') {
+        const administrators = await client.query(
+          "SELECT COUNT(*)::int AS total FROM workspace_memberships WHERE workspace_id = $1 AND role = 'admin' AND status = 'active'",
+          [workspaceId]
+        );
+        if ((administrators.rows[0]?.total ?? 0) <= 1) {
+          await client.query('ROLLBACK');
+          return 'last_admin';
+        }
+      }
+
+      const revoked = await client.query(
+        "UPDATE workspace_memberships SET status = 'revoked', revoked_at = NOW(), revoked_by_user_id = $3 WHERE workspace_id = $1 AND user_id = $2 AND status = 'active' RETURNING user_id",
+        [workspaceId, userId, actorUserId]
+      );
+      await client.query('COMMIT');
+      return (revoked.rowCount ?? 0) > 0 ? 'revoked' : 'not_found';
     } catch (error) {
       try { await client.query('ROLLBACK'); } catch { /* preserve original error */ }
       throw error;

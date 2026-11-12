@@ -101,6 +101,28 @@ export function createWorkspacesRouter(repository: WorkspaceRepository = workspa
     }
   });
 
+  router.delete('/workspaces/members/:userId', requireAuth, requireWorkspace, requireWorkspaceRole('admin'), async (req, res) => {
+    const userId = z.string().uuid().safeParse(req.params.userId);
+    if (!userId.success) return res.status(400).json({ error: 'INVALID_WORKSPACE_MEMBER_ID' });
+    try {
+      const result = await repository.revokeMembership(
+        req.workspaceContext!.id,
+        userId.data,
+        req.authUser!.id
+      );
+      if (result === 'last_admin') {
+        return res.status(409).json({ error: 'LAST_WORKSPACE_ADMIN_REQUIRED' });
+      }
+      if (result === 'not_found') {
+        return res.status(404).json({ error: 'WORKSPACE_MEMBER_NOT_FOUND' });
+      }
+      res.setHeader('Cache-Control', 'no-store');
+      return res.status(200).json({ success: true, member: { id: userId.data, status: 'revoked' } });
+    } catch {
+      return res.status(503).json({ error: 'WORKSPACE_MEMBER_STORE_UNAVAILABLE' });
+    }
+  });
+
   router.post('/workspaces/integrations', requireAuth, requireWorkspace, requireWorkspaceRole('admin'), async (req, res) => {
     const parsed = CreateIntegrationSchema.safeParse(req.body);
     if (!parsed.success) {
