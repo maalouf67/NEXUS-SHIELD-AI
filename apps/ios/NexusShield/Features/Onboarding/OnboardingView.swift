@@ -38,7 +38,7 @@ struct OnboardingView: View {
 
                 Spacer(minLength: 24)
                 VStack(spacing: 14) {
-                    Text("Your digital world.\nUnder your control.")
+                    Text("Your digital world.\\nUnder your control.")
                         .font(.system(size: 34, weight: .bold, design: .rounded))
                         .tracking(-0.8)
                         .multilineTextAlignment(.center)
@@ -52,16 +52,11 @@ struct OnboardingView: View {
                 }
 
                 Spacer(minLength: 28)
-                Button(action: state.tapAppleSignIn) {
-                    HStack(spacing: 10) {
-                        Image(systemName: "apple.logo").font(.system(size: 18, weight: .semibold))
-                        Text("Continue with Apple").font(.system(size: 16, weight: .semibold))
-                    }
-                    .foregroundStyle(.black)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 56)
-                    .background(.white, in: RoundedRectangle(cornerRadius: 16))
-                }
+                NexusPrimaryButton(
+                    title: "Continue with Apple",
+                    systemImage: "apple.logo",
+                    action: state.tapAppleSignIn
+                )
                 .accessibilityHint("Apple authentication is not yet connected.")
 
                 Button(action: onPreviewDashboard) {
