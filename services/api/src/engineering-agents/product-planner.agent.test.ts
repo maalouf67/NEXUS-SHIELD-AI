@@ -97,6 +97,31 @@ describe('Product Planner runtime', () => {
     expect(execute).not.toHaveBeenCalled();
   });
 
+  it('rejects likely API keys before sending request text to the model', async () => {
+    const execute = vi.fn(async () => validPlan);
+    const agent = createProductPlannerAgent(execute);
+    const fakeKey = ['sk-', 'A'.repeat(28)].join('');
+
+    await expect(agent.plan({
+      request: `Prepare a plan using this credential: ${fakeKey}`
+    })).rejects.toThrow('Potential credential material detected');
+
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  it('rejects environment secret assignments from supplied repository context', async () => {
+    const execute = vi.fn(async () => validPlan);
+    const agent = createProductPlannerAgent(execute);
+    const fakeKey = ['sk-', 'B'.repeat(28)].join('');
+
+    await expect(agent.plan({
+      request: 'Review the server configuration and propose safe improvements.',
+      repositoryContext: `OPENAI_API_KEY=${fakeKey}`
+    })).rejects.toThrow('Potential credential material detected');
+
+    expect(execute).not.toHaveBeenCalled();
+  });
+
   it('rejects output that does not meet the strict structured plan contract', async () => {
     const agent = createProductPlannerAgent(async () => ({
       ...validPlan,
