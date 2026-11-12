@@ -9,6 +9,7 @@ import {
 
 export const TaskStateSnapshotSchema = z.object({
   taskId: z.string().uuid(),
+  workspaceId: z.string().uuid(),
   status: TaskStatusSchema,
   revision: z.number().int().min(0),
   updatedAt: z.string().datetime({ offset: true })
@@ -18,6 +19,7 @@ export type TaskStateSnapshot = z.infer<typeof TaskStateSnapshotSchema>;
 export const TaskTransitionCommandSchema = z.object({
   eventId: z.string().uuid(),
   taskId: z.string().uuid(),
+  workspaceId: z.string().uuid(),
   expectedStatus: TaskStatusSchema,
   expectedRevision: z.number().int().min(0),
   nextStatus: TaskStatusSchema,
@@ -46,6 +48,7 @@ export type TaskTransitionFailureCode =
   | 'INVALID_STATE'
   | 'INVALID_COMMAND'
   | 'TASK_ID_MISMATCH'
+  | 'WORKSPACE_ID_MISMATCH'
   | 'STALE_STATE'
   | 'TRANSITION_NOT_ALLOWED'
   | 'REASON_REQUIRED';
@@ -54,9 +57,14 @@ export type TaskTransitionResult =
   | { ok: true; state: TaskStateSnapshot; event: TaskEvent }
   | { ok: false; code: TaskTransitionFailureCode; message: string };
 
-export function createInitialTaskState(taskId: string, createdAt: string): TaskStateSnapshot {
+export function createInitialTaskState(
+  taskId: string,
+  workspaceId: string,
+  createdAt: string
+): TaskStateSnapshot {
   return TaskStateSnapshotSchema.parse({
     taskId,
+    workspaceId,
     status: 'queued',
     revision: 0,
     updatedAt: createdAt
@@ -68,9 +76,9 @@ export function canTransitionTask(from: TaskStatus, to: TaskStatus): boolean {
 }
 
 /**
- * Pure state transition. The caller supplies eventId and occurredAt so retries
- * are reproducible. Persistence, event de-duplication and actor authentication
- * are enforced by later orchestration layers, not by this function.
+ * Pure, tenant-scoped state transition. The caller supplies eventId and
+ * occurredAt so retries are reproducible. Persistence, event de-duplication
+ * and actor authentication remain responsibilities of the orchestration layer.
  */
 export function transitionTask(current: unknown, command: unknown): TaskTransitionResult {
   const stateResult = TaskStateSnapshotSchema.safeParse(current);
@@ -90,6 +98,10 @@ export function transitionTask(current: unknown, command: unknown): TaskTransiti
     return { ok: false, code: 'TASK_ID_MISMATCH', message: 'Command targets another task.' };
   }
 
+  if (request.workspaceId !== state.workspaceId) {
+    return { ok: false, code: 'WORKSPACE_ID_MISMATCH', message: 'Command targets another workspace.' };
+  }
+
   if (request.expectedStatus !== state.status || request.expectedRevision !== state.revision) {
     return { ok: false, code: 'STALE_STATE', message: 'Reload task state before retrying.' };
   }
@@ -104,6 +116,7 @@ export function transitionTask(current: unknown, command: unknown): TaskTransiti
 
   const nextState = TaskStateSnapshotSchema.parse({
     taskId: state.taskId,
+    workspaceId: state.workspaceId,
     status: request.nextStatus,
     revision: state.revision + 1,
     updatedAt: request.occurredAt
@@ -112,6 +125,7 @@ export function transitionTask(current: unknown, command: unknown): TaskTransiti
   const event = TaskEventSchema.parse({
     eventId: request.eventId,
     taskId: state.taskId,
+    workspaceId: state.workspaceId,
     correlationId: request.correlationId,
     eventType: 'task.status_changed',
     previousStatus: state.status,
