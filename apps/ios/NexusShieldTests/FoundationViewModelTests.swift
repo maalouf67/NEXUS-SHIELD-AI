@@ -8,7 +8,7 @@ final class FoundationViewModelTests: XCTestCase {
         state.tapAppleSignIn()
         XCTAssertTrue(state.showingAuthenticationNotice)
         XCTAssertFalse(state.appleAuthenticationReady)
-        XCTAssertTrue(state.authenticationNotice.contains("not yet implemented"))
+        XCTAssertTrue(state.authenticationNotice.contains("will be enabled"))
     }
 
     @MainActor
@@ -17,5 +17,10 @@ final class FoundationViewModelTests: XCTestCase {
         XCTAssertFalse(state.accountConnected)
         XCTAssertTrue(state.statusMessage.contains("verified security information"))
         XCTAssertTrue(state.emptyStateMessage.contains("No live alerts"))
+        XCTAssertTrue(state.emptyStateMessage.contains("no security scores"))
+    }
+
+    func testNoticeSupportsInformationAndWarningVariants() {
+        XCTAssertNotEqual(NexusNotice.Kind.information, NexusNotice.Kind.warning)
     }
 }
