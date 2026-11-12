@@ -20,6 +20,7 @@ import { malwareScanRouter } from './malware-scans/malware-scans.routes.js';
 import { phoneReputationRouter } from './phone-reputation/phone-reputation.routes.js';
 import { ipReputationRouter } from './ip-reputation/ip-reputation.routes.js';
 import { workspacesRouter } from './workspaces/workspaces.routes.js';
+import { productPlannerRouter } from './engineering-agents/product-planner.routes.js';
 import { otelTracingMiddleware } from './observability/otel-tracing.middleware.js';
 import { agentTasksRouter } from './ai/agents/agent-tasks.routes.js';
 
@@ -64,6 +65,9 @@ app.use('/api', attackPathsRouter);
 app.use('/api', assetInventoryRouter);
 app.use('/api', authRouter);
 app.use('/api', workspacesRouter);
+// Product Planner is workspace-scoped and read-only: it returns a draft plan
+// and has no GitHub, repository-content, filesystem, shell or deployment tools.
+app.use('/api', productPlannerRouter);
 // The legacy global /users directory and account-creation API is intentionally
 // not mounted. Workspace membership is managed only through /workspaces/members,
 // which requires an active workspace administrator and an existing active account.
