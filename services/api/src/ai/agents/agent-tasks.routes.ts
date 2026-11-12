@@ -2,11 +2,11 @@ import { randomUUID } from 'node:crypto';
 import { Router, type RequestHandler } from 'express';
 import { z } from 'zod';
 
-import { requireAuth } from '../auth/auth.middleware.js';
-import { pool } from '../db/pool.js';
-import { nexusSupervisor, type NexusSupervisor } from '../ai/agents/supervisor.runtime.js';
-import type { AgentSecurityEvent } from '../ai/agents/threat-intelligence.agent.js';
-import { createRequireWorkspace, requireWorkspaceRole } from '../workspaces/workspace.middleware.js';
+import { requireAuth } from '../../auth/auth.middleware.js';
+import { pool } from '../../db/pool.js';
+import { nexusSupervisor, type NexusSupervisor } from './supervisor.runtime.js';
+import type { AgentSecurityEvent } from './threat-intelligence.agent.js';
+import { createRequireWorkspace, requireWorkspaceRole } from '../../workspaces/workspace.middleware.js';
 
 const TaskRequestSchema = z.object({
   agentId: z.literal('threat-intelligence'),
