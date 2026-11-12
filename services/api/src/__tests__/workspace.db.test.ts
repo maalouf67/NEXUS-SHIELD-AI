@@ -60,18 +60,28 @@ describe.skipIf(!enabled)('PostgreSQL workspace isolation foundation', () => {
     const secondAdmin = await repository.addMemberByEmail(workspaceA, emailB, 'admin', userA);
     expect(secondAdmin).toMatchObject({ id: userB, role: 'admin', status: 'active' });
 
-    expect(await repository.revokeMembership(workspaceA, userA, userB)).toBe('revoked');
-    expect(await repository.findActiveMembership(userA, workspaceA)).toBeNull();
-    expect(await repository.findActiveMembership(userB, workspaceA)).toMatchObject({ role: 'admin' });
+    const [revokeOwner, revokeSecondAdmin] = await Promise.all([
+      repository.revokeMembership(workspaceA, userA, userB),
+      repository.revokeMembership(workspaceA, userB, userA)
+    ]);
+    expect([revokeOwner, revokeSecondAdmin].sort()).toEqual(['last_admin', 'revoked']);
+
+    const revokedUserId = revokeOwner === 'revoked' ? userA : userB;
+    const remainingAdminId = revokedUserId === userA ? userB : userA;
+    expect(await repository.findActiveMembership(remainingAdminId, workspaceA)).toMatchObject({ role: 'admin' });
+    expect(await repository.findActiveMembership(revokedUserId, workspaceA)).toBeNull();
 
     const audit = await pool.query(
       'SELECT status, revoked_at, revoked_by_user_id FROM workspace_memberships WHERE workspace_id = $1 AND user_id = $2',
-      [workspaceA, userA]
+      [workspaceA, revokedUserId]
     );
-    expect(audit.rows[0]).toMatchObject({ status: 'revoked', revoked_by_user_id: userB });
+    expect(audit.rows[0]).toMatchObject({
+      status: 'revoked',
+      revoked_by_user_id: remainingAdminId
+    });
     expect(audit.rows[0].revoked_at).toBeTruthy();
 
-    expect(await repository.revokeMembership(workspaceA, userB, userB)).toBe('last_admin');
+    expect(await repository.revokeMembership(workspaceA, remainingAdminId, remainingAdminId)).toBe('last_admin');
   });
 
   it('permits duplicate external event identifiers in separate workspaces and stores only integration-token hashes', async () => {
