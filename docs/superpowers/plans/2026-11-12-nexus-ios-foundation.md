@@ -81,9 +81,10 @@ The iOS project file and target settings must be generated/edited on macOS with 
 
 **Interfaces:**
 - Apple identity record: provider, provider_subject, user_id, created_at, last_authenticated_at; unique constraint on provider + provider_subject.
-- Refresh family record: family_id, session_id, user_id, token_hash, parent_token_id, issued_at, expires_at, consumed_at, revoked_at, reuse_detected_at.
-- Store token hashes only; never raw refresh credentials.
-- Foreign keys must cascade or revoke consistently with user/session deletion policy.
+- Refresh family record in `auth_refresh_token_families`: family_id, session_id, user_id, created_at, expires_at, revoked_at, revocation_reason, reuse_detected_at.
+- Individual token record in `auth_refresh_tokens`: token_id, family_id, token_hash, parent_token_id, issued_at, expires_at, consumed_at, revoked_at, reuse_detected_at.
+- Store token hashes only; never raw refresh credentials. Parent-token references must remain inside the same family.
+- Composite foreign keys bind each family to the matching user/session pair; user/session deletion cascades according to the existing auth-session lifecycle.
 
 - [ ] Inspect `docs/DATABASE-MIGRATIONS.md` and the existing `database/init/011_workspace_identity_and_ownership.sql` before writing migration 013.
 - [ ] Write migration assertions for uniqueness, foreign keys, expiry indexes and token-hash-only storage.
