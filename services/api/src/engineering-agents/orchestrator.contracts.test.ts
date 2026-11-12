@@ -161,11 +161,29 @@ describe('engineering task state machine', () => {
   });
 
   it('requires a reason before blocking, failing or cancelling a task', () => {
-    const blocked = transitionTask(
-      createInitialTaskState(taskId, timestamp),
-      transitionCommand({ nextStatus: 'blocked' })
-    );
-    expect(blocked).toMatchObject({ ok: false, code: 'REASON_REQUIRED' });
+    const cases = [
+      {
+        state: { taskId, status: 'ready' as const, revision: 2, updatedAt: timestamp },
+        nextStatus: 'blocked' as const
+      },
+      {
+        state: { taskId, status: 'running' as const, revision: 3, updatedAt: timestamp },
+        nextStatus: 'failed' as const
+      },
+      {
+        state: createInitialTaskState(taskId, timestamp),
+        nextStatus: 'cancelled' as const
+      }
+    ];
+
+    for (const testCase of cases) {
+      const result = transitionTask(testCase.state, transitionCommand({
+        expectedStatus: testCase.state.status,
+        expectedRevision: testCase.state.revision,
+        nextStatus: testCase.nextStatus
+      }));
+      expect(result).toMatchObject({ ok: false, code: 'REASON_REQUIRED' });
+    }
   });
 
   it('requires the command to target the same task', () => {
