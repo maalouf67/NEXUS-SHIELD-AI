@@ -6,6 +6,16 @@ RUN go build -trimpath -ldflags="-s -w" -o /out/gosu .
 
 # Railway PostgreSQL image aligned with local Docker Compose (PostgreSQL 16).
 FROM postgres:16-alpine
+
+# Update the two runtime libraries flagged by Trivy in the November 2026 scan.
+# Fail the build if the Alpine v3.24 repositories do not provide the fixed floors.
+RUN set -eux; \
+    apk add --no-cache --upgrade \
+      'krb5-libs>=1.22.3-r0' \
+      'libxslt>=1.1.43-r4'; \
+    apk info -v krb5-libs | grep -E '^krb5-libs-1\\.22\\.3-r[0-9]+$'; \
+    apk info -v libxslt | grep -E '^libxslt-1\\.1\\.43-r[4-9][0-9]*$'
+
 # Override the base image's older gosu binary with the source-built patched version.
 COPY --from=gosu-build /out/gosu /usr/local/bin/gosu
 RUN set -eux; \
