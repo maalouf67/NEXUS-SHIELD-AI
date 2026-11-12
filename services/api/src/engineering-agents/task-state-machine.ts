@@ -114,11 +114,12 @@ export function transitionTask(current: unknown, command: unknown): TaskTransiti
     return { ok: false, code: 'REASON_REQUIRED', message: 'A reason is required for blocked, failed or cancelled tasks.' };
   }
 
+  const nextRevision = state.revision + 1;
   const nextState = TaskStateSnapshotSchema.parse({
     taskId: state.taskId,
     workspaceId: state.workspaceId,
     status: request.nextStatus,
-    revision: state.revision + 1,
+    revision: nextRevision,
     updatedAt: request.occurredAt
   });
 
@@ -130,6 +131,8 @@ export function transitionTask(current: unknown, command: unknown): TaskTransiti
     eventType: 'task.status_changed',
     previousStatus: state.status,
     nextStatus: request.nextStatus,
+    previousRevision: state.revision,
+    nextRevision,
     actor: request.actor,
     reason: request.reason,
     occurredAt: request.occurredAt
