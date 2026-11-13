@@ -18,10 +18,14 @@ services:
       timeout: 5s
       retries: 10
 
+  # Optional database UI. Not started by default; enable with:
+  #   docker compose --profile dev-tools up -d adminer
+  # Pin ADMINER_IMAGE to a verified tag/digest in your root .env.
   adminer:
-    image: adminer:latest
+    profiles: ['dev-tools']
+    image: ${ADMINER_IMAGE:-adminer:4}
     container_name: nexus-shield-adminer
-    restart: unless-stopped
+    restart: 'no'
     ports:
       - '127.0.0.1:8080:8080'
     depends_on:
