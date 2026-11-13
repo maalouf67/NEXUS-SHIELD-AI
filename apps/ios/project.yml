@@ -1,0 +1,43 @@
+name: NexusShield
+options:
+  bundleIdPrefix: ai.nexusshield
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    TARGETED_DEVICE_FAMILY: "1"
+    IPHONEOS_DEPLOYMENT_TARGET: "17.0"
+    GENERATE_INFOPLIST_FILE: "YES"
+targets:
+  NexusShield:
+    type: application
+    platform: iOS
+    sources:
+      - path: NexusShield
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ai.nexusshield.ios
+        INFOPLIST_KEY_CFBundleDisplayName: NEXUS SHIELD
+        CODE_SIGNING_ALLOWED: "NO"
+  NexusShieldTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: NexusShieldTests
+    dependencies:
+      - target: NexusShield
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ai.nexusshield.ios.tests
+        CODE_SIGNING_ALLOWED: "NO"
+schemes:
+  NexusShield:
+    build:
+      targets:
+        NexusShield: all
+        NexusShieldTests: [test]
+    test:
+      targets:
+        - NexusShieldTests
