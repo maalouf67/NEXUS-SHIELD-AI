@@ -363,6 +363,15 @@ describe('NEXUS user authentication and RBAC', () => {
     expect(await bcrypt.compare('Another-Strong-Password-99!', createdInput!.passwordHash)).toBe(true);
   });
 
+  it('rejects malformed login bodies without leaking validation details', async () => {
+    const response = await request(createTestApp(makeRepository()))
+      .post('/api/auth/login')
+      .send({ email: 'not-an-email', password: '', unexpected: true });
+
+    expect(response.status).toBe(400);
+    expect(response.body).toEqual({ error: 'INVALID_REQUEST' });
+  });
+
   it('does not allow the user API to create additional administrators', async () => {
     const passwordHash = await bcrypt.hash(TEST_PASSWORD, 4);
     const repository = makeRepository({}, {
