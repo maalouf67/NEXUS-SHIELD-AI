@@ -72,7 +72,7 @@ Start the local database only after setting a strong `POSTGRES_PASSWORD` in the 
 docker compose up -d postgres
 ```
 
-PostgreSQL and Adminer bind to `127.0.0.1` only. Adminer is available locally at `http://127.0.0.1:8080`.
+PostgreSQL binds to `127.0.0.1` only. Adminer is optional and off by default; start it with `docker compose --profile dev-tools up -d adminer` (available at `http://127.0.0.1:8080`, also bound to `127.0.0.1` only).
 
 After PostgreSQL starts, apply the numbered schema and verify the API's database connection:
 
