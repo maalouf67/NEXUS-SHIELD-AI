@@ -103,7 +103,8 @@ describe('API anomaly containment', () => {
     app.use('/api', createApiAnomalyGuard({
       windowMs: 60_000,
       threshold: 2,
-      store
+      store,
+      onContainment: vi.fn()
     }));
     app.get('/api/missing', (_request, response) => response.status(404).json({ error: 'NOT_FOUND' }));
     app.get('/api/healthy', (_request, response) => response.status(200).json({ status: 'ok' }));
@@ -128,7 +129,8 @@ describe('API anomaly containment', () => {
     app.use('/api', createApiAnomalyGuard({
       windowMs: 60_000,
       threshold: 2,
-      store
+      store,
+      onContainment: vi.fn()
     }));
     app.use(express.json({ limit: '16b' }));
     app.post('/api/body', (_request, response) => response.status(200).json({ status: 'ok' }));
@@ -153,7 +155,8 @@ describe('API anomaly containment', () => {
     app.use('/api', createApiAnomalyGuard({
       windowMs: 60_000,
       threshold: 1,
-      store
+      store,
+      onContainment: vi.fn()
     }));
     app.get('/api/missing', (_request, response) => response.status(404).json({ error: 'NOT_FOUND' }));
     app.get('/api/health', (_request, response) => response.status(200).json({ ok: true }));
@@ -179,7 +182,8 @@ describe('API anomaly containment', () => {
     app.use(createApiAnomalyGuard({
       windowMs: 60_000,
       threshold: 2,
-      store
+      store,
+      onContainment: vi.fn()
     }));
     app.get('/known', (_request, response) => response.status(200).json({ status: 'ok' }));
 
@@ -199,7 +203,8 @@ describe('API anomaly containment', () => {
     app.use(createApiAnomalyGuard({
       windowMs: 60_000,
       threshold: 1,
-      store
+      store,
+      onContainment: vi.fn()
     }));
     app.get('/missing', (_request, response) => response.status(404).json({ error: 'NOT_FOUND' }));
     app.get('/health', (_request, response) => response.status(200).json({ ok: true }));
