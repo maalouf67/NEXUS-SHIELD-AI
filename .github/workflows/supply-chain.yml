@@ -1,0 +1,126 @@
+name: NEXUS SHIELD AI - Software Supply Chain Evidence
+
+on:
+  push:
+    branches: ["main", "feat/**"]
+  pull_request:
+    branches: ["main", "feat/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supply-chain-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sbom-and-provenance:
+    name: Generate SBOMs and verify source provenance
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install pinned Syft
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/syft_1.55.0_linux_amd64.tar.gz"
+          curl --fail --silent --show-error --location \
+            https://github.com/anchore/syft/releases/download/v1.55.0/syft_1.55.0_linux_amd64.tar.gz \
+            --output "$archive"
+          echo "bb65249542db5fedeeb4d3f9b018b75e7264dbfbbb10486f044581a92f90490d  $archive" \
+            | sha256sum --check
+          mkdir -p "$RUNNER_TEMP/syft-bin"
+          tar -xzf "$archive" -C "$RUNNER_TEMP/syft-bin" syft
+          sudo install "$RUNNER_TEMP/syft-bin/syft" /usr/local/bin/syft
+          syft version
+          syft version | grep -F "1.55.0"
+
+      - name: Build the repository's PostgreSQL and AI images
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker build --pull -f database/Dockerfile.railway -t nexus-postgres:ci .
+          docker build --pull -f services/ai/Dockerfile -t nexus-ai:ci .
+          docker pull clamav/clamav:1.5.4
+
+      - name: Generate SPDX and CycloneDX SBOMs
+        shell: bash
+        run: |
+          set -euo pipefail
+          output_dir="$RUNNER_TEMP/nexus-sbom"
+          mkdir -p "$output_dir"
+
+          # Repository dependency inventory from tracked manifests and lockfiles.
+          syft dir:. \
+            -o "spdx-json=$output_dir/nexus-source.spdx.json" \
+            -o "cyclonedx-json=$output_dir/nexus-source.cdx.json"
+
+          # SBOMs describe the exact local images built or pulled in this run.
+          syft nexus-postgres:ci \
+            -o "spdx-json=$output_dir/nexus-postgres.spdx.json" \
+            -o "cyclonedx-json=$output_dir/nexus-postgres.cdx.json"
+          syft nexus-ai:ci \
+            -o "spdx-json=$output_dir/nexus-ai.spdx.json" \
+            -o "cyclonedx-json=$output_dir/nexus-ai.cdx.json"
+          syft clamav/clamav:1.5.4 \
+            -o "spdx-json=$output_dir/clamav-1.5.4.spdx.json" \
+            -o "cyclonedx-json=$output_dir/clamav-1.5.4.cdx.json"
+
+          for file in "$output_dir"/*.spdx.json; do
+            jq -e '.spdxVersion and (.packages | type == "array")' "$file" >/dev/null
+          done
+          for file in "$output_dir"/*.cdx.json; do
+            jq -e '.bomFormat == "CycloneDX" and (.components | type == "array")' "$file" >/dev/null
+          done
+
+      - name: Create an immutable source archive and checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          git archive --format=tar.gz \
+            --output="$RUNNER_TEMP/nexus-source.tar.gz" "$GITHUB_SHA"
+          test -s "$RUNNER_TEMP/nexus-source.tar.gz"
+          (
+            cd "$RUNNER_TEMP"
+            sha256sum nexus-source.tar.gz nexus-sbom/*.json > nexus-sbom/SHA256SUMS
+            sha256sum --check nexus-sbom/SHA256SUMS
+          )
+          cat "$RUNNER_TEMP/nexus-sbom/SHA256SUMS"
+
+      - name: Generate signed SPDX SBOM attestation
+        if: github.event_name != 'pull_request'
+        uses: actions/attest@v4.2.2
+        with:
+          subject-path: ${{ runner.temp }}/nexus-source.tar.gz
+          sbom-path: ${{ runner.temp }}/nexus-sbom/nexus-source.spdx.json
+
+      - name: Verify the generated source SBOM attestation
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh attestation verify "$RUNNER_TEMP/nexus-source.tar.gz" \
+            --repo "$GITHUB_REPOSITORY" \
+            --predicate-type https://spdx.dev/Document/v2.3
+
+      - name: Upload SBOMs, source archive and checksums
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nexus-supply-chain-evidence
+          path: |
+            ${{ runner.temp }}/nexus-source.tar.gz
+            ${{ runner.temp }}/nexus-sbom/*.json
+            ${{ runner.temp }}/nexus-sbom/SHA256SUMS
+          if-no-files-found: warn
+          retention-days: 30
