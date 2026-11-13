@@ -31,10 +31,8 @@ export function createAuthRouter(
     const parsed = LoginRequestSchema.safeParse(req.body);
 
     if (!parsed.success) {
-      return res.status(400).json({
-        error: 'INVALID_REQUEST',
-        details: parsed.error.flatten()
-      });
+      // Do not echo schema/validation details to unauthenticated callers.
+      return res.status(400).json({ error: 'INVALID_REQUEST' });
     }
 
     const secret = process.env.JWT_SECRET;
