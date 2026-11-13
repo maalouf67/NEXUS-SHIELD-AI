@@ -1,0 +1,52 @@
+{
+  "name": "NEXUS SHIELD AI Development",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:1-22-bookworm",
+  "features": {
+    "ghcr.io/devcontainers/features/python:1": {
+      "version": "3.12"
+    },
+    "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {}
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-vscode.vscode-typescript-next",
+        "dbaeumer.vscode-eslint",
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "ms-azuretools.vscode-docker",
+        "mtxr.sqltools",
+        "mtxr.sqltools-driver-pg"
+      ],
+      "settings": {
+        "editor.formatOnSave": true,
+        "files.eol": "\n",
+        "python.defaultInterpreterPath": "${workspaceFolder}/services/ai/.venv/bin/python",
+        "typescript.tsdk": "node_modules/typescript/lib"
+      }
+    }
+  },
+  "forwardPorts": [3000, 4000, 8001, 5432],
+  "portsAttributes": {
+    "3000": {
+      "label": "NEXUS Web",
+      "onAutoForward": "notify"
+    },
+    "4000": {
+      "label": "NEXUS API",
+      "onAutoForward": "notify"
+    },
+    "8001": {
+      "label": "NEXUS AI Service",
+      "onAutoForward": "notify"
+    },
+    "5432": {
+      "label": "PostgreSQL",
+      "onAutoForward": "ignore"
+    }
+  },
+  "postCreateCommand": "npm ci && python3 -m venv services/ai/.venv && services/ai/.venv/bin/python -m pip install --upgrade pip && services/ai/.venv/bin/pip install -r services/ai/requirements.txt",
+  "remoteUser": "node",
+  "updateRemoteUserUID": true,
+  "shutdownAction": "stopContainer"
+}
