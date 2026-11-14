@@ -71,7 +71,7 @@ After configuring, read back branch protection and verify `protected=true`, requ
 
 **P0-03 — Reconcile current migration documentation**
 
-The live CI workflow verifies 13 migrations, while some deployment and migration documents still describe older counts (9 or 11). Update documentation only after checking the current migration runner and exact file sequence. Do not change SQL migration history as part of a documentation fix.
+The live CI workflow and `database/init` directory both verify the current sequence 001–013. This branch updates `docs/DATABASE-MIGRATIONS.md` and `docs/RAILWAY-DEPLOYMENT-READINESS.md` to match that sequence, including the roles of migrations 012 and 013. These documentation corrections are pending PR review; no SQL migration history was changed.
 
 **P0-04 — Revalidate security and API readiness PRs**
 
