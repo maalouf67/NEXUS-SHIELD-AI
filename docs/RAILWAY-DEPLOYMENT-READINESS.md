@@ -71,7 +71,7 @@ The API startup preflight requires:
 - `security_event_reviews`
 - `auth_sessions`
 
-The repository migration runner currently expects nine numbered SQL migrations (001–009), including the server-side `auth_sessions` table and account-security-change revocation trigger. Before any production migration:
+The repository currently contains 13 numbered SQL migrations (001–013). Migration 009 adds the server-side `auth_sessions` table and account-security-change revocation trigger; 010 adds the privacy request lifecycle; 011 adds workspace identities and ownership; 012 adds threat-intelligence analytics; and 013 adds Apple identity and refresh-token structures. Before any production migration:
 1. Confirm the target database identity using a protected operational process.
 2. Take a backup and verify that it can be restored.
 3. Review the pending numbered migrations.
@@ -105,7 +105,7 @@ Do not declare Active Defense production-ready until all applicable items have e
 - [ ] `RAILWAY_RUN_UID=0` is present on the custom PostgreSQL service when using its non-root Dockerfile with a Railway volume.
 - [ ] `TRUST_PROXY_HOPS` matches the verified proxy topology; forwarded-header spoofing is rejected.
 - [ ] The API connects to the intended database with TLS verification enabled.
-- [ ] All nine migrations are recorded with matching checksums, including migration 009 for server-side access sessions.
+- [ ] All 13 migrations are recorded with matching checksums, including migration 009 for server-side access sessions and migrations 010–013 for privacy, workspace, threat-intelligence, and Apple identity/refresh-token foundations.
 - [ ] Authenticated readiness reports PostgreSQL as available.
 - [ ] Two API instances share rate-limit counters and SOC threshold events persist exactly once.
 - [ ] ClamAV connectivity and a benign/EICAR test are verified in the deployed environment.
