@@ -129,7 +129,7 @@ PR #19, #28, and #30 need a main-versus-branch comparison before any action. The
 
 **P2-05 — Engineering policy/documentation PRs**
 
-Review PR #21 and #23 for useful unique documentation or guardrails already absent from main. Avoid duplicating existing engineering-agent policy and workflow documents.
+Review PR #21 and #23 for useful unique integration strategy and repository guardrails, and PR #41 for the 6+1 AI orchestration design. Compare all three against current main documentation and the agent control-plane contracts before retaining or superseding them. Avoid duplicating existing engineering-agent policy and workflow documents.
 
 ### P3 — Dependency maintenance
 
